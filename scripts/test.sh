@@ -9,4 +9,4 @@ if [[ -d "$plugin_dir" ]] && ! xcode-select -p | grep -q "Xcode"; then
   flags+=(-Xswiftc -plugin-path -Xswiftc "$plugin_dir")
 fi
 
-exec swift test "${flags[@]}" "$@"
+exec swift test ${flags[@]+"${flags[@]}"} "$@"
