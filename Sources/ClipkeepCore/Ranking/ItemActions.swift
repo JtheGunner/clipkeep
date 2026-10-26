@@ -1,10 +1,13 @@
 import Foundation
 
 public enum FeedbackAction: String, Sendable, Equatable, CaseIterable {
-    case pin, unpin, star, unstar, delete, restore, more, less
+    case pin, unpin, star, unstar, delete, restore, recopy, more, less
 }
 
-/// One recorded user action with the item's features at that moment.
+/// One recorded user action with the item's features as they were just before the action
+/// (importance, copy count), so a later model sees the state the user decided in.
+/// `recopy` marks a deleted text that came back because it was copied again.
+/// Events of a purged item keep their features but lose the link to it.
 public struct FeedbackEvent: Sendable, Equatable {
     public let id: Int64
     public let contentID: Int64?
@@ -16,7 +19,8 @@ public struct FeedbackEvent: Sendable, Equatable {
     public let copyCount: Int
 }
 
-/// Explicit user control over importance: pin, star, delete with undo, more/less like this.
+/// Explicit user control over importance (per item: "more/less like this" does not touch similar
+/// items, that is left to a later learning model): pin, star, delete with undo, more/less like this.
 /// Every action is stored as a `FeedbackEvent`. Use the same `RankingConfiguration` as the
 /// `ContentStore` so stored scores stay consistent.
 public struct ItemActions: Sendable {
@@ -31,12 +35,14 @@ public struct ItemActions: Sendable {
         self.configuration = configuration
     }
 
-    /// Each returns `false` when the item does not exist (nothing is recorded then).
+    /// Each returns `false` when the item does not exist. An action that changes nothing (pinning
+    /// a pinned item, deleting a deleted one, a feedback step at the limit) returns `true` but is
+    /// not logged, so repeated clicks do not inflate the signal.
     @discardableResult
     public func setPinned(_ isPinned: Bool, contentID: Int64, now: Date = Date()) throws -> Bool {
         try apply(isPinned ? .pin : .unpin, to: contentID, now: now) {
             try $0.execute(
-                "UPDATE contents SET pinned = ? WHERE id = ?",
+                "UPDATE contents SET pinned = ?1 WHERE id = ?2 AND pinned != ?1",
                 [.int(isPinned ? 1 : 0), .int(contentID)])
         }
     }
@@ -45,7 +51,7 @@ public struct ItemActions: Sendable {
     public func setStarred(_ isStarred: Bool, contentID: Int64, now: Date = Date()) throws -> Bool {
         try apply(isStarred ? .star : .unstar, to: contentID, now: now) {
             try $0.execute(
-                "UPDATE contents SET starred = ? WHERE id = ?",
+                "UPDATE contents SET starred = ?1 WHERE id = ?2 AND starred != ?1",
                 [.int(isStarred ? 1 : 0), .int(contentID)])
         }
     }
@@ -64,7 +70,8 @@ public struct ItemActions: Sendable {
     public func restore(contentID: Int64, now: Date = Date()) throws -> Bool {
         try apply(.restore, to: contentID, now: now) {
             try $0.execute(
-                "UPDATE contents SET deleted_at = NULL WHERE id = ?", [.int(contentID)])
+                "UPDATE contents SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                [.int(contentID)])
         }
     }
 
@@ -121,7 +128,10 @@ public struct ItemActions: Sendable {
     ) throws -> Bool {
         try apply(action, to: contentID, now: now) {
             try $0.execute(
-                "UPDATE contents SET feedback = max(?, min(?, feedback + ?)) WHERE id = ?",
+                """
+                UPDATE contents SET feedback = max(?1, min(?2, feedback + ?3))
+                WHERE id = ?4 AND feedback != max(?1, min(?2, feedback + ?3))
+                """,
                 [
                     .int(Int64(-Self.feedbackLimit)), .int(Int64(Self.feedbackLimit)),
                     .int(Int64(delta)), .int(contentID),
@@ -129,30 +139,62 @@ public struct ItemActions: Sendable {
         }
     }
 
-    /// Runs `change`, rescoring and logging in one transaction.
+    /// Features of an item at one moment, stored with each event.
+    struct Snapshot {
+        let kind: String
+        let appBundleID: String?
+        let importance: Double
+        let copyCount: Int
+    }
+
+    static func snapshot(of contentID: Int64, in connection: Connection) throws -> Snapshot? {
+        try connection.query(
+            """
+            SELECT c.kind,
+                (SELECT app_bundle_id FROM copy_events WHERE content_id = c.id
+                    ORDER BY copied_at DESC, id DESC LIMIT 1),
+                c.importance, (SELECT count(*) FROM copy_events WHERE content_id = c.id)
+            FROM contents c WHERE c.id = ?
+            """,
+            [.int(contentID)]
+        ) {
+            Snapshot(
+                kind: $0.text(0), appBundleID: $0.optionalText(1), importance: $0.double(2),
+                copyCount: Int($0.int(3)))
+        }.first
+    }
+
+    static func log(
+        _ action: FeedbackAction, contentID: Int64, snapshot: Snapshot, now: Date,
+        in connection: Connection
+    ) throws {
+        try connection.execute(
+            """
+            INSERT INTO feedback_events
+                (content_id, action, created_at, kind, app_bundle_id, importance, copy_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .int(contentID), .text(action.rawValue), SQLValue(now), .text(snapshot.kind),
+                SQLValue(snapshot.appBundleID), .double(snapshot.importance),
+                .int(Int64(snapshot.copyCount)),
+            ])
+    }
+
+    /// Runs `change`, then rescores and logs in one transaction. Logs only if `change` modified a row.
     private func apply(
         _ action: FeedbackAction, to contentID: Int64, now: Date,
         change: (Connection) throws -> Void
     ) throws -> Bool {
         try database.write { connection in
-            let exists = try connection.query(
-                "SELECT 1 FROM contents WHERE id = ?", [.int(contentID)]
-            ) { _ in 1 }
-            guard !exists.isEmpty else { return false }
+            guard let before = try Self.snapshot(of: contentID, in: connection) else {
+                return false
+            }
             try change(connection)
+            guard connection.changedRowCount > 0 else { return true }
             try RankingService.refresh(
                 contentID: contentID, in: connection, configuration: configuration, now: now)
-            try connection.execute(
-                """
-                INSERT INTO feedback_events
-                    (content_id, action, created_at, kind, app_bundle_id, importance, copy_count)
-                SELECT c.id, ?, ?, c.kind,
-                    (SELECT app_bundle_id FROM copy_events WHERE content_id = c.id
-                        ORDER BY copied_at DESC, id DESC LIMIT 1),
-                    c.importance, (SELECT count(*) FROM copy_events WHERE content_id = c.id)
-                FROM contents c WHERE c.id = ?
-                """,
-                [.text(action.rawValue), SQLValue(now), .int(contentID)])
+            try Self.log(action, contentID: contentID, snapshot: before, now: now, in: connection)
             return true
         }
     }

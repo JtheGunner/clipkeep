@@ -164,7 +164,8 @@ public enum Schema {
             CREATE TABLE feedback_events (
                 id INTEGER PRIMARY KEY,
                 content_id INTEGER REFERENCES contents(id) ON DELETE SET NULL,
-                action TEXT NOT NULL,
+                action TEXT NOT NULL CHECK (action IN
+                    ('pin', 'unpin', 'star', 'unstar', 'delete', 'restore', 'recopy', 'more', 'less')),
                 created_at REAL NOT NULL,
                 kind TEXT NOT NULL,
                 app_bundle_id TEXT,

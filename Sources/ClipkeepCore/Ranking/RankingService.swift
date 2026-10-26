@@ -43,7 +43,7 @@ public struct RankingService: Sendable {
         while true {
             let ids = try database.read { connection in
                 try connection.query(
-                    "SELECT id FROM contents WHERE id > ? ORDER BY id LIMIT ?",
+                    "SELECT id FROM contents WHERE id > ? AND deleted_at IS NULL ORDER BY id LIMIT ?",
                     [.int(lastID), .int(Int64(max(batchSize, 1)))]
                 ) { $0.int(0) }
             }
@@ -61,7 +61,9 @@ public struct RankingService: Sendable {
         }
     }
 
-    /// Deletes archived, unpinned contents whose last copy is older than the configured retention.
+    /// Deletes contents whose last copy is older than the configured retention, except pinned or
+    /// starred ones and those deleted by the user (left to `ItemActions.purgeDeleted`, so the
+    /// undo window is never cut short).
     /// Does nothing unless `archiveRetentionDays` is set. The period is re-clamped here so even a
     /// policy mutated after creation can never reach into the hot or warm window. Deletes in
     /// small transactions so capture is never blocked for long. Returns the deleted count.
@@ -75,7 +77,11 @@ public struct RankingService: Sendable {
         while true {
             let count = try database.write { connection -> Int in
                 let ids = try connection.query(
-                    "SELECT id FROM contents WHERE pinned = 0 AND last_copied_at < ? LIMIT ?",
+                    """
+                    SELECT id FROM contents
+                    WHERE pinned = 0 AND starred = 0 AND deleted_at IS NULL AND last_copied_at < ?
+                    LIMIT ?
+                    """,
                     [.double(cutoff), .int(Int64(max(batchSize, 1)))]
                 ) { $0.int(0) }
                 for id in ids {
