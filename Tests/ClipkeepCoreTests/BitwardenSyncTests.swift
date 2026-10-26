@@ -334,6 +334,31 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         #expect(try await fixture.sync.retrieve(secretID: all[1].id) == secret(1))
     }
 
+    @Test func aSecretAlreadyInBitwardenCanStillBeTakenBackAsNormal() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 1)
+        let id = try #require(try fixture.parker.pending().first).id
+        _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        #expect(fixture.vault.parkedValues.isEmpty)
+        try await fixture.sync.markNotSecret(id: id)
+        #expect(fixture.parker.isException(secret(0)))
+        let texts = try fixture.database.read {
+            try $0.query("SELECT text FROM contents") { $0.text(0) }
+        }
+        #expect(texts == [secret(0)])
+    }
+
+    @Test func takingASecretBackNeedsAnUnlockedVaultOnceItMoved() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 1)
+        let id = try #require(try fixture.parker.pending().first).id
+        _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        await fixture.sync.lock()
+        await #expect(throws: BitwardenError.locked) {
+            try await fixture.sync.markNotSecret(id: id)
+        }
+    }
+
     @Test func retrievalNeedsAnUnlockedVault() async throws {
         let fixture = try Fixture()
         park(fixture, count: 1)

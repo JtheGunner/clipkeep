@@ -138,6 +138,17 @@ public actor BitwardenSync {
         try parker.deleteFromVault(id: secret.id)
     }
 
+    /// Takes a secret back to a normal history entry ("not a secret"). If it already moved to
+    /// Bitwarden, the value is fetched from there first, which needs an unlocked vault.
+    public func markNotSecret(id: Int64) async throws {
+        do {
+            try parker.markNotSecret(id: id)
+        } catch ParkingError.vaultItemMissing {
+            let value = try await retrieve(secretID: id)
+            try parker.markNotSecret(id: id, value: value)
+        }
+    }
+
     /// The secret, from the Keychain while it is still parked, otherwise from Bitwarden.
     public func retrieve(secretID: Int64) async throws -> String {
         guard let secret = try parker.secret(id: secretID) else { throw ParkingError.notFound }

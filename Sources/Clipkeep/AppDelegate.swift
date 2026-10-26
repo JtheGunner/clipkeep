@@ -11,12 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watcher: ClipboardWatcher?
     private var bitwarden: BitwardenSync?
     private let systemContext = SystemContext()
+    private let secretNotifier = SecretNotifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItemController = StatusItemController(
             launchAtLogin: LaunchAtLoginController(service: SystemLoginItemService()),
             systemContext: systemContext
         )
+        secretNotifier.start()
         startCapture()
     }
 
@@ -30,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startCapture() {
         let tracker = FrontmostApplicationTracker()
         let systemContext = self.systemContext
+        let notifier = secretNotifier
         Task.detached(priority: .utility) { [weak self] in
             do {
                 let database = try AppDatabase.open()
@@ -41,7 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         Self.logger.error(
                             "Parking a secret failed: \(String(describing: error), privacy: .public)"
                         )
-                    })
+                    },
+                    onParked: { notifier.secretParked($0) })
                 // Before capture starts: remove Keychain items left behind by an interrupted park.
                 do {
                     _ = try parker.reconcile()
@@ -51,6 +55,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     )
                 }
                 let bitwarden = BitwardenSync(client: BitwardenCLIClient(), parker: parker)
+                notifier.setUndoHandler { id in
+                    do {
+                        try await bitwarden.markNotSecret(id: id)
+                        return true
+                    } catch {
+                        Self.logger.error(
+                            "Undo failed: \(String(describing: error), privacy: .public)")
+                        return false
+                    }
+                }
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
@@ -66,7 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     })
                 let watcher = ClipboardWatcher(poller: poller)
                 watcher.start()
-                await self?.captureStarted(watcher, control: control, bitwarden: bitwarden)
+                await self?.captureStarted(
+                    watcher, control: control, bitwarden: bitwarden, secrets: parker)
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -87,12 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func captureStarted(
-        _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync
+        _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync,
+        secrets: SecretParker
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
         statusItemController?.attach(bitwarden: bitwarden)
+        statusItemController?.attach(secrets: secrets)
     }
 
     private func captureFailed() {

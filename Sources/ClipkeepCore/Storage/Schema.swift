@@ -1,7 +1,7 @@
 public enum Schema {
-    public static let latestVersion = 8
+    public static let latestVersion = 9
     public static let migrations = [
-        version1, version2, version3, version4, version5, version6, version7, version8,
+        version1, version2, version3, version4, version5, version6, version7, version8, version9,
     ]
     public static let migrator = Migrator(migrations: migrations)
 
@@ -248,5 +248,20 @@ public enum Schema {
             """,
             "CREATE INDEX parked_secrets_state ON parked_secrets(state)",
             "CREATE INDEX parked_secrets_fingerprint ON parked_secrets(fingerprint)",
+        ])
+
+    /// Texts the user declared "not a secret". Only the keyed fingerprint is kept (see
+    /// `parked_secrets`), so the list shows a placeholder label, never the text.
+    private static let version9 = Migration(
+        version: 9,
+        statements: [
+            """
+            CREATE TABLE secret_exceptions (
+                id INTEGER PRIMARY KEY,
+                fingerprint TEXT NOT NULL UNIQUE,
+                label TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """
         ])
 }

@@ -22,6 +22,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenTransferItem = NSMenuItem()
     private let bitwardenLockItem = NSMenuItem()
     private let bitwardenMessageItem = NSMenuItem()
+    private let exceptionsItem = NSMenuItem()
+    private var secrets: SecretParker?
     private var control: CaptureControl?
     private var bitwarden: BitwardenSync?
     private var fatalProblem: String?
@@ -80,6 +82,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(safariItem)
 
         menu.addItem(.separator())
+        exceptionsItem.title = "Secret-Ausnahmen"
+        exceptionsItem.submenu = NSMenu()
+        exceptionsItem.isHidden = true
+        menu.addItem(exceptionsItem)
         bitwardenItem.title = "Bitwarden"
         bitwardenItem.submenu = makeBitwardenMenu()
         bitwardenItem.isHidden = true
@@ -119,6 +125,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshBitwarden()
+        refreshExceptions()
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
         let paused = control?.isPaused ?? false
         pauseItem.title = paused ? "Aufzeichnung fortsetzen" : "Aufzeichnung pausieren"
@@ -146,6 +153,41 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.control = control
         pauseItem.isEnabled = true
         updateIcon()
+    }
+
+    func attach(secrets: SecretParker) {
+        self.secrets = secrets
+        exceptionsItem.isHidden = false
+    }
+
+    private func refreshExceptions() {
+        guard let secrets else { return }
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        let exceptions = (try? secrets.exceptions()) ?? []
+        for exception in exceptions {
+            let item = NSMenuItem(
+                title: "\(exception.label) – entfernen",
+                action: #selector(removeSecretException(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = exception.id
+            submenu.addItem(item)
+        }
+        if exceptions.isEmpty {
+            let none = NSMenuItem(title: "Keine Ausnahmen", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            submenu.addItem(none)
+        }
+        exceptionsItem.submenu = submenu
+    }
+
+    @objc private func removeSecretException(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? Int64 else { return }
+        do {
+            try secrets?.removeException(id: id)
+        } catch {
+            showSaveProblem()
+        }
     }
 
     /// Enables the Bitwarden menu once the database is open.
