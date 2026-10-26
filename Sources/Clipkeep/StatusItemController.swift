@@ -16,7 +16,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let pauseItem = NSMenuItem()
     private let ignoreAppItem = NSMenuItem()
     private let ignoredAppsItem = NSMenuItem()
+    private let bitwardenItem = NSMenuItem()
+    private let bitwardenStatusItem = NSMenuItem()
+    private let bitwardenUnlockItem = NSMenuItem()
+    private let bitwardenTransferItem = NSMenuItem()
+    private let bitwardenLockItem = NSMenuItem()
+    private let bitwardenMessageItem = NSMenuItem()
     private var control: CaptureControl?
+    private var bitwarden: BitwardenSync?
     private var fatalProblem: String?
 
     init(launchAtLogin: LaunchAtLoginController, systemContext: SystemContext) {
@@ -73,6 +80,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(safariItem)
 
         menu.addItem(.separator())
+        bitwardenItem.title = "Bitwarden"
+        bitwardenItem.submenu = makeBitwardenMenu()
+        bitwardenItem.isHidden = true
+        menu.addItem(bitwardenItem)
+
+        menu.addItem(.separator())
         let quit = NSMenuItem(
             title: "Clipkeep beenden", action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q")
@@ -80,7 +93,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return menu
     }
 
+    private func makeBitwardenMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        bitwardenStatusItem.isEnabled = false
+        menu.addItem(bitwardenStatusItem)
+        bitwardenMessageItem.isEnabled = false
+        bitwardenMessageItem.isHidden = true
+        menu.addItem(bitwardenMessageItem)
+        menu.addItem(.separator())
+        bitwardenUnlockItem.title = "Entsperren und Secrets übertragen …"
+        bitwardenUnlockItem.target = self
+        bitwardenUnlockItem.action = #selector(unlockBitwarden)
+        menu.addItem(bitwardenUnlockItem)
+        bitwardenTransferItem.title = "Geparkte Secrets jetzt übertragen"
+        bitwardenTransferItem.target = self
+        bitwardenTransferItem.action = #selector(transferToBitwarden)
+        menu.addItem(bitwardenTransferItem)
+        bitwardenLockItem.title = "Sperren"
+        bitwardenLockItem.target = self
+        bitwardenLockItem.action = #selector(lockBitwarden)
+        menu.addItem(bitwardenLockItem)
+        return menu
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
+        refreshBitwarden()
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
         let paused = control?.isPaused ?? false
         pauseItem.title = paused ? "Aufzeichnung fortsetzen" : "Aufzeichnung pausieren"
@@ -108,6 +146,119 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.control = control
         pauseItem.isEnabled = true
         updateIcon()
+    }
+
+    /// Enables the Bitwarden menu once the database is open.
+    func attach(bitwarden: BitwardenSync) {
+        self.bitwarden = bitwarden
+        bitwardenItem.isHidden = false
+    }
+
+    private func refreshBitwarden() {
+        guard let bitwarden else { return }
+        Task { [weak self] in
+            let result = await bitwarden.status()
+            self?.showBitwardenStatus(result)
+        }
+    }
+
+    private func showBitwardenStatus(_ result: Result<BitwardenStatus, BitwardenError>) {
+        var unlocked = false
+        var canUnlock = false
+        switch result {
+        case .success(.unlocked):
+            bitwardenStatusItem.title = "Bitwarden: entsperrt"
+            unlocked = true
+        case .success(.locked):
+            bitwardenStatusItem.title =
+                "Bitwarden: gesperrt – geparkte Secrets warten im Schlüsselbund"
+            canUnlock = true
+        case .success(.loggedOut):
+            bitwardenStatusItem.title = "Bitwarden: nicht angemeldet (im Terminal „bw login“)"
+        case .failure(let error):
+            bitwardenStatusItem.title = "Bitwarden: " + Self.describe(error)
+            canUnlock = error != .notInstalled && error != .loggedOut
+        }
+        bitwardenUnlockItem.isEnabled = canUnlock
+        bitwardenTransferItem.isEnabled = unlocked
+        bitwardenLockItem.isEnabled = unlocked
+    }
+
+    private static func describe(_ error: BitwardenError) -> String {
+        switch error {
+        case .notInstalled:
+            "Bitwarden-CLI („bw“) nicht installiert – geparkte Secrets bleiben im Schlüsselbund"
+        case .loggedOut: "nicht angemeldet (im Terminal „bw login“)"
+        case .locked: "gesperrt"
+        case .invalidMasterPassword: "Masterpasswort falsch"
+        case .offline: "keine Verbindung – geparkte Secrets bleiben im Schlüsselbund"
+        case .timedOut: "keine Antwort – geparkte Secrets bleiben im Schlüsselbund"
+        case .busy: "Übertragung läuft bereits"
+        case .unexpectedOutput, .commandFailed:
+            "nicht erreichbar – geparkte Secrets bleiben im Schlüsselbund"
+        }
+    }
+
+    private func showTransfer(_ report: TransferReport) {
+        var parts: [String] = []
+        if report.transferred > 0 { parts.append("\(report.transferred) Secret(s) übertragen") }
+        if let failure = report.failure {
+            parts.append("\(report.remaining) warten noch: " + Self.describe(failure))
+        } else if report.transferred == 0 {
+            parts.append("Keine Secrets zu übertragen")
+        }
+        bitwardenMessageItem.title = parts.joined(separator: " · ")
+        bitwardenMessageItem.isHidden = false
+    }
+
+    @objc private func unlockBitwarden() {
+        guard let bitwarden else { return }
+        let alert = NSAlert()
+        alert.messageText = "Bitwarden entsperren"
+        alert.informativeText =
+            "Das Masterpasswort wird nur an Bitwarden übergeben und nicht gespeichert."
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Entsperren")
+        alert.addButton(withTitle: "Abbrechen")
+        alert.window.initialFirstResponder = field
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn, !field.stringValue.isEmpty else {
+            return
+        }
+        let password = field.stringValue
+        field.stringValue = ""
+        Task { [weak self] in
+            do {
+                let report = try await bitwarden.unlock(masterPassword: password)
+                self?.showTransfer(report)
+            } catch let error as BitwardenError {
+                self?.showBitwardenFailure(error)
+            } catch {
+                self?.showBitwardenFailure(.commandFailed)
+            }
+        }
+    }
+
+    @objc private func transferToBitwarden() {
+        guard let bitwarden else { return }
+        Task { [weak self] in
+            do {
+                self?.showTransfer(try await bitwarden.transferPending())
+            } catch {
+                self?.showBitwardenFailure(.commandFailed)
+            }
+        }
+    }
+
+    @objc private func lockBitwarden() {
+        guard let bitwarden else { return }
+        Task { await bitwarden.lock() }
+    }
+
+    private func showBitwardenFailure(_ error: BitwardenError) {
+        bitwardenMessageItem.title = Self.describe(error)
+        bitwardenMessageItem.isHidden = false
     }
 
     private func updateIcon() {

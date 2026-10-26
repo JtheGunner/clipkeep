@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItemController: StatusItemController?
     private var watcher: ClipboardWatcher?
+    private var bitwarden: BitwardenSync?
     private let systemContext = SystemContext()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -21,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         watcher?.stop()
+        lockBitwardenBeforeExit()
     }
 
     /// Opens the database off the main thread (the Keychain may prompt). Without a database the
@@ -48,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         "Reconciling parked secrets failed: \(String(describing: error), privacy: .public)"
                     )
                 }
+                let bitwarden = BitwardenSync(client: BitwardenCLIClient(), parker: parker)
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
@@ -63,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     })
                 let watcher = ClipboardWatcher(poller: poller)
                 watcher.start()
-                await self?.captureStarted(watcher, control: control)
+                await self?.captureStarted(watcher, control: control, bitwarden: bitwarden)
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -72,9 +75,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func captureStarted(_ watcher: ClipboardWatcher, control: CaptureControl) {
+    /// Locks the vault so the session key does not outlive the app; waits briefly for `bw`.
+    private func lockBitwardenBeforeExit() {
+        guard let bitwarden else { return }
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await bitwarden.lock()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 3)
+    }
+
+    private func captureStarted(
+        _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync
+    ) {
         self.watcher = watcher
+        self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
+        statusItemController?.attach(bitwarden: bitwarden)
     }
 
     private func captureFailed() {
