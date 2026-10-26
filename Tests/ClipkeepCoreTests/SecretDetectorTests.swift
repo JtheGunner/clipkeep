@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import ClipkeepCore
@@ -123,5 +124,103 @@ private enum Fixture {
     @Test func entropyOfUniformStringIsZero() {
         #expect(SecretDetector.shannonEntropy("aaaaaaaa") == 0)
         #expect(SecretDetector.shannonEntropy("abcdabcd") == 2)
+    }
+}
+
+@Suite struct SecretDetectorReviewTests {
+    private let detector = SecretDetector()
+
+    private func kinds(_ text: String, using detector: SecretDetector? = nil) -> [SecretKind] {
+        (detector ?? self.detector).detect(in: text).map(\.kind)
+    }
+
+    @Test func kebabCaseWordsEndingInSkAreNotKeys() {
+        #expect(kinds("disk-utilization-dashboard-panel") == [])
+        #expect(kinds("run the task-scheduler-for-nightly-builds now") == [])
+        #expect(kinds(".mask-image-linear-gradient-overlay") == [])
+    }
+
+    @Test func envFilesWithSnakeCaseNamesAreDetected() {
+        #expect(kinds("DB_PASSWORD=Xk9#mP2$vLq!7z") == [.keyValueSecret])
+        #expect(kinds("client_secret=Xk9#mP2$vLq!7z") == [.keyValueSecret])
+        #expect(kinds("GITHUB_TOKEN=Ab3#de5$Fg7!hj9") == [.keyValueSecret])
+        #expect(kinds("{\"access_token\": \"Ab3#de5$Fg7!hj9\"}") == [.keyValueSecret])
+        #expect(kinds("aws_secret_access_key=Xk9#mP2$vLq!7z") == [.keyValueSecret])
+    }
+
+    @Test func basicAuthAndGermanKeywordsAreDetected() {
+        #expect(kinds("Authorization: Basic dXNlcjpwYXNzd29yZA==") == [.keyValueSecret])
+        #expect(kinds("Passwort: Xk9#mP2$vLq!7z") == [.keyValueSecret])
+    }
+
+    @Test func codeAssignmentsAreNotSecrets() {
+        #expect(kinds("let secret = KeychainSecretStore()") == [])
+        #expect(kinds("token = request.headers.get(\"Authorization\")") == [])
+        #expect(kinds("api_key = settings.OPENAI_API_KEY") == [])
+    }
+
+    @Test func labelledHashesAndIntegrityStringsAreNotSecrets() {
+        #expect(kinds("build-a94a8fe5ccb19ba61c4c0873d391e987982fbbd3") == [])
+        #expect(
+            kinds("Linux-node-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+                == [])
+        let integrity = "sha512-" + Fixture.chars(Fixture.alnum + "+/", 86) + "=="
+        #expect(kinds("\"integrity\": \"\(integrity)\"") == [])
+        #expect(kinds("how-to-configure-nginx-reverse-proxy-on-ubuntu-22-04") == [])
+    }
+
+    @Test func base64DataURIsAreNotFlagged() {
+        let payload = Fixture.chars(Fixture.alnum + "+/", 120)
+        #expect(kinds("data:image/png;base64,\(payload)") == [])
+    }
+
+    @Test func awsSecretAccessKeysWithSlashAreDetected() {
+        let key = Fixture.chars(Fixture.alnum + "+/", 40)
+        #expect(!kinds("secret \(key) end").isEmpty)
+    }
+
+    @Test func allowedValueStaysAllowedInsideAWiderAssignment() {
+        let allowing = SecretDetector(allowedHashes: [ContentHashing.exactHash(Fixture.openAI)])
+        #expect(kinds("export OPENAI_API_KEY=\(Fixture.openAI)", using: allowing) == [])
+    }
+
+    @Test func pemBlockIsCoveredFromHeaderToFooter() {
+        let body = Fixture.chars(Fixture.alnum, 64)
+        let pem =
+            "-----BEGIN "
+            + "PGP PRIVATE KEY BLOCK-----\n\(body)\n-----END PGP PRIVATE KEY BLOCK-----"
+        let matches = detector.detect(in: pem)
+
+        #expect(matches.count == 1)
+        #expect(matches.first.map { String(pem[$0.range]) } == pem)
+    }
+
+    @Test func googleKeyEndingInDashIsStillAGoogleKey() {
+        let key = "AI" + "za" + Fixture.chars(Fixture.alnum, 34) + "-"
+        #expect(kinds("key \(key) end") == [.googleAPIKey])
+    }
+
+    @Test func slackWebhookIsDetected() {
+        let hook =
+            "https://hooks.slack" + ".com/services/T" + Fixture.chars("ABCDEFG123", 8)
+            + "/B" + Fixture.chars("ABCDEFG123", 9) + "/" + Fixture.chars(Fixture.alnum, 24)
+        #expect(kinds(hook) == [.slackToken])
+    }
+
+    @Test func secretAfterAHugeTokenRunIsStillFound() {
+        let run = String(repeating: "deadbeef", count: 100_000)  // 800 kB without whitespace
+        let text = run + "\nexport OPENAI_API_KEY=" + Fixture.openAI
+
+        #expect(kinds(text).contains(.openAIKey))
+    }
+
+    @Test func manyMatchesFinishQuickly() {
+        let token = Fixture.chars(Fixture.alnum + "-_", 32)
+        let text = Array(repeating: token, count: 20_000).joined(separator: " ")
+        let started = Date()
+
+        _ = detector.detect(in: text)
+
+        #expect(Date().timeIntervalSince(started) < 5)
     }
 }
