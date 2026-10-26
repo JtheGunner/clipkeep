@@ -49,14 +49,21 @@ public struct ContentStore: Sendable {
                 try connection.execute(
                     """
                     INSERT INTO contents
-                        (hash, normalized_hash, text, search_text, first_seen_at, last_copied_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (hash, normalized_hash, text, search_text, kind, first_seen_at, last_copied_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         .text(hash), .text(ContentHashing.normalizedHash(text)), .text(text),
-                        .text(SearchText.fold(text)), SQLValue(copiedAt), SQLValue(copiedAt),
+                        .text(SearchText.fold(text)),
+                        .text(ContentClassifier.classify(text).rawValue),
+                        SQLValue(copiedAt), SQLValue(copiedAt),
                     ])
                 contentID = connection.lastInsertRowID
+                for entity in EntityExtractor.extract(from: text) {
+                    try connection.execute(
+                        "INSERT OR IGNORE INTO entities (content_id, kind, value) VALUES (?, ?, ?)",
+                        [.int(contentID), .text(entity.kind.rawValue), .text(entity.value)])
+                }
             }
 
             try connection.execute(
