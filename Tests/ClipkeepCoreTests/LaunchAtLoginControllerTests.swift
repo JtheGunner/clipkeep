@@ -5,8 +5,12 @@ import Testing
 private final class FakeLoginItemService: LoginItemService, @unchecked Sendable {
     struct Failure: Error {}
 
-    var isEnabled = false
+    var status: LoginItemStatus = .disabled
     var shouldFail = false
+    var isEnabled: Bool {
+        get { status == .enabled }
+        set { status = newValue ? .enabled : .disabled }
+    }
 
     func setEnabled(_ enabled: Bool) throws {
         if shouldFail { throw Failure() }
@@ -58,5 +62,19 @@ private final class FakeLoginItemService: LoginItemService, @unchecked Sendable 
 
         #expect(controller.errorMessage == nil)
         #expect(service.isEnabled)
+    }
+
+    @Test func pendingApprovalShowsHintAndToggleUnregisters() {
+        let service = FakeLoginItemService()
+        service.status = .requiresApproval
+        let controller = LaunchAtLoginController(service: service)
+
+        #expect(!controller.isEnabled)
+        #expect(controller.errorMessage != nil)
+
+        controller.toggle()
+
+        #expect(service.status == .disabled)
+        #expect(controller.errorMessage == nil)
     }
 }

@@ -1,22 +1,31 @@
-/// Toggles the login item and reports failures as a user-facing message instead of throwing.
+/// Toggles the login item and reports problems as a user-facing message instead of throwing.
 @MainActor
 public final class LaunchAtLoginController {
     private let service: any LoginItemService
-    public private(set) var errorMessage: String?
+    private var failureMessage: String?
 
     public init(service: any LoginItemService) {
         self.service = service
     }
 
-    public var isEnabled: Bool { service.isEnabled }
+    public var isEnabled: Bool { service.status == .enabled }
 
-    /// Flips the current state; the message is cleared on success and set on failure.
+    /// Failure of the last toggle, or a hint when macOS waits for the user's approval.
+    public var errorMessage: String? {
+        if let failureMessage { return failureMessage }
+        if service.status == .requiresApproval {
+            return "Bitte in den Systemeinstellungen unter Anmeldeobjekte erlauben"
+        }
+        return nil
+    }
+
+    /// Registers when the item is off, otherwise unregisters, so a pending approval can be undone.
     public func toggle() {
         do {
-            try service.setEnabled(!service.isEnabled)
-            errorMessage = nil
+            try service.setEnabled(service.status == .disabled)
+            failureMessage = nil
         } catch {
-            errorMessage = "Autostart nicht möglich: \(error.localizedDescription)"
+            failureMessage = "Autostart nicht möglich: \(error.localizedDescription)"
         }
     }
 }
