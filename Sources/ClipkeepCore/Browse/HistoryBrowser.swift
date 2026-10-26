@@ -77,6 +77,7 @@ public struct HistoryBrowser: Sendable {
                 SELECT \(SessionService.summaryColumns) FROM sessions
                 WHERE event_count > 0 AND (started_at, id) < (?, ?) AND id IN (
                     SELECT e.session_id FROM entities n
+                    JOIN contents k ON k.id = n.content_id AND k.deleted_at IS NULL
                     JOIN copy_events e ON e.content_id = n.content_id
                     WHERE n.kind = ? AND n.value = ? AND e.session_id IS NOT NULL)
                 ORDER BY started_at DESC, id DESC LIMIT ?
@@ -100,6 +101,7 @@ public struct HistoryBrowser: Sendable {
                 """
                 SELECT id FROM sessions WHERE topic_id = ? AND id IN (
                     SELECT e.session_id FROM entities n
+                    JOIN contents k ON k.id = n.content_id AND k.deleted_at IS NULL
                     JOIN copy_events e ON e.content_id = n.content_id
                     WHERE n.kind = ? AND n.value = ? AND e.session_id IS NOT NULL)
                 """,
@@ -118,6 +120,7 @@ public struct HistoryBrowser: Sendable {
                 try connection.query(
                     """
                     SELECT DISTINCT s.topic_id FROM entities n
+                    JOIN contents k ON k.id = n.content_id AND k.deleted_at IS NULL
                     JOIN copy_events e ON e.content_id = n.content_id
                     JOIN sessions s ON s.id = e.session_id
                     WHERE n.kind = ? AND n.value = ? AND s.topic_id IS NOT NULL

@@ -311,6 +311,43 @@ import Testing
         #expect(day.map(\.text) == ["shared word tuesday"])
     }
 
+    @Test func deletedItemsDoNotMatchAnEntityFilter() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let copied = try copy(fixture, [repoA + "only match"], start: base)
+        let filter = EntityFilter(kind: "repo", value: "github.com/acme/api")
+        #expect(try fixture.browser.sessions(entity: filter).count == 1)
+        try ItemActions(database: fixture.database).delete(contentID: copied[0].contentID)
+        #expect(try fixture.browser.sessions(entity: filter).isEmpty)
+    }
+
+    @Test func sessionsByIDKeepOrderAcrossChunks() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let count = 1_200
+        try fixture.database.write { connection in
+            for index in 0..<count {
+                try connection.execute(
+                    "INSERT INTO sessions (started_at, ended_at, event_count) VALUES (?, ?, 1)",
+                    [.double(Double(index)), .double(Double(index))])
+            }
+        }
+        let service = SessionService(database: fixture.database)
+        let all = try service.sessions(ids: (1...Int64(count)).map { $0 } + [99_999])
+        #expect(all.count == count)
+        #expect(all.map(\.startedAt) == all.map(\.startedAt).sorted(by: >))
+    }
+
+    @Test func aRowKeepsItsPlaceWhenPinnedOrStarred() {
+        let hit = SearchHit(
+            contentID: 1, text: "note", kind: "text", lastCopiedAt: base, occurrenceCount: 1,
+            lastAppName: nil, lastWindowTitle: nil, lastURL: nil)
+        let row = HistoryRow(hit: hit, format: HistoryFormat(now: base, calendar: zurich))
+        let pinned = row.with(isPinned: true, isStarred: false)
+        #expect(pinned.subtitle.hasSuffix("Text · angeheftet"))
+        #expect(pinned.with(isPinned: false, isStarred: false) == row)
+    }
+
     // MARK: - Formatting
 
     @Test func daysAreNamedRelativeToToday() {
@@ -446,6 +483,14 @@ import Testing
                         eventCount: 1, start: .first, dominantApps: [], topEntities: [],
                         topicID: nil)
                     _ = try fixture.browser.sessions(limit: 50, after: oldest)
+                }
+            ),
+            (
+                "listing of an old day",
+                try best {
+                    let day = Date(timeIntervalSince1970: 7_200 * 10)
+                    _ = try SearchService(database: fixture.database).search(
+                        "", filter: HistoryScope.day(day).filter(limit: 200))
                 }
             ),
             (

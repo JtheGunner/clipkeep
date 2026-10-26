@@ -26,9 +26,27 @@ public enum HistoryScope: Sendable, Equatable {
 public struct HistoryRow: Sendable, Equatable {
     public let contentID: Int64
     public let title: String
-    public let subtitle: String
+    private let info: String
+    public var subtitle: String {
+        info + (isPinned ? " · angeheftet" : "") + (isStarred ? " · markiert" : "")
+    }
     public let isPinned: Bool
     public let isStarred: Bool
+
+    /// The same row after a pin or star change.
+    public func with(isPinned: Bool, isStarred: Bool) -> HistoryRow {
+        HistoryRow(
+            contentID: contentID, title: title, info: info, isPinned: isPinned,
+            isStarred: isStarred)
+    }
+
+    private init(contentID: Int64, title: String, info: String, isPinned: Bool, isStarred: Bool) {
+        self.contentID = contentID
+        self.title = title
+        self.info = info
+        self.isPinned = isPinned
+        self.isStarred = isStarred
+    }
 
     public init(entry: SessionEntry, format: HistoryFormat) {
         self.init(
@@ -53,9 +71,7 @@ public struct HistoryRow: Sendable, Equatable {
         var parts = [time]
         if let app { parts.append(app) }
         parts.append(PaletteRow.typeName(kind))
-        if isPinned { parts.append("angeheftet") }
-        if isStarred { parts.append("markiert") }
-        subtitle = parts.joined(separator: " · ")
+        info = parts.joined(separator: " · ")
         self.isPinned = isPinned
         self.isStarred = isStarred
     }

@@ -1,7 +1,8 @@
 public enum Schema {
-    public static let latestVersion = 9
+    public static let latestVersion = 10
     public static let migrations = [
         version1, version2, version3, version4, version5, version6, version7, version8, version9,
+        version10,
     ]
     public static let migrator = Migrator(migrations: migrations)
 
@@ -264,4 +265,9 @@ public enum Schema {
             )
             """
         ])
+
+    /// Lookups of sessions and topics by entity (repository, domain, ticket).
+    private static let version10 = Migration(
+        version: 10,
+        statements: ["CREATE INDEX entities_kind_value ON entities(kind, value, content_id)"])
 }

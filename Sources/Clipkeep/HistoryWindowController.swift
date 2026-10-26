@@ -6,8 +6,8 @@ import os
 
 /// Outline items need object identity, so the value types are wrapped.
 private final class DayNode: NSObject {
-    let section: DaySection
-    let sessions: [SessionNode]
+    var section: DaySection
+    var sessions: [SessionNode]
 
     init(_ section: DaySection) {
         self.section = section
@@ -90,6 +90,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var entriesExhausted = true
     private var detail: EntryDetail?
     private var lastDeletedID: Int64?
+    private var baseHeader = ""
+    private var isLoading = false
 
     init(
         browser: HistoryBrowser, search: SearchService, actions: ItemActions,
@@ -152,6 +154,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         content.spacing = 10
         content.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
         content.alignment = .leading
+        content.distribution = .fill
+        split.setContentHuggingPriority(.defaultLow, for: .vertical)
+        split.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         bar.translatesAutoresizingMaskIntoConstraints = false
         split.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = content
@@ -305,7 +310,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         topicLimit = Self.topicPageSize
         dayNodes = []
         topicNodes = []
+        isLoading = true
         outline.reloadData()
+        isLoading = false
         switch mode {
         case .days: loadMoreDays()
         case .topics: reloadTopics()
@@ -315,17 +322,36 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     private func loadMoreDays() {
-        guard mode == .days, !daysExhausted else { return }
+        guard mode == .days, !daysExhausted, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         do {
             let page = try browser.sessions(
                 limit: Self.sessionPageSize, after: timeline.last, entity: entityFilter)
             if page.count < Self.sessionPageSize { daysExhausted = true }
+            let sectionsBefore = timeline.sections.count
+            let lastCountBefore = timeline.sections.last?.sessions.count ?? 0
             timeline.append(page)
-            let selected = selectedSessionID
-            dayNodes = timeline.sections.map(DayNode.init)
-            outline.reloadData()
-            for node in dayNodes { outline.expandItem(node) }
-            restoreSelection(sessionID: selected)
+            // Insert instead of reloading, so selection, scroll position and collapsed days stay.
+            if let node = dayNodes.last, sectionsBefore > 0 {
+                let section = timeline.sections[sectionsBefore - 1]
+                if section.sessions.count > lastCountBefore {
+                    let start = node.sessions.count
+                    node.section = section
+                    node.sessions += section.sessions[lastCountBefore...].map(SessionNode.init)
+                    outline.insertItems(
+                        at: IndexSet(start..<node.sessions.count), inParent: node,
+                        withAnimation: [])
+                }
+            }
+            let added = timeline.sections[sectionsBefore...].map(DayNode.init)
+            if !added.isEmpty {
+                let start = dayNodes.count
+                dayNodes += added
+                outline.insertItems(
+                    at: IndexSet(start..<dayNodes.count), inParent: nil, withAnimation: [])
+                for node in added { outline.expandItem(node) }
+            }
         } catch {
             daysExhausted = true
             Self.logger.error("Days failed: \(String(describing: error), privacy: .public)")
@@ -350,7 +376,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     private func loadMoreTopics() {
-        guard mode == .topics, topicNodes.count >= topicLimit else { return }
+        guard mode == .topics, topicNodes.count >= topicLimit, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         topicLimit += Self.topicPageSize
         reloadTopics()
     }
@@ -523,7 +551,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private func selectScope(_ newScope: HistoryScope, header: String) {
         scope = newScope
-        headerLabel.stringValue = header
+        baseHeader = header
         reloadRows()
     }
 
@@ -535,6 +563,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         let format = HistoryFormat()
         entryCursor = nil
         entriesExhausted = true
+        var note = ""
         do {
             if query.isEmpty, case .session(let id) = scope {
                 let page = try browser.entries(inSession: id, limit: Self.entryPageSize)
@@ -546,22 +575,26 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
                     query, filter: scope.filter(limit: Self.searchLimit))
                 rows = hits.map { HistoryRow(hit: $0, format: format) }
                 if hits.count == Self.searchLimit {
-                    headerLabel.stringValue +=
-                        (headerLabel.stringValue.isEmpty ? "" : "\n")
-                        + "Zeigt die ersten \(Self.searchLimit) Treffer – Suche eingrenzen."
+                    note = "Zeigt die ersten \(Self.searchLimit) Treffer – Suche eingrenzen."
                 }
             }
         } catch {
             Self.logger.error("Entries failed: \(String(describing: error), privacy: .public)")
             rows = []
         }
+        headerLabel.stringValue = [baseHeader, note].filter { !$0.isEmpty }.joined(separator: "\n")
+        table.deselectAll(nil)
         table.reloadData()
         tableScroll.contentView.scroll(to: .zero)
         showNoDetail()
     }
 
     private func loadMoreEntries() {
-        guard !entriesExhausted, query.isEmpty, case .session(let id) = scope else { return }
+        guard !entriesExhausted, !isLoading, query.isEmpty, case .session(let id) = scope else {
+            return
+        }
+        isLoading = true
+        defer { isLoading = false }
         do {
             let page = try browser.entries(
                 inSession: id, limit: Self.entryPageSize, after: entryCursor)
@@ -696,41 +729,51 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     @objc private func pinClicked() {
         guard let detail else { return }
-        perform { try actions.setPinned(!detail.isPinned, contentID: detail.contentID) }
+        let pinned = !detail.isPinned
+        guard run({ try actions.setPinned(pinned, contentID: detail.contentID) }) else { return }
+        refreshRow(isPinned: pinned, isStarred: detail.isStarred)
     }
 
     @objc private func starClicked() {
         guard let detail else { return }
-        perform { try actions.setStarred(!detail.isStarred, contentID: detail.contentID) }
+        let starred = !detail.isStarred
+        guard run({ try actions.setStarred(starred, contentID: detail.contentID) }) else { return }
+        refreshRow(isPinned: detail.isPinned, isStarred: starred)
     }
 
     @objc private func deleteClicked() {
-        guard let detail else { return }
-        perform(reselect: false) { try actions.delete(contentID: detail.contentID) }
+        guard let detail, run({ try actions.delete(contentID: detail.contentID) }) else { return }
+        if let index = rows.firstIndex(where: { $0.contentID == detail.contentID }) {
+            rows.remove(at: index)
+            table.deselectAll(nil)
+            table.removeRows(at: [index], withAnimation: [])
+        }
+        showNoDetail()
         lastDeletedID = detail.contentID
         updateButtons()
     }
 
     @objc private func undoClicked() {
-        guard let id = lastDeletedID else { return }
+        guard let id = lastDeletedID, run({ try actions.restore(contentID: id) }) else { return }
         lastDeletedID = nil
-        perform(reselect: false) { try actions.restore(contentID: id) }
-        updateButtons()
+        reloadRows()
     }
 
-    /// Runs an action, then refreshes the list and keeps the selection on the same entry.
-    private func perform(reselect: Bool = true, _ action: () throws -> Bool) {
-        let kept = reselect ? detail?.contentID : nil
+    private func run(_ action: () throws -> Bool) -> Bool {
         do {
-            _ = try action()
+            return try action()
         } catch {
             Self.logger.error("Action failed: \(String(describing: error), privacy: .public)")
+            return false
         }
-        let headerBefore = headerLabel.stringValue
-        reloadRows()
-        headerLabel.stringValue = headerBefore
-        guard let kept, let index = rows.firstIndex(where: { $0.contentID == kept }) else { return }
-        table.selectRowIndexes([index], byExtendingSelection: false)
-        table.scrollRowToVisible(index)
+    }
+
+    /// Updates the selected row and the detail in place, so the list keeps its place.
+    private func refreshRow(isPinned: Bool, isStarred: Bool) {
+        let index = table.selectedRow
+        guard rows.indices.contains(index) else { return }
+        rows[index] = rows[index].with(isPinned: isPinned, isStarred: isStarred)
+        table.reloadData(forRowIndexes: [index], columnIndexes: [0])
+        showDetail(contentID: rows[index].contentID)
     }
 }
