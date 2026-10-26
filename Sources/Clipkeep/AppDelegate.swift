@@ -35,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
                         store: ContentStore(database: database),
-                        contextDetails: ContextReader(environment: systemContext.environment)),
+                        contextDetails: ContextReader(
+                            environment: systemContext.environment,
+                            readsSafari: { StatusItemController.readsSafari })),
                     onError: { error in
                         // Never log copied content, only the error.
                         Self.logger.error(

@@ -34,23 +34,50 @@ public struct ContextEnvironment: Sendable {
 }
 
 /// Reads window title and browser URL, but only while the source app is still frontmost, so a
-/// detail is never attributed to the wrong app. Missing permissions leave the fields empty.
+/// detail is never attributed to another app. Missing permissions leave the fields empty.
+/// Details of private windows and details that look like secrets are dropped; the copy stays.
+/// A tab or window switched within the same app right after the copy cannot be detected.
 public struct ContextReader: ContextDetailProviding {
-    private let environment: ContextEnvironment
+    private static let privateTitleMarkers = ["private browsing", "inprivate", "incognito"]
 
-    public init(environment: ContextEnvironment) {
+    private let environment: ContextEnvironment
+    private let detector: SecretDetector
+    private let readsSafari: @Sendable () -> Bool
+
+    /// - Parameter readsSafari: whether Safari may be read; its private windows cannot be told
+    ///   apart, so this is off unless the user opted in.
+    public init(
+        environment: ContextEnvironment, detector: SecretDetector = SecretDetector(),
+        readsSafari: @escaping @Sendable () -> Bool = { false }
+    ) {
         self.environment = environment
+        self.detector = detector
+        self.readsSafari = readsSafari
     }
 
     public func details(for source: CopyContext) -> CopyContext {
         guard let bundleID = source.appBundleID, let front = environment.frontmostApp(),
             front.bundleID == bundleID
         else { return source }
-        var result = source
-        result.windowTitle = ContextSanitizer.title(environment.windowTitle(front.processID))
+        if BrowserCatalog.isSafari(bundleID) && !readsSafari() { return source }
+
+        var address: String?
         if let script = BrowserCatalog.script(forBundleID: bundleID) {
-            result.url = ContextSanitizer.url(environment.browserAddress(script, bundleID))
+            let raw = environment.browserAddress(script, bundleID)
+            if raw == BrowserCatalog.privateMarker { return source }
+            address = ContextSanitizer.url(raw)
         }
+        let title = ContextSanitizer.title(environment.windowTitle(front.processID))
+        if let title, Self.isPrivateTitle(title) { return source }
+
+        var result = source
+        result.windowTitle = title.flatMap { detector.containsSecret(in: $0) ? nil : $0 }
+        result.url = address.flatMap { detector.containsSecret(in: $0) ? nil : $0 }
         return result
+    }
+
+    private static func isPrivateTitle(_ title: String) -> Bool {
+        let lowered = title.lowercased()
+        return privateTitleMarkers.contains { lowered.contains($0) }
     }
 }

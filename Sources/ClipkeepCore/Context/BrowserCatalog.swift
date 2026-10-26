@@ -14,9 +14,15 @@ public enum BrowserCatalog {
 
     public static func isBrowser(_ bundleID: String) -> Bool { bundleIDs.contains(bundleID) }
 
-    /// AppleScript that returns the address of the front tab, or an empty string. Chromium browsers are only read when the window is
-    /// known to be normal (private or unknown windows are not). Safari offers no way to tell a
-    /// private window apart, so its addresses are read regardless. The script ends quickly when the browser hangs.
+    /// Returned by a script when the window is private or its mode is unknown.
+    public static let privateMarker = "@@private"
+
+    public static func isSafari(_ bundleID: String) -> Bool { safari.contains(bundleID) }
+
+    /// AppleScript that returns the address of the front tab, an empty string without a window, or
+    /// `privateMarker`. Chromium browsers are read only when the window is known to be normal;
+    /// any error, including a missing `mode` property, counts as private. Safari offers no way to
+    /// tell a private window apart, so it is read only when the user allowed it.
     public static func script(forBundleID bundleID: String) -> String? {
         if safari.contains(bundleID) {
             return """
@@ -30,17 +36,17 @@ public enum BrowserCatalog {
         }
         guard chromium.contains(bundleID) else { return nil }
         return """
-            with timeout of 1 seconds
-                tell application id "\(bundleID)"
-                    if (count of windows) is 0 then return ""
-                    set windowMode to "unknown"
-                    try
-                        set windowMode to mode of front window
-                    end try
-                    if windowMode is not "normal" then return ""
-                    return URL of active tab of front window
-                end tell
-            end timeout
+            try
+                with timeout of 1 seconds
+                    tell application id "\(bundleID)"
+                        if (count of windows) is 0 then return ""
+                        if mode of front window is not "normal" then return "\(privateMarker)"
+                        return URL of active tab of front window
+                    end tell
+                end timeout
+            on error
+                return "\(privateMarker)"
+            end try
             """
     }
 }

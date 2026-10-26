@@ -168,7 +168,8 @@ public struct CapturePipeline: Sendable {
             return .skipped(.secret)
         }
         // Details are read last, so skipped copies never cost an accessibility or Apple Event call.
-        let context = contextDetails?.details(for: source) ?? source
+        // After an app switch inside the poll window the current window may belong to another app.
+        let context = sources.count == 1 ? (contextDetails?.details(for: source) ?? source) : source
         return .recorded(try store.record(text: text, copiedAt: copiedAt, context: context))
     }
 }

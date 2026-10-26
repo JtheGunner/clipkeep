@@ -11,8 +11,15 @@ public enum ContextSanitizer {
         let lines = raw.split(whereSeparator: \.isNewline).map {
             $0.trimmingCharacters(in: .whitespaces)
         }.filter { !$0.isEmpty }
-        guard !lines.isEmpty else { return nil }
-        return String(lines.joined(separator: " ").prefix(maximumTitleLength))
+        // Control, bidirectional and zero-width characters could spoof what is displayed later.
+        let visible = String(
+            String.UnicodeScalarView(
+                lines.joined(separator: " ").unicodeScalars.filter {
+                    $0.properties.generalCategory != .control
+                        && $0.properties.generalCategory != .format
+                }))
+        guard !visible.isEmpty else { return nil }
+        return String(visible.prefix(maximumTitleLength))
     }
 
     /// Keeps scheme, host, port and path of web addresses. Credentials, query and fragment are
@@ -29,6 +36,7 @@ public enum ContextSanitizer {
         components.query = nil
         components.fragment = nil
         components.scheme = scheme
+        components.host = host.lowercased()
         guard let cleaned = components.string, cleaned.count <= maximumURLLength else { return nil }
         return cleaned
     }

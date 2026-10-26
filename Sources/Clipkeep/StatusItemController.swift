@@ -12,6 +12,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let systemContext: SystemContext
     private let accessibilityItem = NSMenuItem()
     private let automationItem = NSMenuItem()
+    private let safariItem = NSMenuItem()
 
     init(launchAtLogin: LaunchAtLoginController, systemContext: SystemContext) {
         self.launchAtLogin = launchAtLogin
@@ -46,6 +47,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         automationItem.target = self
         automationItem.action = #selector(openAutomationSettings)
         menu.addItem(automationItem)
+        safariItem.title = "Safari-Kontext lesen (private Fenster nicht erkennbar)"
+        safariItem.target = self
+        safariItem.action = #selector(toggleSafari)
+        menu.addItem(safariItem)
 
         menu.addItem(.separator())
         let quit = NSMenuItem(
@@ -61,10 +66,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         accessibilityItem.title =
             status.accessibilityGranted
             ? "Fenstertitel: erlaubt" : "Fenstertitel: Bedienungshilfen erlauben …"
-        automationItem.title =
-            status.automationDeniedBundleIDs.isEmpty
-            ? "Browser-Adressen: Automation in den Systemeinstellungen prüfen …"
-            : "Browser-Adressen: nicht erlaubt – Automation öffnen …"
+        accessibilityItem.state = status.accessibilityGranted ? .on : .off
+        accessibilityItem.isEnabled = !status.accessibilityGranted
+        automationItem.title = Self.automationTitle(status.automation)
+        safariItem.state = Self.readsSafari ? .on : .off
         errorItem.title = launchAtLogin.errorMessage ?? ""
         errorItem.isHidden = launchAtLogin.errorMessage == nil
     }
@@ -75,14 +80,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         captureItem.isHidden = false
     }
 
+    nonisolated static let readsSafariKey = "readsSafariContext"
+    nonisolated static var readsSafari: Bool { UserDefaults.standard.bool(forKey: readsSafariKey) }
+
+    private static func automationTitle(_ states: [String: AutomationState]) -> String {
+        if states.isEmpty { return "Browser-Adressen: Automation erlauben …" }
+        if states.values.contains(.denied) { return "Browser-Adressen: nicht erlaubt – öffnen …" }
+        if states.values.contains(.notAsked) { return "Browser-Adressen: Automation erlauben …" }
+        return "Browser-Adressen: erlaubt"
+    }
+
+    @objc private func toggleSafari() {
+        UserDefaults.standard.set(!Self.readsSafari, forKey: Self.readsSafariKey)
+    }
+
     @objc private func openAccessibilitySettings() {
-        if !SystemContext.requestAccessibility() {
+        // The first click shows the system prompt, later ones open the settings pane.
+        let key = "accessibilityPromptShown"
+        if UserDefaults.standard.bool(forKey: key) {
             openSettings("Privacy_Accessibility")
+        } else {
+            UserDefaults.standard.set(true, forKey: key)
+            SystemContext.requestAccessibility()
         }
     }
 
     @objc private func openAutomationSettings() {
-        openSettings("Privacy_Automation")
+        Task.detached(priority: .userInitiated) {
+            let states = SystemContext.requestAutomation()
+            if states.isEmpty || states.values.contains(.denied) {
+                await MainActor.run { self.openSettings("Privacy_Automation") }
+            }
+        }
     }
 
     private func openSettings(_ pane: String) {

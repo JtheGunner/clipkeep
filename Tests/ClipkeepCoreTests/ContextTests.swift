@@ -16,7 +16,7 @@ import Testing
     @Test func urlsKeepOnlySchemeHostAndPath() {
         #expect(
             ContextSanitizer.url("https://user:pw@GitHub.com:8443/acme/api/issues/1?token=abc#top")
-                == "https://GitHub.com:8443/acme/api/issues/1")
+                == "https://github.com:8443/acme/api/issues/1")
         #expect(ContextSanitizer.url(" http://example.com/a?b=c ") == "http://example.com/a")
     }
 
@@ -49,7 +49,8 @@ import Testing
     @Test func chromiumScriptsSkipPrivateWindowsAndSafariUsesDocuments() {
         let chrome = BrowserCatalog.script(forBundleID: "com.google.Chrome") ?? ""
         #expect(chrome.contains("is not \"normal\""))
-        #expect(chrome.contains("\"unknown\""))
+        #expect(chrome.contains("on error"))
+        #expect(chrome.contains(BrowserCatalog.privateMarker))
         #expect(chrome.contains("active tab"))
         let safari = BrowserCatalog.script(forBundleID: "com.apple.Safari") ?? ""
         #expect(safari.contains("front document"))
@@ -70,7 +71,7 @@ import Testing
 
     private func reader(
         front: ContextEnvironment.FrontApp?, title: String?, address: String?,
-        calls: Calls = Calls()
+        calls: Calls = Calls(), readsSafari: Bool = true
     ) -> ContextReader {
         ContextReader(
             environment: ContextEnvironment(
@@ -82,7 +83,8 @@ import Testing
                 browserAddress: { _, _ in
                     calls.address()
                     return address
-                }))
+                }),
+            readsSafari: { readsSafari })
     }
 
     @Test func addsTitleToTheFrontmostSourceApp() {
@@ -131,6 +133,74 @@ import Testing
             address: "https://example.com", calls: calls)
         _ = reader.details(for: CopyContext(appBundleID: "com.example.editor"))
         #expect(calls.addresses == 0)
+    }
+}
+
+@Suite struct ContextPrivacyTests {
+    private func reader(
+        bundleID: String, title: String?, address: String?, readsSafari: Bool = true
+    ) -> ContextReader {
+        ContextReader(
+            environment: ContextEnvironment(
+                frontmostApp: { .init(bundleID: bundleID, processID: 1) },
+                windowTitle: { _ in title }, browserAddress: { _, _ in address }),
+            readsSafari: { readsSafari })
+    }
+
+    @Test func privateWindowsDropTitleAndAddress() {
+        let chrome = reader(
+            bundleID: "com.google.Chrome", title: "Diagnosis forum",
+            address: BrowserCatalog.privateMarker)
+        let source = CopyContext(appBundleID: "com.google.Chrome", appName: "Chrome")
+        #expect(chrome.details(for: source) == source)
+    }
+
+    @Test(arguments: ["Shop — Private Browsing", "News - InPrivate", "Forum (Incognito)"])
+    func titlesThatMarkPrivateWindowsAreDropped(title: String) {
+        let firefox = reader(bundleID: "org.mozilla.firefox", title: title, address: nil)
+        let source = CopyContext(appBundleID: "org.mozilla.firefox")
+        #expect(firefox.details(for: source) == source)
+    }
+
+    @Test func safariIsOnlyReadWhenAllowed() {
+        let source = CopyContext(appBundleID: "com.apple.Safari")
+        let blocked = reader(
+            bundleID: "com.apple.Safari", title: "Page", address: "https://example.com/a",
+            readsSafari: false)
+        #expect(blocked.details(for: source) == source)
+        let allowed = reader(
+            bundleID: "com.apple.Safari", title: "Page", address: "https://example.com/a")
+        #expect(allowed.details(for: source).url == "https://example.com/a")
+    }
+
+    @Test func secretsInTitlesAndAddressesAreDropped() {
+        let key = "ghp_" + String(repeating: "aB3dE6gH9k", count: 3) + "xyz012"
+        let terminal = reader(
+            bundleID: "com.apple.Terminal", title: "curl -H token \(key)", address: nil)
+        let result = terminal.details(
+            for: CopyContext(appBundleID: "com.apple.Terminal", appName: "Terminal"))
+        #expect(result.windowTitle == nil)
+        #expect(result.appName == "Terminal")
+
+        let browser = reader(
+            bundleID: "com.google.Chrome", title: "Hook",
+            address: "https://hooks.example.com/\(key)")
+        let page = browser.details(for: CopyContext(appBundleID: "com.google.Chrome"))
+        #expect(page.url == nil)
+        #expect(page.windowTitle == "Hook")
+    }
+
+    @Test func controlAndBidiCharactersAreStrippedFromTitles() {
+        #expect(ContextSanitizer.title("a\u{202E}b\u{200B}c\u{7}d") == "abcd")
+        #expect(ContextSanitizer.title("\u{200B}") == nil)
+    }
+
+    @Test func urlEdgeCases() {
+        #expect(ContextSanitizer.url("http://[::1]:8080/a?x") == "http://[::1]:8080/a")
+        #expect(ContextSanitizer.url("https://token@github.com/a") == "https://github.com/a")
+        #expect(ContextSanitizer.url("HTTPS://Example.COM/a b") == "https://example.com/a%20b")
+        #expect(ContextSanitizer.url("https://example.com?") == "https://example.com")
+        #expect(ContextSanitizer.url("https://example.com#frag") == "https://example.com")
     }
 }
 
@@ -195,5 +265,21 @@ import Testing
             }.first
         }
         #expect(nulls == [1, 1])
+    }
+
+    @Test func detailsAreSkippedAfterAnAppSwitchInThePollWindow() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let counter = Counter()
+        let pipeline = CapturePipeline(
+            store: ContentStore(database: database), contextDetails: Spy(counter: counter))
+        let sources = [
+            CopyContext(appBundleID: "com.example.editor"),
+            CopyContext(appBundleID: "com.example.other"),
+        ]
+        _ = try pipeline.process(
+            PasteboardSnapshot(changeCount: 1, text: "switched quickly"), sources: sources)
+        #expect(counter.count == 0)
     }
 }
