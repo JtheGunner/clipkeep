@@ -1,6 +1,8 @@
 public enum Schema {
-    public static let latestVersion = 6
-    public static let migrations = [version1, version2, version3, version4, version5, version6]
+    public static let latestVersion = 7
+    public static let migrations = [
+        version1, version2, version3, version4, version5, version6, version7,
+    ]
     public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
@@ -191,5 +193,25 @@ public enum Schema {
             "CREATE UNIQUE INDEX sessions_first_event_id ON sessions(first_event_id)",
             "CREATE INDEX sessions_started_at ON sessions(started_at DESC)",
             "CREATE INDEX copy_events_session_id ON copy_events(session_id)",
+        ])
+
+    /// Topics: per-session clustering input (word counts and structural features, refreshed when
+    /// the session's event count changed), the explanation and score of the assignment, a lock for
+    /// manual placements, and per-topic keywords. A topic is identified by its oldest session
+    /// (`anchor_session_id`) so recomputing keeps topic ids.
+    private static let version7 = Migration(
+        version: 7,
+        statements: [
+            "ALTER TABLE sessions ADD COLUMN term_counts TEXT NOT NULL DEFAULT '{}'",
+            "ALTER TABLE sessions ADD COLUMN features TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE sessions ADD COLUMN indexed_events INTEGER NOT NULL DEFAULT -1",
+            "ALTER TABLE sessions ADD COLUMN topic_locked INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE sessions ADD COLUMN topic_reason TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE sessions ADD COLUMN topic_score REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE topics ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE topics ADD COLUMN label_is_manual INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE topics ADD COLUMN anchor_session_id INTEGER",
+            "CREATE UNIQUE INDEX topics_anchor_session_id ON topics(anchor_session_id)",
+            "CREATE INDEX sessions_topic_id ON sessions(topic_id)",
         ])
 }
