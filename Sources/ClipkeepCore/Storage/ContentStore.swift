@@ -32,10 +32,32 @@ public struct ContentStore: Sendable {
         self.database = database
     }
 
+    /// Analysis of a text that is stored for the first time. Computed outside the write
+    /// transaction so classification never holds the database lock.
+    private struct Analysis {
+        let normalizedHash: String
+        let searchText: String
+        let kind: ContentKind
+        let entities: [Entity]
+
+        init(text: String) {
+            normalizedHash = ContentHashing.normalizedHash(text)
+            searchText = SearchText.fold(text)
+            kind = ContentClassifier.classify(text)
+            entities = EntityExtractor.extract(from: text)
+        }
+    }
+
     public func record(
         text: String, copiedAt: Date = Date(), context: CopyContext = CopyContext()
     ) throws -> RecordedCopy {
         let hash = ContentHashing.exactHash(text)
+        let isKnown = try database.read { connection in
+            try !connection.query("SELECT 1 FROM contents WHERE hash = ?", [.text(hash)]) { _ in 1 }
+                .isEmpty
+        }
+        let prepared = isKnown ? nil : Analysis(text: text)
+
         return try database.write { connection in
             let existing = try connection.query(
                 "SELECT id FROM contents WHERE hash = ?", [.text(hash)]
@@ -46,17 +68,25 @@ public struct ContentStore: Sendable {
             if let id = existing.first {
                 contentID = id
             } else {
+                // The content vanished between the lookup and the write (a deletion); analyse now.
+                let analysis = prepared ?? Analysis(text: text)
                 try connection.execute(
                     """
                     INSERT INTO contents
-                        (hash, normalized_hash, text, search_text, first_seen_at, last_copied_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (hash, normalized_hash, text, search_text, kind, first_seen_at, last_copied_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
-                        .text(hash), .text(ContentHashing.normalizedHash(text)), .text(text),
-                        .text(SearchText.fold(text)), SQLValue(copiedAt), SQLValue(copiedAt),
+                        .text(hash), .text(analysis.normalizedHash), .text(text),
+                        .text(analysis.searchText), .text(analysis.kind.rawValue),
+                        SQLValue(copiedAt), SQLValue(copiedAt),
                     ])
                 contentID = connection.lastInsertRowID
+                for entity in analysis.entities {
+                    try connection.execute(
+                        "INSERT OR IGNORE INTO entities (content_id, kind, value) VALUES (?, ?, ?)",
+                        [.int(contentID), .text(entity.kind.rawValue), .text(entity.value)])
+                }
             }
 
             try connection.execute(

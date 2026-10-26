@@ -108,3 +108,38 @@ import Testing
         #expect(first.contentID != second.contentID)
     }
 }
+
+@Suite struct ContentStoreAnalysisTests {
+    @Test func newContentGetsItsKindAndEntities() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let store = ContentStore(database: database)
+
+        _ = try store.record(text: "https://github.com/groue/GRDB.swift")
+
+        let kinds = try database.read { try $0.query("SELECT kind FROM contents") { $0.text(0) } }
+        let entities = try database.read {
+            try $0.query("SELECT kind, value FROM entities ORDER BY kind, value") {
+                "\($0.text(0)):\($0.text(1))"
+            }
+        }
+        #expect(kinds == ["url"])
+        #expect(entities == ["domain:github.com", "repo:github.com/groue/grdb.swift"])
+    }
+
+    @Test func recopyingDoesNotDuplicateEntities() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let store = ContentStore(database: database)
+
+        _ = try store.record(text: "Fixes CLIPK-12")
+        _ = try store.record(text: "Fixes CLIPK-12")
+
+        let count = try database.read {
+            try $0.query("SELECT count(*) FROM entities") { $0.int(0) }
+        }
+        #expect(count == [1])
+    }
+}
