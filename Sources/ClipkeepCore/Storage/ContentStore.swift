@@ -29,14 +29,18 @@ public struct ContentStore: Sendable {
     private let database: Database
     private let duplicates: DuplicateConfiguration
     private let ranking: RankingConfiguration
+    private let sessions: SessionConfiguration?
 
+    /// `sessions: nil` skips the incremental session assignment, for bulk imports that call
+    /// `SessionService.rebuild` once at the end.
     public init(
         database: Database, duplicates: DuplicateConfiguration = .default,
-        ranking: RankingConfiguration = .default
+        ranking: RankingConfiguration = .default, sessions: SessionConfiguration? = .default
     ) {
         self.database = database
         self.duplicates = duplicates
         self.ranking = ranking
+        self.sessions = sessions
     }
 
     /// Analysis of a text that is stored for the first time. Computed outside the write
@@ -124,6 +128,20 @@ public struct ContentStore: Sendable {
                     SQLValue(context.url),
                 ])
             let eventID = connection.lastInsertRowID
+            if let sessions {
+                // Sessions are best effort: a failure must not lose the copy, it only flags
+                // the sessions for a rebuild (`SessionService.rebuildIfNeeded`).
+                try connection.execute("SAVEPOINT sessions")
+                do {
+                    try SessionService.assign(
+                        eventID: eventID, in: connection, configuration: sessions)
+                    try connection.execute("RELEASE sessions")
+                } catch {
+                    try connection.execute("ROLLBACK TO sessions")
+                    try connection.execute("RELEASE sessions")
+                    try SessionService.markDirty(in: connection)
+                }
+            }
             try RankingService.refresh(
                 contentID: contentID, in: connection, configuration: ranking, now: copiedAt)
             return RecordedCopy(contentID: contentID, eventID: eventID, isNewContent: isNew)

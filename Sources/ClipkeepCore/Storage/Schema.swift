@@ -1,6 +1,6 @@
 public enum Schema {
-    public static let latestVersion = 5
-    public static let migrations = [version1, version2, version3, version4, version5]
+    public static let latestVersion = 6
+    public static let migrations = [version1, version2, version3, version4, version5, version6]
     public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
@@ -174,5 +174,22 @@ public enum Schema {
             )
             """,
             "CREATE INDEX feedback_events_content_id ON feedback_events(content_id)",
+        ])
+
+    /// Sessions: stable identity by first event (so recomputing keeps ids and topic links), how the
+    /// session started, and summary metadata. Existing copy events get their session from
+    /// `SessionService.rebuild`.
+    private static let version6 = Migration(
+        version: 6,
+        statements: [
+            "ALTER TABLE sessions ADD COLUMN first_event_id INTEGER",
+            "ALTER TABLE sessions ADD COLUMN event_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE sessions ADD COLUMN start_reason TEXT NOT NULL DEFAULT 'first'",
+            "ALTER TABLE sessions ADD COLUMN start_detail TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE sessions ADD COLUMN dominant_apps TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE sessions ADD COLUMN top_entities TEXT NOT NULL DEFAULT '[]'",
+            "CREATE UNIQUE INDEX sessions_first_event_id ON sessions(first_event_id)",
+            "CREATE INDEX sessions_started_at ON sessions(started_at DESC)",
+            "CREATE INDEX copy_events_session_id ON copy_events(session_id)",
         ])
 }

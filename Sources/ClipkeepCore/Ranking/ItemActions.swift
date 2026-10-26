@@ -29,10 +29,15 @@ public struct ItemActions: Sendable {
 
     private let database: Database
     private let configuration: RankingConfiguration
+    private let sessions: SessionConfiguration
 
-    public init(database: Database, configuration: RankingConfiguration = .default) {
+    public init(
+        database: Database, configuration: RankingConfiguration = .default,
+        sessions: SessionConfiguration = .default
+    ) {
         self.database = database
         self.configuration = configuration
+        self.sessions = sessions
     }
 
     /// Each returns `false` when the item does not exist. An action that changes nothing (pinning
@@ -91,7 +96,7 @@ public struct ItemActions: Sendable {
     @discardableResult
     public func purgeDeleted(olderThanDays days: Double, now: Date = Date()) throws -> Int {
         let cutoff = now.addingTimeInterval(-max(days, 0) * 86_400).timeIntervalSince1970
-        return try database.write { connection in
+        let purged = try database.write { connection -> Int in
             let ids = try connection.query(
                 "SELECT id FROM contents WHERE deleted_at IS NOT NULL AND deleted_at <= ?",
                 [.double(cutoff)]
@@ -101,6 +106,9 @@ public struct ItemActions: Sendable {
             }
             return ids.count
         }
+        // Removed events can leave empty or mis-sized sessions; re-cutting repairs them.
+        if purged > 0 { try SessionService(database: database, configuration: sessions).rebuild() }
+        return purged
     }
 
     public func events(contentID: Int64) throws -> [FeedbackEvent] {
@@ -195,6 +203,9 @@ public struct ItemActions: Sendable {
             try RankingService.refresh(
                 contentID: contentID, in: connection, configuration: configuration, now: now)
             try Self.log(action, contentID: contentID, snapshot: before, now: now, in: connection)
+            if action == .delete || action == .restore {
+                try SessionService.refreshMetadata(ofContent: contentID, in: connection)
+            }
             return true
         }
     }
