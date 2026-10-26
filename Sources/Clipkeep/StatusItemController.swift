@@ -8,6 +8,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let launchAtLogin: LaunchAtLoginController
     private let launchAtLoginItem = NSMenuItem()
     private let errorItem = NSMenuItem()
+    private let captureItem = NSMenuItem()
 
     init(launchAtLogin: LaunchAtLoginController) {
         self.launchAtLogin = launchAtLogin
@@ -30,6 +31,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         errorItem.isHidden = true
         menu.addItem(errorItem)
 
+        captureItem.isEnabled = false
+        captureItem.isHidden = true
+        menu.addItem(captureItem)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(
             title: "Clipkeep beenden", action: #selector(NSApplication.terminate(_:)),
@@ -42,6 +47,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
         errorItem.title = launchAtLogin.errorMessage ?? ""
         errorItem.isHidden = launchAtLogin.errorMessage == nil
+    }
+
+    /// Tells the user that nothing is being recorded, so history does not silently stay empty.
+    func showCaptureProblem(_ message: String) {
+        captureItem.title = message
+        captureItem.isHidden = false
     }
 
     @objc private func toggleLaunchAtLogin() {

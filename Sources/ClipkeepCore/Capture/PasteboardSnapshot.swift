@@ -23,13 +23,17 @@ public struct PasteboardSnapshot: Sendable, Equatable {
     }
 }
 
-/// Source of pasteboard snapshots; the system implementation lives in the app target.
+/// Source of pasteboard snapshots.
 public protocol PasteboardReading: Sendable {
     var changeCount: Int { get }
-    func snapshot() -> PasteboardSnapshot
+    /// A consistent view of the pasteboard, or nil when it changed while it was read; the next
+    /// poll then picks the new content up.
+    func snapshot() -> PasteboardSnapshot?
 }
 
-/// The app that most likely produced the current copy.
+/// The apps that were frontmost while a copy may have happened.
 public protocol SourceAppProviding: Sendable {
-    func currentSource() -> CopyContext
+    /// Apps frontmost between `start` and `end`, oldest first. The first one was frontmost at
+    /// `start`. Never empty in practice; an empty result means the source is unknown.
+    func sources(from start: Date, to end: Date) -> [CopyContext]
 }

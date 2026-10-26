@@ -12,6 +12,9 @@ enum AppDatabase {
         try FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
+        // An existing directory keeps its old permissions unless they are set again.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: directory.path)
         let database = try Database(
             path: directory.appendingPathComponent("clipkeep.db").path,
             key: try keyStore.loadOrCreateKey())
