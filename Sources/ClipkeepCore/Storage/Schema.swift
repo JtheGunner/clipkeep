@@ -213,5 +213,12 @@ public enum Schema {
             "ALTER TABLE topics ADD COLUMN anchor_session_id INTEGER",
             "CREATE UNIQUE INDEX topics_anchor_session_id ON topics(anchor_session_id)",
             "CREATE INDEX sessions_topic_id ON sessions(topic_id)",
+            // Session ids can be handed out again after a delete, so a topic must not keep the anchor.
+            """
+            CREATE TRIGGER sessions_release_topic_anchor AFTER DELETE ON sessions
+            BEGIN
+                UPDATE topics SET anchor_session_id = NULL WHERE anchor_session_id = OLD.id;
+            END
+            """,
         ])
 }

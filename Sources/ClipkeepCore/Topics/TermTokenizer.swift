@@ -6,6 +6,7 @@ import NaturalLanguage
 public enum TermTokenizer {
     public static let minimumLength = 3
     public static let maximumLength = 40
+    static let maximumMixedLength = 8
     /// Bounds the work for huge texts.
     public static let maximumCharacters = 20_000
 
@@ -37,7 +38,10 @@ public enum TermTokenizer {
 
     private static func isIndexable(_ word: String) -> Bool {
         guard (minimumLength...maximumLength).contains(word.count) else { return false }
-        return word.contains { $0.isLetter }
+        guard word.contains(where: \.isLetter) else { return false }
+        // Long mixes of letters and digits look like keys, hashes or ids and make poor topic words.
+        let mixesDigits = word.contains(where: \.isNumber)
+        return !(mixesDigits && word.count >= maximumMixedLength)
     }
 
     private static func stopWords(for language: String) -> Set<String> {
@@ -57,10 +61,10 @@ public enum TermTokenizer {
     private static let german: Set<String> = [
         "der", "die", "das", "und", "ist", "nicht", "ein", "eine", "einen", "einem", "einer",
         "den", "dem", "des", "von", "mit", "für", "auf", "auch", "als", "bei", "aus", "nach",
-        "wie", "wir", "sie", "ich", "du", "er", "es", "ihr", "sich", "sind", "war", "wird",
+        "wie", "wir", "sie", "ich", "ihr", "sich", "sind", "war", "wird",
         "werden", "wurde", "hat", "haben", "kann", "können", "nur", "noch", "oder", "aber",
         "wenn", "dann", "dass", "diese", "dieser", "dieses", "diesen", "mehr", "sehr", "schon",
-        "zum", "zur", "über", "unter", "durch", "gegen", "ohne", "um", "im", "am", "an", "so",
+        "zum", "zur", "über", "unter", "durch", "gegen", "ohne",
         "hier", "dort", "wieder", "immer", "alle", "alles", "kein", "keine", "man", "mal",
     ]
 }

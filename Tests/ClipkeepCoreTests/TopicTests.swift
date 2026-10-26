@@ -168,7 +168,9 @@ import Testing
             document(2, swiftWords, features: ["repo:github.com/acme/api"], day: 1),
             document(3, kubeWords, day: 2),
         ]
-        let result = TopicClusterer.keywords(of: Array(documents.prefix(2)), corpus: documents)
+        let result = TopicClusterer.keywords(
+            of: Array(documents.prefix(2)),
+            idf: TopicClusterer.inverseDocumentFrequencies(documents))
         #expect(result.features == ["repo:github.com/acme/api"])
         #expect(result.terms.count == 5)
         #expect(
@@ -374,5 +376,101 @@ import Testing
         let new = try #require(try fixture.topics.splitOff(sessionID: session.id))
         #expect(new != old)
         #expect(try fixture.topics.topics().map(\.id) == [new])
+    }
+    @Test func reusedSessionIDDoesNotInheritAnOldTopicOrBreakSplitOff() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let actions = ItemActions(database: fixture.database)
+        _ = try fixture.store.record(text: swiftText[0], copiedAt: base)
+        let doomed = try fixture.store.record(
+            text: "merger acquisition negotiation terms",
+            copiedAt: base.addingTimeInterval(10 * 3_600))
+        try fixture.topics.cluster(now: later)
+        let doomedTopic = try #require(
+            try fixture.topics.topics().first {
+                $0.keywords.contains("merger") || $0.label.contains("merger")
+            }
+        )
+        try fixture.topics.rename(topic: doomedTopic.id, to: "Geheimprojekt")
+        _ = try actions.delete(contentID: doomed.contentID, now: base)
+        _ = try actions.purgeDeleted(olderThanDays: 0, now: later)
+
+        _ = try fixture.store.record(
+            text: kubeText[0], copiedAt: base.addingTimeInterval(20 * 3_600))
+        try fixture.topics.cluster(now: later)
+        #expect(try fixture.topics.topics().allSatisfy { $0.label != "Geheimprojekt" })
+
+        let newest = try #require(try fixture.sessions.sessions().first)
+        #expect(try fixture.topics.splitOff(sessionID: newest.id) != nil)
+    }
+
+    @Test func indexFollowsDeleteAndNewCopyWithTheSameCount() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let actions = ItemActions(database: fixture.database)
+        let secret = try fixture.store.record(
+            text: "confidential merger acquisition", copiedAt: base)
+        _ = try fixture.store.record(text: swiftText[0], copiedAt: base.addingTimeInterval(60))
+        try fixture.topics.cluster(now: later)
+        _ = try actions.delete(contentID: secret.contentID, now: base)
+        _ = try fixture.store.record(text: kubeText[0], copiedAt: base.addingTimeInterval(120))
+        try fixture.topics.recluster(now: later)
+        let words = try fixture.topics.topics().flatMap { $0.keywords + [$0.label] }
+        #expect(words.allSatisfy { !$0.contains("merger") && !$0.contains("confidential") })
+    }
+
+    @Test func sessionsWithoutLiveItemsLeaveTheirTopic() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let only = try fixture.store.record(text: swiftText[0], copiedAt: base)
+        try fixture.topics.cluster(now: later)
+        #expect(try fixture.topics.topics().count == 1)
+        _ = try ItemActions(database: fixture.database).delete(contentID: only.contentID, now: base)
+        try fixture.topics.recluster(now: later)
+        #expect(try fixture.topics.topics().isEmpty)
+    }
+
+    @Test func renamedTopicKeepsItsLabelWhenTheThresholdDrops() throws {
+        let strict = try Fixture(configuration: TopicConfiguration(similarityThreshold: 0.6))
+        defer { strict.temp.remove() }
+        try fill(strict, [swiftText, kubeText, swiftText, kubeText])
+        try strict.topics.cluster(now: later)
+        let kube = try #require(
+            try strict.topics.topics().first { $0.keywords.contains("kubernetes") })
+        try strict.topics.rename(topic: kube.id, to: "Mein Thema")
+
+        let loose = TopicService(
+            database: strict.database, configuration: TopicConfiguration(similarityThreshold: 0.01))
+        try loose.recluster(now: later)
+        let topic = try #require(try loose.topics().first { $0.label == "Mein Thema" })
+        #expect(topic.labelIsManual)
+        #expect(topic.sessionCount == 2)
+    }
+
+    @Test func repoAndTicketSurviveManyHosts() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.record(
+            text: "see https://github.com/acme/api/issues/1 about ABC-123", copiedAt: base)
+        for index in 0..<25 {
+            _ = try fixture.store.record(
+                text: "note \(index)", copiedAt: base.addingTimeInterval(Double(index + 1)),
+                context: CopyContext(url: "https://host\(index).example.com/page"))
+        }
+        try fixture.topics.cluster(now: later)
+        let topic = try #require(try fixture.topics.topics().first)
+        #expect(topic.label == "github.com/acme/api")
+    }
+
+    @Test func secretsNeverEnterTheIndex() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let key = "ghp_" + String(repeating: "aB3dE6gH9k", count: 3) + "xyz012"
+        _ = try fixture.store.record(text: "deploy token \(key) kubernetes", copiedAt: base)
+        try fixture.topics.cluster(now: later)
+        let stored = try fixture.database.read { connection in
+            try connection.query("SELECT term_counts FROM sessions") { $0.text(0) }
+        }
+        #expect(stored.allSatisfy { !$0.contains("aB3dE6gH9k") })
     }
 }

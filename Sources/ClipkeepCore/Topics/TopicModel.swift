@@ -82,6 +82,19 @@ public struct TopicReason: Sendable, Equatable {
     }
 }
 
+/// A topic centroid with a cached norm, so comparing it costs one dot product.
+struct Centroid {
+    private(set) var sum = SparseVector(weights: [:])
+    private(set) var norm = 0.0
+
+    init(_ vector: SparseVector) { add(vector) }
+
+    mutating func add(_ vector: SparseVector) {
+        sum.add(vector)
+        norm = sum.norm
+    }
+}
+
 /// Where the clusterer put a session.
 public enum TopicPlacement: Sendable, Equatable {
     case existing(topicID: Int64, reason: TopicReason)
@@ -106,18 +119,23 @@ public enum TopicClusterer {
             vectorize(document, idf: idf, structuralWeight: configuration.structuralWeight)
         }
 
-        var centroids: [Int64: SparseVector] = [:]
-        var groups: [Int: SparseVector] = [:]
+        var centroids: [Int64: Centroid] = [:]
+        var groups: [Int: Centroid] = [:]
         for document in corpus {
             guard let topic = fixed[document.id] else { continue }
-            centroids[topic, default: SparseVector(weights: [:])].add(normalized(vector(document)))
+            let own = normalized(vector(document))
+            if centroids[topic] == nil {
+                centroids[topic] = Centroid(own)
+            } else {
+                centroids[topic]?.add(own)
+            }
         }
 
         var result: [Int64: TopicPlacement] = [:]
         let ordered = free.sorted { ($0.time, $0.id) < ($1.time, $1.id) }
         for document in ordered {
             let own = normalized(vector(document))
-            var best: (key: Int64?, group: Int?, similarity: Double, centroid: SparseVector)?
+            var best: (key: Int64?, group: Int?, similarity: Double, centroid: Centroid)?
             for (topic, centroid) in centroids.sorted(by: { $0.key < $1.key }) {
                 let similarity = cosine(own, centroid)
                 if similarity > (best?.similarity ?? -1) {
@@ -131,8 +149,8 @@ public enum TopicClusterer {
                 }
             }
 
-            if let best, best.similarity >= configuration.similarityThreshold {
-                let reason = explain(own, against: best.centroid, similarity: best.similarity)
+            if let best, best.similarity > 0, best.similarity >= configuration.similarityThreshold {
+                let reason = explain(own, against: best.centroid.sum, similarity: best.similarity)
                 if let topic = best.key {
                     result[document.id] = .existing(topicID: topic, reason: reason)
                     centroids[topic]?.add(own)
@@ -142,7 +160,7 @@ public enum TopicClusterer {
                 }
             } else {
                 let group = groups.count
-                groups[group] = own
+                groups[group] = Centroid(own)
                 result[document.id] = .new(group: group, reason: nil)
             }
         }
@@ -150,22 +168,37 @@ public enum TopicClusterer {
     }
 
     /// Strongest words and structural signals of a set of documents, for labels and keywords.
+    /// In a topic of several sessions a keyword must occur in at least two of them and a
+    /// structural signal in at least half, so a single stray token cannot name a topic.
     public static func keywords(
-        of documents: [TopicDocument], corpus: [TopicDocument],
+        of documents: [TopicDocument], idf: [String: Double],
         configuration: TopicConfiguration = .default
     ) -> (features: [String], terms: [String]) {
-        let idf = inverseDocumentFrequencies(corpus)
         var sum = SparseVector(weights: [:])
+        var occurrences: [String: Int] = [:]
         for document in documents {
             sum.add(
                 normalized(
                     vectorize(document, idf: idf, structuralWeight: configuration.structuralWeight))
             )
+            for key in Set(document.terms.keys).union(document.features) {
+                occurrences[key, default: 0] += 1
+            }
         }
+        let count = documents.count
         let ranked = sum.weights.sorted { ($0.value, $1.key) > ($1.value, $0.key) }
-        let features = ranked.filter { $0.key.contains(":") }.prefix(3).map(\.key)
-        let terms = ranked.filter { !$0.key.contains(":") }.prefix(configuration.keywordCount).map(
-            \.key)
+        // A repo names a topic best, then a ticket, then a website; weight orders within a kind.
+        let kindRank = ["repo": 0, "ticket": 1, "domain": 2]
+        let features = ranked.enumerated().filter {
+            $0.element.key.contains(":")
+                && (count < 2 || (occurrences[$0.element.key] ?? 0) * 2 >= count)
+        }.sorted {
+            func rank(_ key: String) -> Int { kindRank[String(key.prefix { $0 != ":" })] ?? 3 }
+            return (rank($0.element.key), $0.offset) < (rank($1.element.key), $1.offset)
+        }.prefix(3).map(\.element.key)
+        let terms = ranked.filter {
+            !$0.key.contains(":") && (count < 2 || (occurrences[$0.key] ?? 0) >= 2)
+        }.prefix(configuration.keywordCount).map(\.key)
         return (features, terms)
     }
 
@@ -199,9 +232,11 @@ public enum TopicClusterer {
         return SparseVector(weights: vector.weights.mapValues { $0 / norm })
     }
 
-    static func cosine(_ lhs: SparseVector, _ rhs: SparseVector) -> Double {
+    /// Cosine similarity, rounded so that summation order cannot flip ties or the threshold.
+    static func cosine(_ lhs: SparseVector, _ rhs: Centroid) -> Double {
         let norms = lhs.norm * rhs.norm
-        return norms > 0 ? lhs.dot(rhs) / norms : 0
+        guard norms > 0 else { return 0 }
+        return (lhs.dot(rhs.sum) / norms * 1e9).rounded() / 1e9
     }
 
     private static func explain(

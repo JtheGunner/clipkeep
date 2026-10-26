@@ -398,7 +398,8 @@ public struct SessionService: Sendable {
             ) { $0.int(0) }.first ?? 0
         try connection.execute(
             """
-            UPDATE sessions SET dominant_apps = ?, top_entities = ?, event_count = ? WHERE id = ?
+            UPDATE sessions SET dominant_apps = ?, top_entities = ?, event_count = ?,
+                indexed_events = -1 WHERE id = ?
             """,
             [.text(encode(apps)), .text(encode(entities)), .int(liveEvents), .int(sessionID)])
     }

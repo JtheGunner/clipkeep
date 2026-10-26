@@ -27,6 +27,8 @@ public struct TopicService: Sendable {
     private static let charactersPerContent = 2_000
     private static let storedTerms = 200
     private static let storedFeatures = 20
+    /// Bounds the first run after an upgrade; the rest follows in later runs.
+    private static let maximumSessionsPerRun = 500
     private static let structuralKinds = ["repo", "domain", "ticket"]
 
     private let database: Database
@@ -62,6 +64,7 @@ public struct TopicService: Sendable {
     private func run(in connection: Connection, now: Date, full: Bool) throws -> Int {
         let settledBefore = now.addingTimeInterval(-configuration.settleMinutes * 60)
             .timeIntervalSince1970
+        try Self.releaseInvisibleSessions(in: connection)
         let sessions = try Self.loadSessions(in: connection)
         let corpus = sessions.map(\.document)
 
@@ -91,6 +94,7 @@ public struct TopicService: Sendable {
             """
             SELECT id, anchor_session_id FROM topics
             WHERE anchor_session_id IS NOT NULL
+                AND anchor_session_id IN (SELECT id FROM sessions)
                 AND id NOT IN (SELECT topic_id FROM sessions WHERE topic_id IS NOT NULL)
             """
         ) { (id: $0.int(0), anchor: $0.int(1)) } {
@@ -129,7 +133,9 @@ public struct TopicService: Sendable {
                     score: reason?.similarity ?? 1, locked: false, in: connection)
             }
         }
-        try Self.refreshAllTopics(in: connection, configuration: configuration)
+        if full || !placements.isEmpty {
+            try Self.refreshAllTopics(in: connection, configuration: configuration)
+        }
         return placements.count
     }
 
@@ -239,7 +245,8 @@ public struct TopicService: Sendable {
         }
     }
 
-    /// Sets a label by hand; an empty label returns to the automatic one.
+    /// Sets a label by hand and keeps the topic's sessions together; an empty label returns to the
+    /// automatic one.
     @discardableResult
     public func rename(topic topicID: Int64, to label: String) throws -> Bool {
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -248,6 +255,11 @@ public struct TopicService: Sendable {
             try connection.execute(
                 "UPDATE topics SET label = ?, label_is_manual = ? WHERE id = ?",
                 [.text(trimmed), .int(trimmed.isEmpty ? 0 : 1), .int(topicID)])
+            if !trimmed.isEmpty {
+                // A named topic is the user's decision: its sessions stay together on recomputation.
+                try connection.execute(
+                    "UPDATE sessions SET topic_locked = 1 WHERE topic_id = ?", [.int(topicID)])
+            }
             try Self.cleanUpAndRefresh([topicID], connection, configuration)
             return true
         }
@@ -260,7 +272,8 @@ public struct TopicService: Sendable {
     private func indexStaleSessions() throws {
         let stale = try database.read { connection in
             try connection.query(
-                "SELECT id, event_count FROM sessions WHERE event_count > 0 AND indexed_events != event_count"
+                "SELECT id, event_count FROM sessions WHERE indexed_events != event_count ORDER BY id LIMIT ?",
+                [.int(Int64(Self.maximumSessionsPerRun))]
             ) { (id: $0.int(0), count: $0.int(1)) }
         }
         for batch in stride(from: 0, to: stale.count, by: 50).map({
@@ -281,6 +294,8 @@ public struct TopicService: Sendable {
         }
     }
 
+    private static let detector = SecretDetector()
+
     private static func inputs(ofSession id: Int64, in connection: Connection) throws -> (
         texts: [String], features: [String]
     ) {
@@ -292,7 +307,7 @@ public struct TopicService: Sendable {
             ORDER BY c.id LIMIT ?
             """,
             [.int(Int64(charactersPerContent)), .int(id), .int(Int64(maximumContentsPerSession))]
-        ) { $0.text(0) }
+        ) { $0.text(0) }.filter { !detector.containsSecret(in: $0) }
 
         let kinds = structuralKinds.map { "'\($0)'" }.joined(separator: ",")
         var features = Set(
@@ -316,7 +331,15 @@ public struct TopicService: Sendable {
         for url in urls {
             if let host = SessionService.host(of: url) { features.insert("domain:\(host)") }
         }
-        return (texts, Array(features.sorted().prefix(storedFeatures)))
+        // Strongest signals first, so the cap never drops a repo or ticket in favour of hosts.
+        let priority = Dictionary(
+            uniqueKeysWithValues: structuralKinds.enumerated().map { ($1, $0) })
+        let ranked = features.sorted {
+            let lhs = priority[String($0.prefix { $0 != ":" })] ?? structuralKinds.count
+            let rhs = priority[String($1.prefix { $0 != ":" })] ?? structuralKinds.count
+            return (lhs, $0) < (rhs, $1)
+        }
+        return (texts, Array(ranked.prefix(storedFeatures)))
     }
 
     private static func mergedCounts(_ texts: [String]) -> [String: Int] {
@@ -360,6 +383,15 @@ public struct TopicService: Sendable {
         }
     }
 
+    /// Sessions without any live item are invisible, so they leave their topic, locked or not.
+    private static func releaseInvisibleSessions(in connection: Connection) throws {
+        try connection.execute(
+            """
+            UPDATE sessions SET topic_id = NULL, topic_locked = 0, topic_reason = '', topic_score = 0
+            WHERE topic_id IS NOT NULL AND event_count = 0
+            """)
+    }
+
     private static func assign(
         _ sessionID: Int64, to topicID: Int64, reason: String, score: Double, locked: Bool,
         in connection: Connection
@@ -395,10 +427,15 @@ public struct TopicService: Sendable {
     private static func refreshAllTopics(
         in connection: Connection, configuration: TopicConfiguration, only subset: Set<Int64>? = nil
     ) throws {
+        try releaseInvisibleSessions(in: connection)
+        try connection.execute(
+            "DELETE FROM topics WHERE id NOT IN (SELECT topic_id FROM sessions WHERE topic_id IS NOT NULL)"
+        )
         let ids = try connection.query("SELECT id FROM topics") { $0.int(0) }.filter {
             subset?.contains($0) ?? true
         }
         let corpus = try loadSessions(in: connection).map(\.document)
+        let idf = TopicClusterer.inverseDocumentFrequencies(corpus)
         let byID = Dictionary(uniqueKeysWithValues: corpus.map { ($0.id, $0) })
 
         // Anchors are unique, so clear them first and set them again once all members are known.
@@ -416,13 +453,15 @@ public struct TopicService: Sendable {
             }
             let documents = members.compactMap { byID[$0] }
             let keywords = TopicClusterer.keywords(
-                of: documents, corpus: corpus, configuration: configuration)
+                of: documents, idf: idf, configuration: configuration)
             // A repo names a topic best, then a ticket, then a website.
             let priority = ["repo": 0, "ticket": 1, "domain": 2]
             func rank(_ feature: String) -> Int {
                 priority[String(feature.prefix { $0 != ":" })] ?? 3
             }
-            let values = keywords.features.sorted { rank($0) < rank($1) }.compactMap {
+            let values = keywords.features.enumerated().sorted {
+                (rank($0.element), $0.offset) < (rank($1.element), $1.offset)
+            }.map(\.element).compactMap {
                 $0.split(separator: ":", maxSplits: 1).last.map(String.init)
             }
             let stored = values + keywords.terms
