@@ -9,9 +9,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let launchAtLoginItem = NSMenuItem()
     private let errorItem = NSMenuItem()
     private let captureItem = NSMenuItem()
+    private let systemContext: SystemContext
+    private let accessibilityItem = NSMenuItem()
+    private let automationItem = NSMenuItem()
 
-    init(launchAtLogin: LaunchAtLoginController) {
+    init(launchAtLogin: LaunchAtLoginController, systemContext: SystemContext) {
         self.launchAtLogin = launchAtLogin
+        self.systemContext = systemContext
         super.init()
         statusItem.button?.image = NSImage(
             systemSymbolName: "doc.on.clipboard", accessibilityDescription: AppInfo.name)
@@ -36,6 +40,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(captureItem)
 
         menu.addItem(.separator())
+        accessibilityItem.target = self
+        accessibilityItem.action = #selector(openAccessibilitySettings)
+        menu.addItem(accessibilityItem)
+        automationItem.target = self
+        automationItem.action = #selector(openAutomationSettings)
+        menu.addItem(automationItem)
+
+        menu.addItem(.separator())
         let quit = NSMenuItem(
             title: "Clipkeep beenden", action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q")
@@ -45,6 +57,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
+        let status = systemContext.permissionStatus
+        accessibilityItem.title =
+            status.accessibilityGranted
+            ? "Fenstertitel: erlaubt" : "Fenstertitel: Bedienungshilfen erlauben …"
+        automationItem.title =
+            status.automationDeniedBundleIDs.isEmpty
+            ? "Browser-Adressen: Automation in den Systemeinstellungen prüfen …"
+            : "Browser-Adressen: nicht erlaubt – Automation öffnen …"
         errorItem.title = launchAtLogin.errorMessage ?? ""
         errorItem.isHidden = launchAtLogin.errorMessage == nil
     }
@@ -53,6 +73,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func showCaptureProblem(_ message: String) {
         captureItem.title = message
         captureItem.isHidden = false
+    }
+
+    @objc private func openAccessibilitySettings() {
+        if !SystemContext.requestAccessibility() {
+            openSettings("Privacy_Accessibility")
+        }
+    }
+
+    @objc private func openAutomationSettings() {
+        openSettings("Privacy_Automation")
+    }
+
+    private func openSettings(_ pane: String) {
+        let address = "x-apple.systempreferences:com.apple.preference.security?\(pane)"
+        if let url = URL(string: address) { NSWorkspace.shared.open(url) }
     }
 
     @objc private func toggleLaunchAtLogin() {
