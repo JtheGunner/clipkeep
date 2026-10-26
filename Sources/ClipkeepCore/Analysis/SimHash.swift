@@ -2,7 +2,7 @@ import Foundation
 
 /// 64-bit similarity fingerprint over word shingles. Texts that share most of their wording
 /// get fingerprints that differ in only a few bits, so near-duplicates can be found by
-/// Hamming distance. Pure and deterministic: the same text always yields the same value.
+/// Hamming distance. Texts that share their first `maximumWords` words are indistinguishable. Pure and deterministic: the same text always yields the same value.
 public enum SimHash {
     /// Texts with fewer words are too short for a meaningful fingerprint.
     public static let minimumWords = 8
@@ -12,7 +12,12 @@ public enum SimHash {
 
     /// Returns `nil` when the text has fewer than `minimumWords` words.
     public static func fingerprint(of text: String) -> UInt64? {
-        let words = words(in: SearchText.fold(text))
+        fingerprint(foldedText: SearchText.fold(text))
+    }
+
+    /// Same as `fingerprint(of:)` for text that went through `SearchText.fold` already.
+    static func fingerprint(foldedText: String) -> UInt64? {
+        let words = words(in: foldedText)
         guard words.count >= minimumWords else { return nil }
 
         var weights = [Int32](repeating: 0, count: 64)
@@ -37,11 +42,23 @@ public enum SimHash {
         (lhs ^ rhs).nonzeroBitCount
     }
 
+    /// Scans lazily and stops after `maximumWords`, so the cost does not grow with huge input.
     private static func words(in folded: String) -> [Substring] {
         var result: [Substring] = []
-        for word in folded.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
-            result.append(word)
-            if result.count == maximumWords { break }
+        var wordStart: String.Index?
+        var index = folded.startIndex
+        while index < folded.endIndex, result.count < maximumWords {
+            let isWordCharacter = folded[index].isLetter || folded[index].isNumber
+            if isWordCharacter, wordStart == nil {
+                wordStart = index
+            } else if !isWordCharacter, let start = wordStart {
+                result.append(folded[start..<index])
+                wordStart = nil
+            }
+            index = folded.index(after: index)
+        }
+        if let start = wordStart, result.count < maximumWords {
+            result.append(folded[start..<folded.endIndex])
         }
         return result
     }

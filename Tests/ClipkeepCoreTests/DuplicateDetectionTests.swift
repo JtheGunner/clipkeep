@@ -30,7 +30,7 @@ import Testing
         let original = try #require(SimHash.fingerprint(of: base))
         let near = SimHash.distance(original, try #require(SimHash.fingerprint(of: edited)))
         let far = SimHash.distance(original, try #require(SimHash.fingerprint(of: unrelated)))
-        #expect(near <= 12)
+        #expect(near <= DuplicateConfiguration.maximumDistanceLimit)
         #expect(far > near)
         #expect(far >= 16)
     }
@@ -126,7 +126,10 @@ import Testing
         let edited = try store.record(
             text: article.replacingOccurrences(of: "menu bar", with: "status bar"))
         let links = try store.duplicateLinks(of: edited.contentID)
-        #expect(links.allSatisfy { $0.distance == 0 })
+        #expect(links.isEmpty)
+        let reformatted = try store.record(text: "\n" + article.uppercased() + "  ")
+        #expect(try store.duplicateLinks(of: reformatted.contentID).allSatisfy { $0.distance == 0 })
+        #expect(try !store.duplicateLinks(of: reformatted.contentID).isEmpty)
     }
 
     @Test func linkCountIsCapped() throws {
@@ -166,5 +169,98 @@ import Testing
             ) { $0.int(0) }
         }
         #expect(bands == [0])
+    }
+
+    @Test func defaultConfigurationLinksAOneWordEdit() throws {
+        let (store, temp) = try makeStore()
+        defer { temp.remove() }
+        let first = try store.record(text: article)
+        let edited = try store.record(
+            text: article.replacingOccurrences(of: "menu bar", with: "status bar"))
+        let links = try store.duplicateLinks(of: edited.contentID)
+        #expect(links.map(\.relatedID) == [first.contentID])
+        #expect(links.first?.kind == .near)
+        // The older content sees the same link.
+        #expect(try store.duplicateLinks(of: first.contentID) == links)
+    }
+
+    @Test func bandLookupFindsFingerprintsDifferingInEveryBand() throws {
+        // One flipped bit per band is the worst case for the pigeonhole argument.
+        let base: UInt64 = 0x0123_4567_89AB_CDEF
+        var flipped = base
+        for band in 0..<8 { flipped ^= 1 << UInt64(band * 64 / FingerprintBands.count) }
+        #expect(SimHash.distance(base, flipped) == 8)
+        let shared = zip(FingerprintBands.values(of: base), FingerprintBands.values(of: flipped))
+            .filter { $0 == $1 }.count
+        #expect(shared >= 1)
+    }
+
+    @Test func nearDuplicatesAreFoundInABucketLargerThanFiveHundred() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let store = ContentStore(database: database)
+        let target = try store.record(text: article)
+        // Hundreds of newer rows that share the target's first band value.
+        let fingerprint = try #require(SimHash.fingerprint(of: article))
+        let sharedBand = FingerprintBands.values(of: fingerprint)[0]
+        try database.write { connection in
+            for id in 1...800 {
+                let hash = Int64(bitPattern: ~fingerprint) & ~0x7F | sharedBand
+                try connection.execute(
+                    "INSERT INTO contents (hash, normalized_hash, text, kind, first_seen_at, simhash) VALUES (?, ?, 'x', 'text', 0, ?)",
+                    [.text("filler\(id)"), .text("filler\(id)"), .int(hash)])
+                try connection.execute(
+                    "INSERT INTO content_bands (content_id, band, value, simhash) VALUES (?, 0, ?, ?)",
+                    [.int(connection.lastInsertRowID), .int(sharedBand), .int(hash)])
+            }
+        }
+        let edited = try store.record(
+            text: article.replacingOccurrences(of: "menu bar", with: "status bar"))
+        #expect(
+            try store.duplicateLinks(of: edited.contentID).map(\.relatedID).contains(
+                target.contentID))
+    }
+
+    @Test func bandsAreIndexedEvenWhileLinkingIsOff() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let first = try ContentStore(
+            database: database, duplicates: DuplicateConfiguration(maximumLinks: 0)
+        )
+        .record(text: article)
+        let second = try ContentStore(database: database)
+            .record(text: article.replacingOccurrences(of: "menu bar", with: "status bar"))
+        #expect(
+            try ContentStore(database: database).duplicateLinks(of: second.contentID)
+                .map(\.relatedID) == [first.contentID])
+    }
+
+    @Test func backfillIndexesContentsStoredBeforeFingerprinting() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let store = ContentStore(database: database)
+        let old = try store.record(text: article)
+        try database.write { connection in
+            try connection.execute("DELETE FROM content_bands")
+            try connection.execute("UPDATE contents SET simhash = NULL")
+        }
+        #expect(try store.indexUnfingerprintedContents() == 1)
+        #expect(try store.indexUnfingerprintedContents() == 0)
+        let edited = try store.record(
+            text: article.replacingOccurrences(of: "menu bar", with: "status bar"))
+        #expect(try store.duplicateLinks(of: edited.contentID).map(\.relatedID) == [old.contentID])
+    }
+
+    @Test func differentUnicodeCompositionIsANormalizedDuplicate() throws {
+        let (store, temp) = try makeStore()
+        defer { temp.remove() }
+        let composed = try store.record(text: "Caf\u{E9}")
+        let decomposed = try store.record(text: "Cafe\u{301}")
+        #expect(
+            try store.duplicateLinks(of: decomposed.contentID).first?.relatedID
+                == composed.contentID)
     }
 }

@@ -21,13 +21,14 @@ public struct DuplicateConfiguration: Sendable, Equatable {
     public static let `default` = DuplicateConfiguration()
     public static let maximumDistanceLimit = 8
 
-    /// Largest SimHash Hamming distance (0...8) that still counts as a near-duplicate. Texts with
-    /// a few changed words usually differ in 2-6 of 64 bits; unrelated texts differ in about 32.
+    /// Largest SimHash Hamming distance (0...8) that still counts as a near-duplicate. A single
+    /// changed word in a paragraph typically moves 2-9 of the 64 bits (about 80% stay within 8);
+    /// unrelated texts differ in about 32, so 8 rarely links unrelated texts.
     public let maximumDistance: Int
     /// Upper bound of links stored per new content, closest first.
     public let maximumLinks: Int
 
-    public init(maximumDistance: Int = 4, maximumLinks: Int = 5) {
+    public init(maximumDistance: Int = 8, maximumLinks: Int = 5) {
         self.maximumDistance = min(max(maximumDistance, 0), Self.maximumDistanceLimit)
         self.maximumLinks = max(maximumLinks, 0)
     }

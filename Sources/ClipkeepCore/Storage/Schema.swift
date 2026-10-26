@@ -120,10 +120,11 @@ public enum Schema {
                 content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
                 band INTEGER NOT NULL,
                 value INTEGER NOT NULL,
+                simhash INTEGER NOT NULL,
                 PRIMARY KEY (content_id, band)
             )
             """,
-            "CREATE INDEX content_bands_lookup ON content_bands(band, value)",
+            "CREATE INDEX content_bands_lookup ON content_bands(band, value, content_id, simhash)",
             """
             CREATE TABLE content_links (
                 content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
