@@ -76,6 +76,10 @@ public struct ContentStore: Sendable {
             let isNew = existing.isEmpty
             if let id = existing.first {
                 contentID = id
+                // Copying a deleted text again brings it back.
+                try connection.execute(
+                    "UPDATE contents SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                    [.int(id)])
             } else {
                 // The content vanished between the lookup and the write (a deletion); analyse now.
                 let analysis = prepared ?? Analysis(text: text)

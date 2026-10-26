@@ -39,7 +39,8 @@ public struct SearchService: Sendable {
             parameters.append(.text(indexed.map(Self.quoted).joined(separator: " ")))
         }
 
-        var conditions: [String] = []
+        // Deleted items stay hidden until restored.
+        var conditions: [String] = ["c.deleted_at IS NULL"]
         for term in short {
             conditions.append("instr(c.search_text, ?) > 0")
             parameters.append(.text(term))

@@ -94,7 +94,8 @@ import Testing
 
     @Test func explanationNamesEverySignal() {
         let names = Scorer.explain(input(), now: now).components.map(\.name)
-        #expect(names == ["frecency", "repetition", "kind", "length", "app", "pin"])
+        #expect(
+            names == ["frecency", "repetition", "kind", "length", "app", "star", "feedback", "pin"])
         #expect(Scorer.explain(input(), now: now).components.allSatisfy { !$0.detail.isEmpty })
     }
 
@@ -175,10 +176,10 @@ import Testing
         let (store, ranking, database, temp) = try makeFixture()
         defer { temp.remove() }
         let copy = try store.record(text: "pinned for the long run", copiedAt: at(daysAgo: 400))
-        try ranking.setPinned(true, contentID: copy.contentID, now: now)
+        try ItemActions(database: database).setPinned(true, contentID: copy.contentID, now: now)
         try ranking.refreshAll(now: now)
         #expect(try tier(copy.contentID, database) == "hot")
-        try ranking.setPinned(false, contentID: copy.contentID, now: now)
+        try ItemActions(database: database).setPinned(false, contentID: copy.contentID, now: now)
         #expect(try tier(copy.contentID, database) == "archive")
     }
 
@@ -192,13 +193,14 @@ import Testing
 
     @Test func retentionDeletesOnlyOldUnpinnedItemsWhenEnabled() throws {
         let configuration = RankingConfiguration(policy: TierPolicy(archiveRetentionDays: 365))
-        let (store, ranking, _, temp) = try makeFixture(configuration)
+        let (store, ranking, database, temp) = try makeFixture(configuration)
         defer { temp.remove() }
         let old = try store.record(text: "expired snippet content", copiedAt: at(daysAgo: 400))
         let pinned = try store.record(
             text: "pinned old snippet content", copiedAt: at(daysAgo: 400))
         let young = try store.record(text: "recent snippet content", copiedAt: at(daysAgo: 100))
-        try ranking.setPinned(true, contentID: pinned.contentID, now: now)
+        try ItemActions(database: database, configuration: configuration)
+            .setPinned(true, contentID: pinned.contentID, now: now)
 
         #expect(try ranking.applyRetention(now: now) == 1)
         #expect(try ranking.explain(contentID: old.contentID, now: now) == nil)
@@ -211,7 +213,8 @@ import Testing
         defer { temp.remove() }
         let plain = try store.record(text: "deploy notes alpha", copiedAt: now)
         let favourite = try store.record(text: "deploy notes bravo", copiedAt: at(daysAgo: 30))
-        try ranking.setPinned(true, contentID: favourite.contentID, now: now)
+        try ItemActions(database: database).setPinned(
+            true, contentID: favourite.contentID, now: now)
 
         let hits = try SearchService(database: database).search("deploy notes")
         #expect(hits.map(\.contentID) == [favourite.contentID, plain.contentID])

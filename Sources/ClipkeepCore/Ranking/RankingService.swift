@@ -34,16 +34,6 @@ public struct RankingService: Sendable {
         }
     }
 
-    public func setPinned(_ isPinned: Bool, contentID: Int64, now: Date = Date()) throws {
-        try database.write { connection in
-            try connection.execute(
-                "UPDATE contents SET pinned = ? WHERE id = ?",
-                [.int(isPinned ? 1 : 0), .int(contentID)])
-            try Self.refresh(
-                contentID: contentID, in: connection, configuration: configuration, now: now)
-        }
-    }
-
     /// Recomputes every content in batches; run it periodically so the tiers follow the clock.
     /// Returns how many contents changed tier.
     @discardableResult
@@ -128,8 +118,14 @@ public struct RankingService: Sendable {
         now: Date
     ) throws -> ScoreExplanation? {
         let header = try connection.query(
-            "SELECT kind, length(text), pinned FROM contents WHERE id = ?", [.int(contentID)]
-        ) { (kind: $0.text(0), characters: Int($0.int(1)), pinned: $0.int(2) != 0) }
+            "SELECT kind, length(text), pinned, starred, feedback FROM contents WHERE id = ?",
+            [.int(contentID)]
+        ) {
+            (
+                kind: $0.text(0), characters: Int($0.int(1)), pinned: $0.int(2) != 0,
+                starred: $0.int(3) != 0, feedback: Int($0.int(4))
+            )
+        }
         guard let content = header.first else { return nil }
 
         let events = try connection.query(
@@ -147,7 +143,8 @@ public struct RankingService: Sendable {
         let input = ScoreInput(
             copyDates: events.map(\.date), copyCount: count,
             kind: ContentKind(rawValue: content.kind) ?? .text, characterCount: content.characters,
-            latestAppBundleID: events.first?.app, isPinned: content.pinned)
+            latestAppBundleID: events.first?.app, isPinned: content.pinned,
+            isStarred: content.starred, feedbackSteps: content.feedback)
         return Scorer.explain(
             input, weights: configuration.weights, policy: configuration.policy, now: now)
     }
