@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         "Reconciling parked secrets failed: \(String(describing: error), privacy: .public)"
                     )
                 }
+                let bitwarden = BitwardenSync(client: BitwardenCLIClient(), parker: parker)
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
@@ -63,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     })
                 let watcher = ClipboardWatcher(poller: poller)
                 watcher.start()
-                await self?.captureStarted(watcher, control: control)
+                await self?.captureStarted(watcher, control: control, bitwarden: bitwarden)
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -72,9 +73,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func captureStarted(_ watcher: ClipboardWatcher, control: CaptureControl) {
+    private func captureStarted(
+        _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync
+    ) {
         self.watcher = watcher
         statusItemController?.attach(control: control)
+        statusItemController?.attach(bitwarden: bitwarden)
     }
 
     private func captureFailed() {
