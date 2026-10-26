@@ -1,7 +1,7 @@
 public enum Schema {
-    public static let latestVersion = 7
+    public static let latestVersion = 8
     public static let migrations = [
-        version1, version2, version3, version4, version5, version6, version7,
+        version1, version2, version3, version4, version5, version6, version7, version8,
     ]
     public static let migrator = Migrator(migrations: migrations)
 
@@ -220,5 +220,33 @@ public enum Schema {
                 UPDATE topics SET anchor_session_id = NULL WHERE anchor_session_id = OLD.id;
             END
             """,
+        ])
+
+    /// Secrets parked in the Keychain. The table never holds the secret itself: `vault_key` names
+    /// the Keychain item and `content_id` points to a placeholder text such as
+    /// "OpenAI API-Key · github.com · 26.10.2026 19:05 → gesichert".
+    /// States: parked, transferred (confirmed in Bitwarden), deleted (removed from the Keychain),
+    /// lost (the Keychain item disappeared).
+    private static let version8 = Migration(
+        version: 8,
+        statements: [
+            """
+            CREATE TABLE parked_secrets (
+                id INTEGER PRIMARY KEY,
+                vault_key TEXT NOT NULL UNIQUE,
+                -- Keyed hash (key lives in the Keychain), only for spotting repeated copies.
+                fingerprint TEXT NOT NULL DEFAULT '',
+                content_id INTEGER REFERENCES contents(id) ON DELETE SET NULL,
+                kind TEXT NOT NULL,
+                label TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'parked'
+                    CHECK (state IN ('parked', 'transferred', 'deleted', 'lost')),
+                parked_at REAL NOT NULL,
+                transferred_at REAL,
+                deleted_at REAL
+            )
+            """,
+            "CREATE INDEX parked_secrets_state ON parked_secrets(state)",
+            "CREATE INDEX parked_secrets_fingerprint ON parked_secrets(fingerprint)",
         ])
 }
