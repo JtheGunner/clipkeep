@@ -6,8 +6,9 @@ final class GlobalHotKey {
     /// Signature "CLPK".
     nonisolated static let hotKeyID = EventHotKeyID(signature: OSType(0x434C_504B), id: 1)
 
-    private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
+    // Only touched in `init` and `deinit`, never concurrently.
+    nonisolated(unsafe) private var hotKeyRef: EventHotKeyRef?
+    nonisolated(unsafe) private var handlerRef: EventHandlerRef?
     private let action: @MainActor () -> Void
 
     /// Nil when the combination cannot be registered, for example because another app holds it.
@@ -40,7 +41,7 @@ final class GlobalHotKey {
         guard registered == noErr else { return nil }
     }
 
-    isolated deinit {
+    deinit {
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         if let handlerRef { RemoveEventHandler(handlerRef) }
     }
