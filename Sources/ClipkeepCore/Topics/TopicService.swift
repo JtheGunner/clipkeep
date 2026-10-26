@@ -25,6 +25,7 @@ public struct SessionTopic: Sendable, Equatable {
 public struct TopicService: Sendable {
     private static let maximumContentsPerSession = 300
     private static let charactersPerContent = 2_000
+    private static let secretLookahead = 512
     private static let storedTerms = 200
     private static let storedFeatures = 20
     /// Bounds the first run after an upgrade; the rest follows in later runs.
@@ -45,9 +46,9 @@ public struct TopicService: Sendable {
     /// assignments stay as they are. Returns the number of newly placed sessions.
     @discardableResult
     public func cluster(now: Date = Date()) throws -> Int {
-        try indexStaleSessions()
+        let reindexed = try indexStaleSessions()
         return try database.write { connection in
-            try run(in: connection, now: now, full: false)
+            try run(in: connection, now: now, full: false, reindexed: reindexed)
         }
     }
 
@@ -55,16 +56,17 @@ public struct TopicService: Sendable {
     /// and topic ids of topics whose oldest session is unchanged are kept.
     @discardableResult
     public func recluster(now: Date = Date()) throws -> Int {
-        try indexStaleSessions()
+        let reindexed = try indexStaleSessions()
         return try database.write { connection in
-            try run(in: connection, now: now, full: true)
+            try run(in: connection, now: now, full: true, reindexed: reindexed)
         }
     }
 
-    private func run(in connection: Connection, now: Date, full: Bool) throws -> Int {
+    private func run(in connection: Connection, now: Date, full: Bool, reindexed: Int) throws -> Int
+    {
         let settledBefore = now.addingTimeInterval(-configuration.settleMinutes * 60)
             .timeIntervalSince1970
-        try Self.releaseInvisibleSessions(in: connection)
+        let released = try Self.releaseInvisibleSessions(in: connection)
         let sessions = try Self.loadSessions(in: connection)
         let corpus = sessions.map(\.document)
 
@@ -133,7 +135,8 @@ public struct TopicService: Sendable {
                     score: reason?.similarity ?? 1, locked: false, in: connection)
             }
         }
-        if full || !placements.isEmpty {
+        // Keywords and labels also change when a session was re-indexed or left its topic.
+        if full || !placements.isEmpty || reindexed > 0 || released > 0 {
             try Self.refreshAllTopics(in: connection, configuration: configuration)
         }
         return placements.count
@@ -268,8 +271,8 @@ public struct TopicService: Sendable {
     // MARK: - Indexing
 
     /// Computes word counts and structural signals for sessions whose content changed.
-    /// Tokenizing runs outside the write transaction.
-    private func indexStaleSessions() throws {
+    /// Tokenizing runs outside the write transaction. Returns the number of sessions indexed.
+    private func indexStaleSessions() throws -> Int {
         let stale = try database.read { connection in
             try connection.query(
                 "SELECT id, event_count FROM sessions WHERE indexed_events != event_count ORDER BY id LIMIT ?",
@@ -292,6 +295,7 @@ public struct TopicService: Sendable {
                 }
             }
         }
+        return stale.count
     }
 
     private static let detector = SecretDetector()
@@ -306,8 +310,13 @@ public struct TopicService: Sendable {
                 AND c.id IN (SELECT DISTINCT content_id FROM copy_events WHERE session_id = ?)
             ORDER BY c.id LIMIT ?
             """,
-            [.int(Int64(charactersPerContent)), .int(id), .int(Int64(maximumContentsPerSession))]
-        ) { $0.text(0) }.filter { !detector.containsSecret(in: $0) }
+            [
+                .int(Int64(charactersPerContent + secretLookahead)), .int(id),
+                .int(Int64(maximumContentsPerSession)),
+            ]
+        ) { $0.text(0) }
+        // The secret check sees a little past the cut-off, so a key straddling it is still caught.
+        .filter { !detector.containsSecret(in: $0) }.map { String($0.prefix(charactersPerContent)) }
 
         let kinds = structuralKinds.map { "'\($0)'" }.joined(separator: ",")
         var features = Set(
@@ -384,12 +393,14 @@ public struct TopicService: Sendable {
     }
 
     /// Sessions without any live item are invisible, so they leave their topic, locked or not.
-    private static func releaseInvisibleSessions(in connection: Connection) throws {
+    @discardableResult
+    private static func releaseInvisibleSessions(in connection: Connection) throws -> Int {
         try connection.execute(
             """
             UPDATE sessions SET topic_id = NULL, topic_locked = 0, topic_reason = '', topic_score = 0
             WHERE topic_id IS NOT NULL AND event_count = 0
             """)
+        return connection.changedRowCount
     }
 
     private static func assign(
