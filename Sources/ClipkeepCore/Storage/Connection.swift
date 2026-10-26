@@ -33,6 +33,9 @@ public final class Connection {
 
     public var lastInsertRowID: Int64 { sqlite3_last_insert_rowid(handle) }
 
+    /// Rows changed by the most recent INSERT, UPDATE or DELETE.
+    public var changedRowCount: Int { Int(sqlite3_changes(handle)) }
+
     public func execute(_ sql: String, _ parameters: [SQLValue] = []) throws {
         _ = try run(sql, parameters) { _ in () }
     }

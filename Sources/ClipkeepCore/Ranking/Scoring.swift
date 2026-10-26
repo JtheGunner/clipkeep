@@ -13,6 +13,10 @@ public struct ScoringWeights: Sendable, Equatable {
     public var repetition: Double = 1
     public var length: Double = 1
     public var pin: Double = 100
+    /// Bonus for a starred item. Unlike a pin it still fades and can change tier.
+    public var star: Double = 3
+    /// Score per "more like this" (+) or "less like this" (-) step.
+    public var feedback: Double = 1.5
     /// Score offset per content kind; kinds not listed count as 0.
     public var kinds: [ContentKind: Double] = [
         .command: 1, .code: 1, .stacktrace: 0.5, .url: 0.5, .path: 0.5, .json: 0.5,
@@ -48,10 +52,14 @@ public struct ScoreInput: Sendable, Equatable {
     public var characterCount: Int
     public var latestAppBundleID: String?
     public var isPinned: Bool
+    public var isStarred: Bool
+    /// Net "more/less like this" steps, see `ItemActions.feedbackLimit`.
+    public var feedbackSteps: Int
 
     public init(
         copyDates: [Date], copyCount: Int, kind: ContentKind, characterCount: Int,
-        latestAppBundleID: String? = nil, isPinned: Bool = false
+        latestAppBundleID: String? = nil, isPinned: Bool = false, isStarred: Bool = false,
+        feedbackSteps: Int = 0
     ) {
         self.copyDates = copyDates
         self.copyCount = copyCount
@@ -59,6 +67,8 @@ public struct ScoreInput: Sendable, Equatable {
         self.characterCount = characterCount
         self.latestAppBundleID = latestAppBundleID
         self.isPinned = isPinned
+        self.isStarred = isStarred
+        self.feedbackSteps = feedbackSteps
     }
 }
 
@@ -109,6 +119,12 @@ public enum Scorer {
                 detail: "\(input.characterCount) characters"),
             ScoreComponent(
                 name: "app", value: appOffset, detail: input.latestAppBundleID ?? "unknown app"),
+            ScoreComponent(
+                name: "star", value: input.isStarred ? weights.star : 0,
+                detail: input.isStarred ? "starred" : "not starred"),
+            ScoreComponent(
+                name: "feedback", value: weights.feedback * Double(input.feedbackSteps),
+                detail: "\(input.feedbackSteps) net more/less-like-this steps"),
             ScoreComponent(
                 name: "pin", value: input.isPinned ? weights.pin : 0,
                 detail: input.isPinned ? "pinned" : "not pinned"),

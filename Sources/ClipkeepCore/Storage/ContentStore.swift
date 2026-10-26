@@ -76,6 +76,17 @@ public struct ContentStore: Sendable {
             let isNew = existing.isEmpty
             if let id = existing.first {
                 contentID = id
+                // Copying a deleted text again brings it back, with its pin, star and feedback.
+                let wasDeleted =
+                    try connection.query(
+                        "SELECT 1 FROM contents WHERE id = ? AND deleted_at IS NOT NULL", [.int(id)]
+                    ) { _ in 1 }.isEmpty == false
+                if wasDeleted, let before = try ItemActions.snapshot(of: id, in: connection) {
+                    try connection.execute(
+                        "UPDATE contents SET deleted_at = NULL WHERE id = ?", [.int(id)])
+                    try ItemActions.log(
+                        .recopy, contentID: id, snapshot: before, now: copiedAt, in: connection)
+                }
             } else {
                 // The content vanished between the lookup and the write (a deletion); analyse now.
                 let analysis = prepared ?? Analysis(text: text)
@@ -169,7 +180,8 @@ public struct ContentStore: Sendable {
         guard duplicates.maximumLinks > 0 else { return [] }
         var links: [DuplicateLink] = try connection.query(
             """
-            SELECT id FROM contents WHERE normalized_hash = ? AND id != ?
+            SELECT id FROM contents
+            WHERE normalized_hash = ? AND id != ? AND deleted_at IS NULL
             ORDER BY id LIMIT ?
             """,
             [.text(analysis.normalizedHash), .int(contentID), .int(Int64(duplicates.maximumLinks))]
@@ -184,8 +196,9 @@ public struct ContentStore: Sendable {
             for (band, value) in bands.enumerated() {
                 let rows = try connection.query(
                     """
-                    SELECT content_id, simhash FROM content_bands
-                    WHERE band = ? AND value = ? AND content_id != ?
+                    SELECT b.content_id, b.simhash FROM content_bands b
+                    JOIN contents c ON c.id = b.content_id AND c.deleted_at IS NULL
+                    WHERE b.band = ? AND b.value = ? AND b.content_id != ?
                     """,
                     [.int(Int64(band)), .int(value), .int(contentID)]
                 ) { (id: $0.int(0), hash: UInt64(bitPattern: $0.int(1))) }
@@ -250,9 +263,11 @@ public struct ContentStore: Sendable {
         try database.read { connection in
             try connection.query(
                 """
-                SELECT content_id, related_id, kind, distance FROM content_links
-                WHERE content_id = ?1 OR related_id = ?1
-                ORDER BY distance, content_id, related_id
+                SELECT l.content_id, l.related_id, l.kind, l.distance FROM content_links l
+                JOIN contents a ON a.id = l.content_id AND a.deleted_at IS NULL
+                JOIN contents b ON b.id = l.related_id AND b.deleted_at IS NULL
+                WHERE l.content_id = ?1 OR l.related_id = ?1
+                ORDER BY l.distance, l.content_id, l.related_id
                 LIMIT 100
                 """,
                 [.int(contentID)]

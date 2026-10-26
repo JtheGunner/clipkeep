@@ -34,16 +34,6 @@ public struct RankingService: Sendable {
         }
     }
 
-    public func setPinned(_ isPinned: Bool, contentID: Int64, now: Date = Date()) throws {
-        try database.write { connection in
-            try connection.execute(
-                "UPDATE contents SET pinned = ? WHERE id = ?",
-                [.int(isPinned ? 1 : 0), .int(contentID)])
-            try Self.refresh(
-                contentID: contentID, in: connection, configuration: configuration, now: now)
-        }
-    }
-
     /// Recomputes every content in batches; run it periodically so the tiers follow the clock.
     /// Returns how many contents changed tier.
     @discardableResult
@@ -53,7 +43,7 @@ public struct RankingService: Sendable {
         while true {
             let ids = try database.read { connection in
                 try connection.query(
-                    "SELECT id FROM contents WHERE id > ? ORDER BY id LIMIT ?",
+                    "SELECT id FROM contents WHERE id > ? AND deleted_at IS NULL ORDER BY id LIMIT ?",
                     [.int(lastID), .int(Int64(max(batchSize, 1)))]
                 ) { $0.int(0) }
             }
@@ -71,7 +61,9 @@ public struct RankingService: Sendable {
         }
     }
 
-    /// Deletes archived, unpinned contents whose last copy is older than the configured retention.
+    /// Deletes contents whose last copy is older than the configured retention, except pinned or
+    /// starred ones and those deleted by the user (left to `ItemActions.purgeDeleted`, so the
+    /// undo window is never cut short).
     /// Does nothing unless `archiveRetentionDays` is set. The period is re-clamped here so even a
     /// policy mutated after creation can never reach into the hot or warm window. Deletes in
     /// small transactions so capture is never blocked for long. Returns the deleted count.
@@ -85,7 +77,11 @@ public struct RankingService: Sendable {
         while true {
             let count = try database.write { connection -> Int in
                 let ids = try connection.query(
-                    "SELECT id FROM contents WHERE pinned = 0 AND last_copied_at < ? LIMIT ?",
+                    """
+                    SELECT id FROM contents
+                    WHERE pinned = 0 AND starred = 0 AND deleted_at IS NULL AND last_copied_at < ?
+                    LIMIT ?
+                    """,
                     [.double(cutoff), .int(Int64(max(batchSize, 1)))]
                 ) { $0.int(0) }
                 for id in ids {
@@ -128,8 +124,14 @@ public struct RankingService: Sendable {
         now: Date
     ) throws -> ScoreExplanation? {
         let header = try connection.query(
-            "SELECT kind, length(text), pinned FROM contents WHERE id = ?", [.int(contentID)]
-        ) { (kind: $0.text(0), characters: Int($0.int(1)), pinned: $0.int(2) != 0) }
+            "SELECT kind, length(text), pinned, starred, feedback FROM contents WHERE id = ?",
+            [.int(contentID)]
+        ) {
+            (
+                kind: $0.text(0), characters: Int($0.int(1)), pinned: $0.int(2) != 0,
+                starred: $0.int(3) != 0, feedback: Int($0.int(4))
+            )
+        }
         guard let content = header.first else { return nil }
 
         let events = try connection.query(
@@ -147,7 +149,8 @@ public struct RankingService: Sendable {
         let input = ScoreInput(
             copyDates: events.map(\.date), copyCount: count,
             kind: ContentKind(rawValue: content.kind) ?? .text, characterCount: content.characters,
-            latestAppBundleID: events.first?.app, isPinned: content.pinned)
+            latestAppBundleID: events.first?.app, isPinned: content.pinned,
+            isStarred: content.starred, feedbackSteps: content.feedback)
         return Scorer.explain(
             input, weights: configuration.weights, policy: configuration.policy, now: now)
     }

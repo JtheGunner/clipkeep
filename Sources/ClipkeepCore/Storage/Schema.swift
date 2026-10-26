@@ -1,6 +1,6 @@
 public enum Schema {
-    public static let latestVersion = 4
-    public static let migrations = [version1, version2, version3, version4]
+    public static let latestVersion = 5
+    public static let migrations = [version1, version2, version3, version4, version5]
     public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
@@ -147,5 +147,32 @@ public enum Schema {
             "ALTER TABLE contents ADD COLUMN importance REAL NOT NULL DEFAULT 0",
             "CREATE INDEX contents_importance ON contents(importance DESC, last_copied_at DESC, id DESC)",
             "CREATE INDEX copy_events_content_recent ON copy_events(content_id, copied_at DESC, id DESC)",
+        ])
+
+    /// User actions: star, soft delete (undoable; hidden from search and views until purged),
+    /// a net more/less-like-this counter, and an append-only log of every action with a snapshot
+    /// of the item's features. The log outlives its content (`ON DELETE SET NULL`) so the
+    /// signals stay usable for a later learning model.
+    private static let version5 = Migration(
+        version: 5,
+        statements: [
+            "ALTER TABLE contents ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE contents ADD COLUMN deleted_at REAL",
+            "ALTER TABLE contents ADD COLUMN feedback INTEGER NOT NULL DEFAULT 0",
+            "CREATE INDEX contents_deleted_at ON contents(deleted_at) WHERE deleted_at IS NOT NULL",
+            """
+            CREATE TABLE feedback_events (
+                id INTEGER PRIMARY KEY,
+                content_id INTEGER REFERENCES contents(id) ON DELETE SET NULL,
+                action TEXT NOT NULL CHECK (action IN
+                    ('pin', 'unpin', 'star', 'unstar', 'delete', 'restore', 'recopy', 'more', 'less')),
+                created_at REAL NOT NULL,
+                kind TEXT NOT NULL,
+                app_bundle_id TEXT,
+                importance REAL NOT NULL,
+                copy_count INTEGER NOT NULL
+            )
+            """,
+            "CREATE INDEX feedback_events_content_id ON feedback_events(content_id)",
         ])
 }
