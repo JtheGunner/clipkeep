@@ -129,8 +129,18 @@ public struct ContentStore: Sendable {
                 ])
             let eventID = connection.lastInsertRowID
             if let sessions {
-                try SessionService.assign(
-                    eventID: eventID, in: connection, configuration: sessions)
+                // Sessions are best effort: a failure must not lose the copy, it only flags
+                // the sessions for a rebuild (`SessionService.rebuildIfNeeded`).
+                try connection.execute("SAVEPOINT sessions")
+                do {
+                    try SessionService.assign(
+                        eventID: eventID, in: connection, configuration: sessions)
+                    try connection.execute("RELEASE sessions")
+                } catch {
+                    try connection.execute("ROLLBACK TO sessions")
+                    try connection.execute("RELEASE sessions")
+                    try SessionService.markDirty(in: connection)
+                }
             }
             try RankingService.refresh(
                 contentID: contentID, in: connection, configuration: ranking, now: copiedAt)

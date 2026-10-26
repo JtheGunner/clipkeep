@@ -21,10 +21,15 @@ public struct RankingService: Sendable {
     private static let recentCopiesConsidered = 100
     private let database: Database
     private let configuration: RankingConfiguration
+    private let sessions: SessionConfiguration
 
-    public init(database: Database, configuration: RankingConfiguration = .default) {
+    public init(
+        database: Database, configuration: RankingConfiguration = .default,
+        sessions: SessionConfiguration = .default
+    ) {
         self.database = database
         self.configuration = configuration
+        self.sessions = sessions
     }
 
     public func explain(contentID: Int64, now: Date = Date()) throws -> ScoreExplanation? {
@@ -90,7 +95,13 @@ public struct RankingService: Sendable {
                 return ids.count
             }
             deleted += count
-            if count == 0 { return deleted }
+            if count == 0 {
+                // Removed events can leave empty or mis-sized sessions; re-cutting repairs them.
+                if deleted > 0 {
+                    try SessionService(database: database, configuration: sessions).rebuild()
+                }
+                return deleted
+            }
         }
     }
 

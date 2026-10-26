@@ -147,22 +147,24 @@ public enum SessionSegmenter {
         return drafts
     }
 
-    /// The new context must repeat in the following copies without a session-ending pause.
+    /// The new context must show up in the following copies that carry a context; copies without
+    /// one are skipped, a different context or a session-ending pause breaks the run.
     private static func isConfirmed(
         context: String, at index: Int, in events: [SessionEvent],
         configuration: SessionConfiguration
     ) -> Bool {
-        let needed = configuration.contextConfirmations
-        guard index + needed <= events.count else { return false }
-        for offset in 0..<needed {
-            let event = events[index + offset]
-            guard event.context == context else { return false }
-            if offset > 0,
-                event.time.timeIntervalSince(events[index + offset - 1].time) > configuration.gap
-            {
+        var matches = 0
+        var previous = events[index]
+        for event in events[index...] {
+            guard event.time.timeIntervalSince(previous.time) <= configuration.gap else {
                 return false
             }
+            previous = event
+            guard let other = event.context else { continue }
+            guard other == context else { return false }
+            matches += 1
+            if matches == configuration.contextConfirmations { return true }
         }
-        return true
+        return false
     }
 }

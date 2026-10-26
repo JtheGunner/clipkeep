@@ -48,7 +48,7 @@ import Testing
         #expect(drafts[0].events.map(\.id) == [1, 2, 3])
     }
 
-    @Test func appSwitchOnlySSplitsAfterALongEnoughPause() {
+    @Test func appSwitchOnlySplitsAfterALongEnoughPause() {
         let quick = SessionSegmenter.segment([
             event(1, minute: 0, app: "a"), event(2, minute: 1, app: "b"),
         ])
@@ -209,7 +209,7 @@ import Testing
         let apps = ["com.apple.Terminal", "com.apple.Safari", "com.apple.Terminal"]
         for index in 0..<60 {
             try copy(
-                fixture, "snippet \(index)", minute: Double(index * 9), app: apps[index % 3])
+                fixture, "snippet \(index)", minute: Double(index * 13), app: apps[index % 3])
         }
         func shape() throws -> [[String]] {
             try fixture.service.sessions(limit: 100).map {
@@ -272,7 +272,8 @@ import Testing
         try fixture.service.rebuild()
         let session = try #require(try fixture.service.sessions().first)
         #expect(session.topEntities.allSatisfy { $0.value != "private.example.org" })
-        #expect(session.eventCount == 2)
+        // Only live items count, and the deleted host neither appears in the entities nor in a cut.
+        #expect(session.eventCount == 1)
     }
 
     @Test func browserHostIsUsedAsContextWhenThereIsNoRepo() throws {
@@ -306,8 +307,12 @@ import Testing
         let all = try fixture.service.sessions(limit: 10)
         #expect(all.count == 4)
         #expect(try fixture.service.sessions(limit: 0).isEmpty)
-        let older = try fixture.service.sessions(limit: 10, before: all[1].startedAt)
+        let older = try fixture.service.sessions(limit: 10, after: all[1])
         #expect(older.map(\.id) == Array(all.dropFirst(2)).map(\.id))
+        let firstPage = try fixture.service.sessions(limit: 2)
+        #expect(
+            try fixture.service.sessions(limit: 2, after: firstPage[1]).map(\.id)
+                == all.dropFirst(2).map(\.id))
     }
 
     @Test func searchFiltersBySessionAfterAssignment() throws {
@@ -319,5 +324,199 @@ import Testing
         let hits = try SearchService(database: fixture.database)
             .search("note", filter: SearchFilter(sessionID: evening.id))
         #expect(hits.map(\.text) == ["evening note"])
+    }
+
+    private func shape(_ service: SessionService) throws -> [[String]] {
+        try service.sessions(limit: 1_000).map {
+            [String($0.eventCount), $0.start.code, $0.start.detail]
+        }
+    }
+
+    @Test func laterCopiesKeepTheStartReasonOfTheTailSession() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try copy(fixture, "zero", minute: 0)
+        try copy(fixture, "sixty", minute: 60)
+        try copy(fixture, "sixty one", minute: 61)
+        let incremental = try shape(fixture.service)
+        #expect(incremental == [["2", "gap", "60"], ["1", "first", ""]])
+        try fixture.service.rebuild()
+        #expect(try shape(fixture.service) == incremental)
+    }
+
+    @Test func incrementalEqualsRebuildOnAMixedStream() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let apps = ["com.apple.Terminal", "com.apple.Safari", "com.apple.Notes"]
+        let repos = [
+            "https://github.com/acme/api/issues/", "https://github.com/acme/web/issues/",
+            "plain text ",
+        ]
+        var minute = 0.0
+        for index in 0..<120 {
+            minute += [1.0, 2, 3, 12, 30, 1, 1][index % 7]
+            try copy(
+                fixture, "\(repos[(index / 6) % 3])\(index)", minute: minute, app: apps[index % 3])
+        }
+        let incremental = try shape(fixture.service)
+        #expect(incremental.count > 5)
+        try fixture.service.rebuild()
+        #expect(try shape(fixture.service) == incremental)
+        #expect(incremental.compactMap { Int($0[0]) }.reduce(0, +) == 120)
+    }
+
+    @Test func lateEventInsideTheTailMatchesARebuild() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let api = "https://github.com/acme/api/issues/"
+        let web = "https://github.com/acme/web/issues/"
+        try copy(fixture, api + "1", minute: 0)
+        try copy(fixture, api + "2", minute: 1)
+        try copy(fixture, web + "3", minute: 2)
+        try copy(fixture, web + "4", minute: 4)
+        try copy(fixture, api + "5", minute: 3)
+        let incremental = try shape(fixture.service)
+        try fixture.service.rebuild()
+        #expect(try shape(fixture.service) == incremental)
+        #expect(incremental.count == 1)
+    }
+
+    @Test func equalTimestampsAreOrderedByEventID() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        for index in 0..<4 { try copy(fixture, "same time \(index)", minute: 5) }
+        try copy(fixture, "later", minute: 60)
+        let incremental = try shape(fixture.service)
+        try fixture.service.rebuild()
+        #expect(try shape(fixture.service) == incremental)
+        #expect(incremental.map { $0[0] } == ["1", "4"])
+    }
+
+    @Test func purgingEventsLeavesNoGhostSessions() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try copy(fixture, "a one", minute: 0)
+        try copy(fixture, "a two", minute: 1)
+        let b1 = try copy(fixture, "b one", minute: 60)
+        try copy(fixture, "b two", minute: 61)
+        let actions = ItemActions(database: fixture.database)
+        try actions.delete(contentID: b1.contentID, now: at(100))
+        try actions.purgeDeleted(olderThanDays: 0, now: at(100))
+        try copy(fixture, "c", minute: 64)
+
+        let sessions = try fixture.service.sessions()
+        let stored = try fixture.database.read { connection in
+            try connection.query(
+                "SELECT s.event_count, (SELECT count(*) FROM copy_events WHERE session_id = s.id) FROM sessions s"
+            ) { ($0.int(0), $0.int(1)) }
+        }
+        #expect(sessions.count == 2)
+        #expect(stored.allSatisfy { $0.0 == $0.1 && $0.1 > 0 })
+    }
+
+    @Test func retentionAlsoRepairsSessions() throws {
+        let configuration = RankingConfiguration(policy: TierPolicy(archiveRetentionDays: 100))
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let store = ContentStore(database: database, ranking: configuration)
+        let old = at(-200 * 24 * 60)
+        _ = try store.record(text: "ancient one", copiedAt: old)
+        _ = try store.record(text: "recent one", copiedAt: at(0))
+        let ranking = RankingService(database: database, configuration: configuration)
+        #expect(try ranking.applyRetention(now: at(10)) == 1)
+        let service = SessionService(database: database)
+        #expect(try service.sessions().map(\.eventCount) == [1])
+    }
+
+    @Test func deletedHostsNeitherCutNorExplainSessions() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try copy(fixture, "x", minute: 0, url: "https://a.example/p")
+        try copy(fixture, "y", minute: 1, url: "https://a.example/q")
+        let p1 = try copy(fixture, "z", minute: 2, url: "https://private.example.org/1")
+        let p2 = try copy(fixture, "w", minute: 3, url: "https://private.example.org/2")
+        #expect(try fixture.service.sessions().count == 2)
+        let actions = ItemActions(database: fixture.database)
+        try actions.delete(contentID: p1.contentID)
+        try actions.delete(contentID: p2.contentID)
+        try fixture.service.rebuild()
+        let sessions = try fixture.service.sessions()
+        #expect(sessions.count == 1)
+        #expect(sessions.allSatisfy { !$0.explanation.contains("private.example.org") })
+    }
+
+    @Test func deleteAndRestoreRefreshSessionMetadata() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try copy(fixture, "keep https://github.com/acme/api", minute: 0)
+        let removed = try copy(fixture, "drop https://github.com/acme/web", minute: 1)
+        let actions = ItemActions(database: fixture.database)
+        try actions.delete(contentID: removed.contentID)
+        var session = try #require(try fixture.service.sessions().first)
+        #expect(session.eventCount == 1)
+        #expect(session.topEntities.allSatisfy { $0.value != "github.com/acme/web" })
+        try actions.restore(contentID: removed.contentID)
+        session = try #require(try fixture.service.sessions().first)
+        #expect(session.eventCount == 2)
+        #expect(session.topEntities.contains { $0.value == "github.com/acme/web" })
+    }
+
+    @Test func contextConfirmationSkipsCopiesWithoutContext() {
+        let events = [
+            SessionEvent(id: 1, time: Date(timeIntervalSince1970: 0), context: "a"),
+            SessionEvent(id: 2, time: Date(timeIntervalSince1970: 60), context: "b"),
+            SessionEvent(id: 3, time: Date(timeIntervalSince1970: 120)),
+            SessionEvent(id: 4, time: Date(timeIntervalSince1970: 180), context: "b"),
+        ]
+        #expect(SessionSegmenter.segment(events).map { $0.events.map(\.id) } == [[1], [2, 3, 4]])
+    }
+
+    @Test func sessionsStartingAtTheSameTimeAreAllPaged() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try copy(fixture, "https://github.com/acme/api/1", minute: 0)
+        try copy(fixture, "https://github.com/acme/web/2", minute: 0)
+        try copy(fixture, "https://github.com/acme/web/3", minute: 0)
+        let all = try fixture.service.sessions()
+        #expect(all.count == 2)
+        let paged = try fixture.service.sessions(limit: 1)
+        #expect(try fixture.service.sessions(limit: 1, after: paged[0]).map(\.id) == [all[1].id])
+    }
+
+    @Test func rebuildIfNeededRepairsUnassignedEventsAndFlags() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let bulk = ContentStore(database: database, sessions: nil)
+        _ = try bulk.record(text: "imported one", copiedAt: at(0))
+        _ = try bulk.record(text: "imported two", copiedAt: at(200))
+        let service = SessionService(database: database)
+        #expect(try service.rebuildIfNeeded())
+        #expect(try service.sessions().count == 2)
+        #expect(try service.rebuildIfNeeded() == false)
+        try database.write { try SessionService.markDirty(in: $0) }
+        #expect(try service.rebuildIfNeeded())
+        #expect(try service.rebuildIfNeeded() == false)
+    }
+
+    @Test func aFreshCopyAfterABulkImportRebuildsInsteadOfLeavingGaps() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        _ = try ContentStore(database: database, sessions: nil).record(
+            text: "bulk", copiedAt: at(0))
+        _ = try ContentStore(database: database).record(text: "live", copiedAt: at(5))
+        let unassigned = try database.read {
+            try $0.query("SELECT count(*) FROM copy_events WHERE session_id IS NULL") { $0.int(0) }
+        }
+        #expect(unassigned == [0])
+    }
+
+    @Test func configurationEdgesAreClamped() {
+        let zero = SessionConfiguration(gapMinutes: 0)
+        #expect(zero.gap == 0 && zero.appSwitchGap == 0)
+        #expect(SessionConfiguration(gapMinutes: 5, appSwitchGapMinutes: 50).appSwitchGap == 300)
+        #expect(SessionConfiguration(contextConfirmations: 0).contextConfirmations == 1)
     }
 }
