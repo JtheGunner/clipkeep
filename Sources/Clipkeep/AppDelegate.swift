@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import ClipkeepCore
 import os
 
@@ -10,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
     private var watcher: ClipboardWatcher?
     private var bitwarden: BitwardenSync?
+    private var palette: PaletteController?
+    private var paletteHotKey: GlobalHotKey?
     private let systemContext = SystemContext()
     private let secretNotifier = SecretNotifier()
 
@@ -85,7 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let watcher = ClipboardWatcher(poller: poller)
                 watcher.start()
                 await self?.captureStarted(
-                    watcher, control: control, bitwarden: bitwarden, secrets: parker)
+                    watcher, control: control, bitwarden: bitwarden, secrets: parker,
+                    search: PaletteSearch(database: database))
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -107,13 +111,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func captureStarted(
         _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync,
-        secrets: SecretParker
+        secrets: SecretParker, search: PaletteSearch
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
         statusItemController?.attach(bitwarden: bitwarden)
         statusItemController?.attach(secrets: secrets)
+        let palette = PaletteController(search: search)
+        self.palette = palette
+        // Control + Option + V.
+        paletteHotKey = GlobalHotKey(
+            keyCode: kVK_ANSI_V, modifiers: controlKey | optionKey,
+            action: { [weak palette] in palette?.toggle() })
+        statusItemController?.attach(
+            palette: palette, hotKeyRegistered: paletteHotKey != nil)
     }
 
     private func captureFailed() {

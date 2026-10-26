@@ -22,6 +22,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenTransferItem = NSMenuItem()
     private let bitwardenLockItem = NSMenuItem()
     private let bitwardenMessageItem = NSMenuItem()
+    private let paletteItem = NSMenuItem()
+    private var palette: PaletteController?
     private let exceptionsItem = NSMenuItem()
     private var secrets: SecretParker?
     private var control: CaptureControl?
@@ -42,6 +44,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
 
+        paletteItem.title = "Suchpalette öffnen"
+        paletteItem.target = self
+        paletteItem.action = #selector(openPalette)
+        paletteItem.isEnabled = false
+        menu.addItem(paletteItem)
         pauseItem.target = self
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
@@ -153,6 +160,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.control = control
         pauseItem.isEnabled = true
         updateIcon()
+    }
+
+    func attach(palette: PaletteController, hotKeyRegistered: Bool) {
+        self.palette = palette
+        paletteItem.title =
+            hotKeyRegistered
+            ? "Suchpalette öffnen (⌃⌥V)" : "Suchpalette öffnen (Kurzbefehl ⌃⌥V ist belegt)"
+        paletteItem.isEnabled = true
+    }
+
+    @objc private func openPalette() {
+        // The menu is still closing; the panel opens right after.
+        DispatchQueue.main.async { [palette] in palette?.show() }
     }
 
     func attach(secrets: SecretParker) {
