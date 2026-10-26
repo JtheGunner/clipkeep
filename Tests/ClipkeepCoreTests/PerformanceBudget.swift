@@ -9,4 +9,10 @@ enum PerformanceBudget {
             true
         #endif
     }()
+
+    /// Wall-clock limit for guards against catastrophic (for example quadratic) slowdowns. Debug
+    /// builds get ten times the budget so noisy runners do not fail, yet a real blow-up still does.
+    static func limit(_ seconds: Double) -> Double {
+        isEnforced ? seconds : seconds * 10
+    }
 }

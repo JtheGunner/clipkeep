@@ -1,6 +1,6 @@
 public enum Schema {
-    public static let latestVersion = 3
-    public static let migrations = [version1, version2, version3]
+    public static let latestVersion = 4
+    public static let migrations = [version1, version2, version3, version4]
     public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
@@ -135,5 +135,17 @@ public enum Schema {
             )
             """,
             "CREATE INDEX content_links_related ON content_links(related_id)",
+        ])
+
+    /// Ranking: a pin flag, the tier and a 0...1 importance boost per content. Importance is
+    /// recomputed from copy history by `RankingService`; the index serves unfiltered listings.
+    private static let version4 = Migration(
+        version: 4,
+        statements: [
+            "ALTER TABLE contents ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE contents ADD COLUMN tier TEXT NOT NULL DEFAULT 'hot'",
+            "ALTER TABLE contents ADD COLUMN importance REAL NOT NULL DEFAULT 0",
+            "CREATE INDEX contents_importance ON contents(importance DESC, last_copied_at DESC, id DESC)",
+            "CREATE INDEX copy_events_content_recent ON copy_events(content_id, copied_at DESC, id DESC)",
         ])
 }
