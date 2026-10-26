@@ -15,12 +15,14 @@ public struct SearchFilter: Sendable, Equatable {
     public var copiedBefore: Date?
     public var sessionID: Int64?
     public var kind: String?
+    /// Leaves out this kind, for example parked-secret placeholders.
+    public var excludedKind: String?
     public var limit: Int
     public var listingOrder: ListingOrder
 
     public init(
         appBundleID: String? = nil, copiedAfter: Date? = nil, copiedBefore: Date? = nil,
-        sessionID: Int64? = nil, kind: String? = nil, limit: Int = 50,
+        sessionID: Int64? = nil, kind: String? = nil, excludedKind: String? = nil, limit: Int = 50,
         listingOrder: ListingOrder = .recent
     ) {
         self.appBundleID = appBundleID
@@ -28,6 +30,7 @@ public struct SearchFilter: Sendable, Equatable {
         self.copiedBefore = copiedBefore
         self.sessionID = sessionID
         self.kind = kind
+        self.excludedKind = excludedKind
         self.limit = limit
         self.listingOrder = listingOrder
     }

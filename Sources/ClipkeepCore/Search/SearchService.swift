@@ -50,6 +50,11 @@ public struct SearchService: Sendable {
             parameters.append(.text(kind))
         }
 
+        if let excluded = filter.excludedKind {
+            conditions.append("c.kind != ?")
+            parameters.append(.text(excluded))
+        }
+
         var eventConditions: [String] = []
         if let appBundleID = filter.appBundleID {
             eventConditions.append("e.app_bundle_id = ?")
