@@ -30,9 +30,14 @@ public final class ClipboardPoller: @unchecked Sendable {
     @discardableResult
     public func poll(now: Date = Date()) -> CaptureOutcome? {
         let windowStart = lastPollAt
-        lastPollAt = now
-        guard pasteboard.changeCount != lastChangeCount else { return nil }
+        guard pasteboard.changeCount != lastChangeCount else {
+            lastPollAt = now
+            return nil
+        }
+        // A snapshot that failed keeps the window open, so the retry still covers the apps that
+        // were frontmost since the last processed poll.
         guard let snapshot = pasteboard.snapshot() else { return nil }
+        lastPollAt = now
         lastChangeCount = snapshot.changeCount
         do {
             return try pipeline.process(

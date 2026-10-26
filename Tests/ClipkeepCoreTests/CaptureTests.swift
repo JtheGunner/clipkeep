@@ -25,6 +25,16 @@ private struct FakeSource: SourceAppProviding {
     func sources(from start: Date, to end: Date) -> [CopyContext] { contexts }
 }
 
+private final class WindowRecorder: SourceAppProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var starts: [Date] = []
+    var windowStarts: [Date] { lock.withLock { starts } }
+    func sources(from start: Date, to end: Date) -> [CopyContext] {
+        lock.withLock { starts.append(start) }
+        return [CopyContext(appBundleID: "com.example.editor")]
+    }
+}
+
 private final class RecordingSink: SecretSink, @unchecked Sendable {
     private let lock = NSLock()
     private var received: [String] = []
@@ -339,6 +349,21 @@ private final class ErrorLog: @unchecked Sendable {
             try $0.query("SELECT count(*) FROM copy_events") { $0.int(0) }.first
         }
         #expect(events == 1)
+    }
+
+    @Test func aFailedSnapshotKeepsTheAttributionWindowOpen() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let pasteboard = FakePasteboard()
+        let recorder = WindowRecorder()
+        let poller = ClipboardPoller(
+            pasteboard: pasteboard, source: recorder,
+            pipeline: CapturePipeline(store: ContentStore(database: try temp.open())), now: base)
+        pasteboard.set(PasteboardSnapshot(changeCount: 2, text: "racy copy"))
+        pasteboard.queue([nil])
+        poller.poll(now: base.addingTimeInterval(1))
+        poller.poll(now: base.addingTimeInterval(2))
+        #expect(recorder.windowStarts == [base])
     }
 
     @Test func aBlockedAppAnywhereInThePollWindowBlocksTheCopy() throws {
