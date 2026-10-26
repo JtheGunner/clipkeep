@@ -8,8 +8,13 @@ let package = Package(
         .library(name: "ClipkeepCore", targets: ["ClipkeepCore"]),
         .executable(name: "Clipkeep", targets: ["Clipkeep"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sqlcipher/SQLCipher.swift", exact: "4.19.0")
+    ],
     targets: [
-        .target(name: "ClipkeepCore"),
+        .target(
+            name: "ClipkeepCore",
+            dependencies: [.product(name: "SQLCipher", package: "SQLCipher.swift")]),
         .executableTarget(name: "Clipkeep", dependencies: ["ClipkeepCore"]),
         .testTarget(name: "ClipkeepCoreTests", dependencies: ["ClipkeepCore"]),
     ]

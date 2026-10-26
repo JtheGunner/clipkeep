@@ -11,6 +11,11 @@ app="build/Clipkeep.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 cp "$bin_dir/Clipkeep" "$app/Contents/MacOS/Clipkeep"
+
+# SQLCipher ships as a dynamic framework that the executable loads through @rpath.
+mkdir -p "$app/Contents/Frameworks"
+cp -R "$bin_dir/SQLCipher.framework" "$app/Contents/Frameworks/"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$app/Contents/MacOS/Clipkeep"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -27,5 +32,5 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$app"
+codesign --force --deep --sign - "$app"
 echo "Built $app"
