@@ -174,6 +174,9 @@ public struct CapturePipeline: Sendable {
         }
         if control.matchesPattern(text) { return .skipped(.ignoredByRule) }
         if detector.containsSecret(in: text) {
+            if control.isPaused || control.pauseGeneration != pauseGeneration {
+                return .skipped(.paused)
+            }
             secretSink?.handle(secret: text, context: source, copiedAt: copiedAt)
             return .skipped(.secret)
         }

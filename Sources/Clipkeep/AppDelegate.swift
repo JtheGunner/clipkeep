@@ -41,7 +41,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         )
                     })
                 // Before capture starts: remove Keychain items left behind by an interrupted park.
-                _ = try parker.reconcile()
+                do {
+                    _ = try parker.reconcile()
+                } catch {
+                    Self.logger.error(
+                        "Reconciling parked secrets failed: \(String(describing: error), privacy: .public)"
+                    )
+                }
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(

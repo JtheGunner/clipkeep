@@ -61,8 +61,14 @@ public struct ContentStore: Sendable {
         }
     }
 
+    /// - Parameters:
+    ///   - kind: replaces the classified kind of a text stored for the first time.
+    ///   - inTransaction: runs in the same transaction after the copy was stored; if it throws,
+    ///     nothing of the copy is kept.
     public func record(
-        text: String, copiedAt: Date = Date(), context: CopyContext = CopyContext()
+        text: String, copiedAt: Date = Date(), context: CopyContext = CopyContext(),
+        kind: ContentKind? = nil,
+        inTransaction: ((Connection, RecordedCopy) throws -> Void)? = nil
     ) throws -> RecordedCopy {
         let hash = ContentHashing.exactHash(text)
         let isKnown = try database.read { connection in
@@ -103,7 +109,7 @@ public struct ContentStore: Sendable {
                     """,
                     [
                         .text(hash), .text(analysis.normalizedHash), .text(text),
-                        .text(analysis.searchText), .text(analysis.kind.rawValue),
+                        .text(analysis.searchText), .text((kind ?? analysis.kind).rawValue),
                         SQLValue(copiedAt), SQLValue(copiedAt),
                         analysis.fingerprint.map { .int(Int64(bitPattern: $0)) } ?? .null,
                     ])
@@ -144,7 +150,9 @@ public struct ContentStore: Sendable {
             }
             try RankingService.refresh(
                 contentID: contentID, in: connection, configuration: ranking, now: copiedAt)
-            return RecordedCopy(contentID: contentID, eventID: eventID, isNewContent: isNew)
+            let recorded = RecordedCopy(contentID: contentID, eventID: eventID, isNewContent: isNew)
+            try inTransaction?(connection, recorded)
+            return recorded
         }
     }
 

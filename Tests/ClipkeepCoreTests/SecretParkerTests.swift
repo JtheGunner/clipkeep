@@ -15,7 +15,10 @@ private final class MemoryVault: SecretVault, @unchecked Sendable {
     func read(key: String) throws -> String? { lock.withLock { items[key] } }
     func delete(key: String) throws { lock.withLock { _ = items.removeValue(forKey: key) } }
     func keys() throws -> [String] { lock.withLock { Array(items.keys) } }
-    var values: [String] { lock.withLock { Array(items.values) } }
+    /// Parked secrets, without the vault entry that holds the fingerprint key.
+    var values: [String] {
+        lock.withLock { items.filter { $0.key != SecretParker.fingerprintKeyName }.map(\.value) }
+    }
 }
 
 private final class ErrorBox: @unchecked Sendable {
@@ -193,20 +196,121 @@ private final class ErrorBox: @unchecked Sendable {
         #expect(try fixture.count("contents") == 0)
     }
 
-    @Test func reconcileRemovesOrphansAndMarksMissingItemsAsLost() throws {
+    @Test func reconcileAdoptsUnknownKeychainItemsInsteadOfDeletingThem() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
         _ = try fixture.pipeline.process(
             PasteboardSnapshot(changeCount: 1, text: secret), source: browser, at: base)
-        try fixture.vault.store("left behind", key: "orphan")
-        #expect(try fixture.parker.reconcile() == (orphansRemoved: 1, lost: 0))
-        #expect(fixture.vault.values == [secret])
+        try fixture.vault.store("left behind by a crash", key: "orphan")
+        #expect(try fixture.parker.reconcile() == (adopted: 1, lost: 0))
+        #expect(fixture.vault.values.count == 2)
+        let pending = try fixture.parker.pending()
+        #expect(pending.count == 2)
+        let adopted = try #require(pending.first { $0.label.hasPrefix("Wiederhergestelltes") })
+        #expect(try fixture.parker.reveal(id: adopted.id) == "left behind by a crash")
+        #expect(try fixture.parker.reconcile() == (adopted: 0, lost: 0))
+    }
 
-        let id = try #require(try fixture.parker.pending().first).id
+    @Test func aFreshDatabaseNeverDestroysExistingKeychainSecrets() throws {
+        let first = try Fixture()
+        defer { first.temp.remove() }
+        _ = try first.pipeline.process(
+            PasteboardSnapshot(changeCount: 1, text: secret), source: browser, at: base)
+        let second = try TemporaryDatabase()
+        defer { second.remove() }
+        let freshDatabase = try second.open()
+        let parker = SecretParker(
+            database: freshDatabase, store: ContentStore(database: freshDatabase),
+            vault: first.vault)
+        _ = try parker.reconcile()
+        #expect(first.vault.values == [secret])
+        let revealed = try parker.reveal(id: try #require(try parker.pending().first).id)
+        #expect(revealed == secret)
+    }
+
+    @Test func reconcileMarksMissingItemsAsLostOrDeleted() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.pipeline.process(
+            PasteboardSnapshot(changeCount: 1, text: secret), source: browser, at: base)
+        _ = try fixture.pipeline.process(
+            PasteboardSnapshot(changeCount: 2, text: "other " + secret), source: browser,
+            at: base.addingTimeInterval(1))
+        let ids = try fixture.parker.pending().map(\.id)
+        try fixture.parker.markTransferred(id: ids[1])
         for key in try fixture.vault.keys() { try fixture.vault.delete(key: key) }
-        #expect(try fixture.parker.reconcile() == (orphansRemoved: 0, lost: 1))
-        #expect(try fixture.parker.secret(id: id)?.state == .lost)
+
+        #expect(try fixture.parker.reconcile() == (adopted: 0, lost: 1))
+        #expect(try fixture.parker.secret(id: ids[0])?.state == .lost)
+        #expect(try fixture.parker.secret(id: ids[1])?.state == .deleted)
         #expect(try fixture.parker.pending().isEmpty)
+    }
+
+    @Test func retentionKeepsPlaceholdersOfLiveSecrets() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.pipeline.process(
+            PasteboardSnapshot(changeCount: 1, text: secret), source: browser, at: base)
+        let far = base.addingTimeInterval(4_000 * 86_400)
+        _ = try RankingService(database: fixture.database).applyRetention(now: far)
+        #expect(try fixture.count("contents") == 1)
+        let parked = try #require(try fixture.parker.pending().first)
+        #expect(parked.contentID != nil)
+    }
+
+    @Test func aRepeatedCopyRelinksThePlaceholderAndMarksItAsSecret() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.pipeline.process(
+            PasteboardSnapshot(changeCount: 1, text: secret), source: browser, at: base)
+        let id = try #require(try fixture.parker.pending().first).id
+        try fixture.database.write { connection in
+            try connection.execute("DELETE FROM contents")
+        }
+        #expect(try fixture.parker.secret(id: id)?.contentID == nil)
+        _ = try fixture.pipeline.process(
+            PasteboardSnapshot(changeCount: 2, text: secret), source: browser,
+            at: base.addingTimeInterval(5))
+        let relinked = try #require(try fixture.parker.secret(id: id))
+        #expect(relinked.contentID != nil)
+        let kinds = try fixture.database.read {
+            try $0.query("SELECT kind FROM contents") { $0.text(0) }
+        }
+        #expect(kinds == ["secret"])
+        #expect(try fixture.count("parked_secrets") == 1)
+    }
+
+    @Test func contextDetailsAreNeverReadForSecrets() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        struct Leaky: ContextDetailProviding {
+            let leak: String
+            func details(for source: CopyContext) -> CopyContext {
+                var result = source
+                result.windowTitle = "export TOKEN=\(leak)"
+                result.url = "https://example.com/\(leak)"
+                return result
+            }
+        }
+        let pipeline = CapturePipeline(
+            store: fixture.store, secretSink: fixture.parker, contextDetails: Leaky(leak: secret))
+        _ = try pipeline.process(
+            PasteboardSnapshot(changeCount: 1, text: secret), source: browser, at: base)
+        let stored = try allStoredText(fixture.database)
+        #expect(stored.allSatisfy { !$0.contains(String(secret.dropFirst(20).prefix(16))) })
+    }
+
+    @Test func aPauseDuringSecretHandlingKeepsTheSecretOutEntirely() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let control = CaptureControl(paused: true)
+        let pipeline = CapturePipeline(
+            store: fixture.store, secretSink: fixture.parker, control: control)
+        #expect(
+            try pipeline.process(PasteboardSnapshot(changeCount: 1, text: secret), source: browser)
+                == .skipped(.paused))
+        #expect(fixture.vault.values.isEmpty)
+        #expect(try fixture.count("parked_secrets") == 0)
     }
 
     @Test func placeholderNamesFallBackToTheAppAndHideNothingElse() {

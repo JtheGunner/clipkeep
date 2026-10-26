@@ -234,6 +234,8 @@ public enum Schema {
             CREATE TABLE parked_secrets (
                 id INTEGER PRIMARY KEY,
                 vault_key TEXT NOT NULL UNIQUE,
+                -- Keyed hash (key lives in the Keychain), only for spotting repeated copies.
+                fingerprint TEXT NOT NULL DEFAULT '',
                 content_id INTEGER REFERENCES contents(id) ON DELETE SET NULL,
                 kind TEXT NOT NULL,
                 label TEXT NOT NULL,
@@ -245,5 +247,6 @@ public enum Schema {
             )
             """,
             "CREATE INDEX parked_secrets_state ON parked_secrets(state)",
+            "CREATE INDEX parked_secrets_fingerprint ON parked_secrets(fingerprint)",
         ])
 }

@@ -85,6 +85,9 @@ public struct RankingService: Sendable {
                     """
                     SELECT id FROM contents
                     WHERE pinned = 0 AND starred = 0 AND deleted_at IS NULL AND last_copied_at < ?
+                        AND id NOT IN (
+                            SELECT content_id FROM parked_secrets
+                            WHERE content_id IS NOT NULL AND state IN ('parked', 'transferred'))
                     LIMIT ?
                     """,
                     [.double(cutoff), .int(Int64(max(batchSize, 1)))]

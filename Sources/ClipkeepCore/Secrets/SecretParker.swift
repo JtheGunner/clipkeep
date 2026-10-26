@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum ParkedSecretState: String, Sendable, Equatable {
@@ -33,7 +34,10 @@ public enum ParkingError: Error, Equatable {
 /// Parks detected secrets in a vault (the Keychain) and leaves only a placeholder in the history.
 /// The database never sees the secret: not in a table, not in the full-text index.
 public struct SecretParker: SecretSink {
-    private static let duplicateCheckLimit = 50
+    /// Serialises parking and reconciling within the process.
+    private static let lock = NSLock()
+    /// Vault entry holding the key of the repeat-copy fingerprints; not a secret to transfer.
+    static let fingerprintKeyName = "fingerprint-key"
 
     private let database: Database
     private let store: ContentStore
@@ -65,58 +69,75 @@ public struct SecretParker: SecretSink {
     }
 
     private func park(_ text: String, context: CopyContext, copiedAt: Date) throws {
-        let kind =
-            detector.detect(in: text).max { $0.confidence < $1.confidence }?.kind
-            ?? .highEntropyToken
-        // Copying the same secret again adds a copy to its placeholder instead of a new entry.
-        if let existing = try parkedDuplicate(of: text, kind: kind) {
-            _ = try store.record(text: existing.label, copiedAt: copiedAt, context: context)
-            return
-        }
+        // Parking and reconciling never overlap, so a Keychain item that is still being
+        // registered is never mistaken for a leftover.
+        try Self.lock.withLock {
+            let kind =
+                detector.detect(in: text).max { $0.confidence < $1.confidence }?.kind
+                ?? .highEntropyToken
+            let fingerprint = try fingerprint(of: text)
 
-        let key = UUID().uuidString
-        let label = Self.label(kind: kind, context: context, copiedAt: copiedAt)
-        try vault.store(text, key: key)
-        var placeholder: RecordedCopy?
-        do {
-            let recorded = try store.record(text: label, copiedAt: copiedAt, context: context)
-            placeholder = recorded
-            try database.write { connection in
-                try connection.execute(
-                    "UPDATE contents SET kind = ? WHERE id = ?",
-                    [.text(ContentKind.secret.rawValue), .int(recorded.contentID)])
-                try connection.execute(
-                    """
-                    INSERT INTO parked_secrets (vault_key, content_id, kind, label, parked_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    [
-                        .text(key), .int(recorded.contentID), .text(kind.rawValue), .text(label),
-                        SQLValue(copiedAt),
-                    ])
-            }
-        } catch {
-            // Nothing may claim "gesichert" without a Keychain item behind it, and no Keychain
-            // item may exist without a row.
-            try? vault.delete(key: key)
-            if let placeholder, placeholder.isNewContent {
-                try? database.write { connection in
+            // Copying the same secret again adds a copy to its placeholder instead of a new entry.
+            if let existing = try parkedSecret(withFingerprint: fingerprint) {
+                _ = try store.record(
+                    text: existing.label, copiedAt: copiedAt, context: context, kind: .secret
+                ) { connection, recorded in
                     try connection.execute(
-                        "DELETE FROM contents WHERE id = ?", [.int(placeholder.contentID)])
+                        "UPDATE parked_secrets SET content_id = ? WHERE id = ?",
+                        [.int(recorded.contentID), .int(existing.id)])
                 }
+                return
             }
-            throw error
+
+            let key = UUID().uuidString
+            let label = Self.label(kind: kind, context: context, copiedAt: copiedAt)
+            try vault.store(text, key: key)
+            do {
+                // Placeholder, copy event and parked row commit together or not at all.
+                _ = try store.record(
+                    text: label, copiedAt: copiedAt, context: context, kind: .secret
+                ) { connection, recorded in
+                    try connection.execute(
+                        """
+                        INSERT INTO parked_secrets
+                            (vault_key, fingerprint, content_id, kind, label, parked_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            .text(key), .text(fingerprint), .int(recorded.contentID),
+                            .text(kind.rawValue), .text(label), SQLValue(copiedAt),
+                        ])
+                }
+            } catch {
+                // No Keychain item without a row; the failed transaction left no placeholder.
+                try? vault.delete(key: key)
+                throw error
+            }
         }
     }
 
-    private func parkedDuplicate(of text: String, kind: SecretKind) throws -> ParkedSecret? {
-        let candidates = try secrets(
-            where: "state = 'parked' AND kind = ?", [.text(kind.rawValue)],
-            limit: Self.duplicateCheckLimit)
-        for candidate in candidates where try vault.read(key: candidate.vaultKey) == text {
-            return candidate
+    private func parkedSecret(withFingerprint fingerprint: String) throws -> ParkedSecret? {
+        try secrets(
+            where: "state = 'parked' AND fingerprint = ?", [.text(fingerprint)], limit: 1
+        ).first
+    }
+
+    /// Keyed hash of the secret. The key stays in the Keychain, so the stored value cannot be
+    /// used to guess the secret offline.
+    private func fingerprint(of text: String) throws -> String {
+        let key = try fingerprintKey()
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(text.utf8), using: key)
+        return mac.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func fingerprintKey() throws -> SymmetricKey {
+        if let stored = try vault.read(key: Self.fingerprintKeyName), let data = Data(hex: stored) {
+            return SymmetricKey(data: data)
         }
-        return nil
+        let fresh = SymmetricKey(size: .bits256)
+        let hex = fresh.withUnsafeBytes { $0.map { String(format: "%02x", $0) }.joined() }
+        try vault.store(hex, key: Self.fingerprintKeyName)
+        return fresh
     }
 
     // MARK: - Reading
@@ -179,28 +200,59 @@ public struct SecretParker: SecretSink {
         return confirmed.count
     }
 
-    /// Brings database and Keychain back in line, for example after a crash between the two
-    /// steps. Removes Keychain items without a row and marks parked rows whose item is gone as
-    /// lost. Run it before capture starts.
+    /// Brings database and Keychain back in line, for example after a crash. Keychain items
+    /// without a row are adopted as pending secrets (they may be the only copy), never deleted.
+    /// Rows whose item is gone become lost, or deleted if the transfer was confirmed. Run it
+    /// before capture starts; a failure for one item does not stop the others.
     @discardableResult
-    public func reconcile() throws -> (orphansRemoved: Int, lost: Int) {
-        let known = try database.read { connection in
-            try connection.query("SELECT vault_key FROM parked_secrets") { $0.text(0) }
-        }
-        let vaultKeys = Set(try vault.keys())
-        let orphans = vaultKeys.subtracting(known)
-        for key in orphans { try vault.delete(key: key) }
-
-        var lost = 0
-        for secret in try secrets(where: "state IN ('parked', 'transferred')", [], limit: 10_000)
-        where !vaultKeys.contains(secret.vaultKey) {
-            try database.write { connection in
-                try connection.execute(
-                    "UPDATE parked_secrets SET state = 'lost' WHERE id = ?", [.int(secret.id)])
+    public func reconcile(now: Date = Date()) throws -> (adopted: Int, lost: Int) {
+        try Self.lock.withLock {
+            let known = Set(
+                try database.read { connection in
+                    try connection.query("SELECT vault_key FROM parked_secrets") { $0.text(0) }
+                })
+            let vaultKeys = Set(try vault.keys())
+            var adopted = 0
+            for key in vaultKeys.subtracting(known) where key != Self.fingerprintKeyName {
+                guard let value = try? vault.read(key: key),
+                    let fingerprint = try? fingerprint(of: value)
+                else { continue }
+                let kind =
+                    detector.detect(in: value).max { $0.confidence < $1.confidence }?.kind
+                    ?? .highEntropyToken
+                let label = "Wiederhergestelltes Secret · \(Self.typeName(kind))"
+                let inserted = try? database.write { connection in
+                    try connection.execute(
+                        """
+                        INSERT INTO parked_secrets (vault_key, fingerprint, kind, label, parked_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        [
+                            .text(key), .text(fingerprint), .text(kind.rawValue), .text(label),
+                            SQLValue(now),
+                        ])
+                }
+                if inserted != nil { adopted += 1 }
             }
-            lost += 1
+
+            var lost = 0
+            for secret in try secrets(
+                where: "state IN ('parked', 'transferred')", [], limit: 10_000)
+            where !vaultKeys.contains(secret.vaultKey) {
+                // A transferred secret whose item is gone was deleted; only a parked one is lost.
+                let state = secret.state == .transferred ? "deleted" : "lost"
+                try database.write { connection in
+                    try connection.execute(
+                        "UPDATE parked_secrets SET state = ?, deleted_at = ? WHERE id = ?",
+                        [
+                            .text(state), state == "deleted" ? SQLValue(now) : .null,
+                            .int(secret.id),
+                        ])
+                }
+                if state == "lost" { lost += 1 }
+            }
+            return (adopted, lost)
         }
-        return (orphans.count, lost)
     }
 
     // MARK: - Helpers
@@ -221,7 +273,7 @@ public struct SecretParker: SecretSink {
                     id: row.int(0), contentID: row.isNull(1) ? nil : row.int(1),
                     kind: SecretKind(rawValue: row.text(2)) ?? .highEntropyToken,
                     label: row.text(3),
-                    state: ParkedSecretState(rawValue: row.text(4)) ?? .parked,
+                    state: ParkedSecretState(rawValue: row.text(4)) ?? .lost,
                     parkedAt: Date(timeIntervalSince1970: row.double(5)),
                     transferredAt: row.isNull(6) ? nil : Date(timeIntervalSince1970: row.double(6)),
                     deletedAt: row.isNull(7) ? nil : Date(timeIntervalSince1970: row.double(7)),
@@ -234,7 +286,7 @@ public struct SecretParker: SecretSink {
     static func label(kind: SecretKind, context: CopyContext, copiedAt: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "de_CH")
-        formatter.dateFormat = "dd.MM.yyyy HH:mm"
+        formatter.dateFormat = "dd.MM.yyyy HH:mm:ss"
         var parts = [typeName(kind)]
         if let url = context.url, let host = SessionService.host(of: url) {
             parts.append(host)
@@ -245,7 +297,7 @@ public struct SecretParker: SecretSink {
         return parts.joined(separator: " · ") + " → gesichert"
     }
 
-    private static func typeName(_ kind: SecretKind) -> String {
+    static func typeName(_ kind: SecretKind) -> String {
         switch kind {
         case .openAIKey: "OpenAI API-Key"
         case .anthropicKey: "Anthropic API-Key"
@@ -260,5 +312,20 @@ public struct SecretParker: SecretSink {
         case .keyValueSecret: "Zugangsdaten"
         case .highEntropyToken: "Geheimer Token"
         }
+    }
+}
+
+extension Data {
+    fileprivate init?(hex: String) {
+        guard hex.count % 2 == 0 else { return nil }
+        var bytes: [UInt8] = []
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self.init(bytes)
     }
 }
