@@ -1,0 +1,779 @@
+import AppKit
+import ClipkeepCore
+import os
+
+// MARK: - Outline nodes
+
+/// Outline items need object identity, so the value types are wrapped.
+private final class DayNode: NSObject {
+    var section: DaySection
+    var sessions: [SessionNode]
+
+    init(_ section: DaySection) {
+        self.section = section
+        sessions = section.sessions.map(SessionNode.init)
+    }
+}
+
+private final class TopicNode: NSObject {
+    let summary: TopicSummary
+    var sessions: [SessionNode]?
+    var isExpanded = false
+
+    init(_ summary: TopicSummary) {
+        self.summary = summary
+    }
+}
+
+private final class SessionNode: NSObject {
+    let summary: SessionSummary
+
+    init(_ summary: SessionSummary) {
+        self.summary = summary
+    }
+}
+
+/// The history window: sessions by day or by topic on the left, the entries of the selection in
+/// the middle, one entry with its context and score explanation below. The search field looks in
+/// whatever is selected, or everywhere when nothing is.
+@MainActor
+final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDataSource,
+    NSOutlineViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate
+{
+    private enum Mode: Int {
+        case days
+        case topics
+    }
+
+    private nonisolated static let logger = Logger(
+        subsystem: AppInfo.bundleIdentifier, category: "history")
+    private static let sessionPageSize = 50
+    private static let topicPageSize = 100
+    private static let entryPageSize = 100
+    private static let searchLimit = 200
+    private static let nearEnd: CGFloat = 300
+
+    private let browser: HistoryBrowser
+    private let search: SearchService
+    private let actions: ItemActions
+    private let copyWriter: OwnCopyWriter
+
+    private let window: NSWindow
+    private let modeControl = NSSegmentedControl(
+        labels: ["Tag", "Themen"], trackingMode: .selectOne, target: nil, action: nil)
+    private let entityMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let searchField = NSSearchField()
+    private let outline = NSOutlineView()
+    private let outlineScroll = NSScrollView()
+    private let headerLabel = NSTextField(wrappingLabelWithString: "")
+    private let table = NSTableView()
+    private let tableScroll = NSScrollView()
+    private let contentView = NSTextView()
+    private let infoView = NSTextView()
+    private let copyButton = NSButton(title: "Kopieren", target: nil, action: nil)
+    private let pinButton = NSButton(title: "Anheften", target: nil, action: nil)
+    private let starButton = NSButton(title: "Markieren", target: nil, action: nil)
+    private let deleteButton = NSButton(title: "Löschen", target: nil, action: nil)
+    private let undoButton = NSButton(title: "Löschen rückgängig", target: nil, action: nil)
+
+    private var mode = Mode.days
+    private var entityChoices: [EntityChoice] = []
+    private var entityFilter: EntityFilter?
+    private var timeline = DayTimeline()
+    private var daysExhausted = false
+    private var dayNodes: [DayNode] = []
+    private var topicNodes: [TopicNode] = []
+    private var topicLimit = HistoryWindowController.topicPageSize
+    private var scope = HistoryScope.all
+    private var rows: [HistoryRow] = []
+    private var entryCursor: SessionEntry?
+    private var entriesExhausted = true
+    private var detail: EntryDetail?
+    private var lastDeletedID: Int64?
+    private var baseHeader = ""
+    private var isLoading = false
+
+    init(
+        browser: HistoryBrowser, search: SearchService, actions: ItemActions,
+        copyWriter: OwnCopyWriter = OwnCopyWriter()
+    ) {
+        self.browser = browser
+        self.search = search
+        self.actions = actions
+        self.copyWriter = copyWriter
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered,
+            defer: true)
+        super.init()
+        buildWindow()
+    }
+
+    // MARK: - Showing
+
+    func show() {
+        searchField.stringValue = ""
+        lastDeletedID = nil
+        reloadEntityMenu()
+        reloadLeft()
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(searchField)
+    }
+
+    // MARK: - Building
+
+    private func buildWindow() {
+        window.title = "Clipkeep – Verlauf"
+        window.minSize = NSSize(width: 800, height: 480)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.setFrameAutosaveName("ClipkeepHistoryWindow")
+
+        modeControl.selectedSegment = 0
+        modeControl.target = self
+        modeControl.action = #selector(modeChanged)
+        entityMenu.target = self
+        entityMenu.action = #selector(entityChanged)
+        searchField.placeholderString = "Suchen (in der Auswahl) …"
+        searchField.delegate = self
+        searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let bar = NSStackView(views: [modeControl, entityMenu, searchField])
+        bar.orientation = .horizontal
+        bar.spacing = 10
+
+        let split = NSSplitView()
+        split.isVertical = true
+        split.dividerStyle = .thin
+        split.addArrangedSubview(buildOutline())
+        split.addArrangedSubview(buildRight())
+        split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
+
+        let content = NSStackView(views: [bar, split])
+        content.orientation = .vertical
+        content.spacing = 10
+        content.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        content.alignment = .leading
+        content.distribution = .fill
+        split.setContentHuggingPriority(.defaultLow, for: .vertical)
+        split.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        split.translatesAutoresizingMaskIntoConstraints = false
+        window.contentView = content
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            bar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            split.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            split.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+        ])
+    }
+
+    private func buildOutline() -> NSView {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("node"))
+        column.resizingMask = .autoresizingMask
+        outline.addTableColumn(column)
+        outline.outlineTableColumn = column
+        outline.headerView = nil
+        outline.dataSource = self
+        outline.delegate = self
+        outline.indentationPerLevel = 12
+        outline.style = .sourceList
+        outlineScroll.documentView = outline
+        outlineScroll.hasVerticalScroller = true
+        outlineScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(outlineScrolled), name: NSView.boundsDidChangeNotification,
+            object: outlineScroll.contentView)
+        outlineScroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
+        return outlineScroll
+    }
+
+    private func buildRight() -> NSView {
+        headerLabel.font = .systemFont(ofSize: 12)
+        headerLabel.textColor = .secondaryLabelColor
+        headerLabel.maximumNumberOfLines = 3
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("entry"))
+        column.resizingMask = .autoresizingMask
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.rowHeight = 40
+        table.dataSource = self
+        table.delegate = self
+        tableScroll.documentView = table
+        tableScroll.hasVerticalScroller = true
+        tableScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(tableScrolled), name: NSView.boundsDidChangeNotification,
+            object: tableScroll.contentView)
+
+        let list = NSStackView(views: [headerLabel, tableScroll])
+        list.orientation = .vertical
+        list.alignment = .leading
+        list.spacing = 6
+        headerLabel.translatesAutoresizingMaskIntoConstraints = false
+        tableScroll.translatesAutoresizingMaskIntoConstraints = false
+        headerLabel.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
+        tableScroll.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
+
+        let split = NSSplitView()
+        split.isVertical = false
+        split.dividerStyle = .thin
+        split.addArrangedSubview(list)
+        split.addArrangedSubview(buildDetail())
+        return split
+    }
+
+    private func buildDetail() -> NSView {
+        for (button, selector) in [
+            (copyButton, #selector(copyClicked)), (pinButton, #selector(pinClicked)),
+            (starButton, #selector(starClicked)), (deleteButton, #selector(deleteClicked)),
+            (undoButton, #selector(undoClicked)),
+        ] {
+            button.target = self
+            button.action = selector
+            button.bezelStyle = .rounded
+        }
+        let buttons = NSStackView(views: [
+            copyButton, pinButton, starButton, deleteButton, undoButton,
+        ])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+
+        let contentScroll = Self.readOnlyScroll(contentView, monospaced: true)
+        let infoScroll = Self.readOnlyScroll(infoView, monospaced: false)
+        infoScroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
+
+        let stack = NSStackView(views: [buttons, contentScroll, infoScroll])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
+        for scroll in [contentScroll, infoScroll] {
+            scroll.translatesAutoresizingMaskIntoConstraints = false
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        showNoDetail()
+        return stack
+    }
+
+    private static func readOnlyScroll(_ view: NSTextView, monospaced: Bool) -> NSScrollView {
+        view.isEditable = false
+        view.isSelectable = true
+        view.drawsBackground = false
+        view.textContainerInset = NSSize(width: 4, height: 6)
+        view.font =
+            monospaced
+            ? .monospacedSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 12)
+        view.textColor = .labelColor
+        view.isVerticallyResizable = true
+        view.isHorizontallyResizable = false
+        view.autoresizingMask = [.width]
+        view.textContainer?.widthTracksTextView = true
+        let scroll = NSScrollView()
+        scroll.documentView = view
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.drawsBackground = false
+        return scroll
+    }
+
+    // MARK: - Left side
+
+    private func reloadEntityMenu() {
+        do {
+            entityChoices = try browser.entityChoices()
+        } catch {
+            Self.logger.error("Entities failed: \(String(describing: error), privacy: .public)")
+            entityChoices = []
+        }
+        let format = HistoryFormat()
+        entityMenu.removeAllItems()
+        entityMenu.addItem(withTitle: "Alle Entitäten")
+        for choice in entityChoices {
+            entityMenu.addItem(withTitle: "\(format.entityTitle(choice.filter)) (\(choice.uses))")
+        }
+        if let current = entityFilter,
+            let index = entityChoices.firstIndex(where: { $0.filter == current })
+        {
+            entityMenu.selectItem(at: index + 1)
+        } else {
+            entityFilter = nil
+            entityMenu.selectItem(at: 0)
+        }
+    }
+
+    /// Starts over with the first page of the current mode.
+    private func reloadLeft() {
+        timeline = DayTimeline()
+        daysExhausted = false
+        topicLimit = Self.topicPageSize
+        dayNodes = []
+        topicNodes = []
+        isLoading = true
+        outline.reloadData()
+        isLoading = false
+        switch mode {
+        case .days: loadMoreDays()
+        case .topics: reloadTopics()
+        }
+        if outline.selectedRow < 0 { selectScope(.all, header: "") }
+        fillLeftIfNeeded()
+    }
+
+    private func loadMoreDays() {
+        guard mode == .days, !daysExhausted, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let page = try browser.sessions(
+                limit: Self.sessionPageSize, after: timeline.last, entity: entityFilter)
+            if page.count < Self.sessionPageSize { daysExhausted = true }
+            let sectionsBefore = timeline.sections.count
+            let lastCountBefore = timeline.sections.last?.sessions.count ?? 0
+            timeline.append(page)
+            // Insert instead of reloading, so selection, scroll position and collapsed days stay.
+            if let node = dayNodes.last, sectionsBefore > 0 {
+                let section = timeline.sections[sectionsBefore - 1]
+                if section.sessions.count > lastCountBefore {
+                    let start = node.sessions.count
+                    node.section = section
+                    node.sessions += section.sessions[lastCountBefore...].map(SessionNode.init)
+                    outline.insertItems(
+                        at: IndexSet(start..<node.sessions.count), inParent: node,
+                        withAnimation: [])
+                }
+            }
+            let added = timeline.sections[sectionsBefore...].map(DayNode.init)
+            if !added.isEmpty {
+                let start = dayNodes.count
+                dayNodes += added
+                outline.insertItems(
+                    at: IndexSet(start..<dayNodes.count), inParent: nil, withAnimation: [])
+                for node in added { outline.expandItem(node) }
+            }
+        } catch {
+            daysExhausted = true
+            Self.logger.error("Days failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func reloadTopics() {
+        do {
+            let known = Dictionary(uniqueKeysWithValues: topicNodes.map { ($0.summary.id, $0) })
+            let topics = try browser.topics(limit: topicLimit, entity: entityFilter)
+            topicNodes = topics.map { summary in
+                guard let node = known[summary.id], node.summary == summary else {
+                    return TopicNode(summary)
+                }
+                return node
+            }
+            outline.reloadData()
+            for node in topicNodes where node.isExpanded { outline.expandItem(node) }
+        } catch {
+            Self.logger.error("Topics failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func loadMoreTopics() {
+        guard mode == .topics, topicNodes.count >= topicLimit, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        topicLimit += Self.topicPageSize
+        reloadTopics()
+    }
+
+    private func loadMoreLeft() {
+        switch mode {
+        case .days: loadMoreDays()
+        case .topics: loadMoreTopics()
+        }
+    }
+
+    /// A short list may not scroll at all, so nothing would ask for the next page.
+    private func fillLeftIfNeeded() {
+        var rounds = 0
+        while rounds < 20, isNearEnd(outlineScroll), canLoadMoreLeft {
+            let before = outline.numberOfRows
+            loadMoreLeft()
+            if outline.numberOfRows == before { break }
+            rounds += 1
+        }
+    }
+
+    private var canLoadMoreLeft: Bool {
+        switch mode {
+        case .days: !daysExhausted
+        case .topics: topicNodes.count >= topicLimit
+        }
+    }
+
+    private func isNearEnd(_ scroll: NSScrollView) -> Bool {
+        guard let document = scroll.documentView else { return false }
+        return scroll.contentView.bounds.maxY > document.frame.height - Self.nearEnd
+    }
+
+    @objc private func outlineScrolled() {
+        if isNearEnd(outlineScroll) { loadMoreLeft() }
+    }
+
+    @objc private func modeChanged() {
+        mode = Mode(rawValue: modeControl.selectedSegment) ?? .days
+        selectScope(.all, header: "")
+        reloadLeft()
+    }
+
+    @objc private func entityChanged() {
+        let index = entityMenu.indexOfSelectedItem
+        entityFilter = index > 0 ? entityChoices[index - 1].filter : nil
+        selectScope(.all, header: "")
+        reloadLeft()
+    }
+
+    private var selectedSessionID: Int64? {
+        (outline.item(atRow: outline.selectedRow) as? SessionNode)?.summary.id
+    }
+
+    private func restoreSelection(sessionID: Int64?) {
+        guard let sessionID else { return }
+        for row in 0..<outline.numberOfRows {
+            if (outline.item(atRow: row) as? SessionNode)?.summary.id == sessionID {
+                outline.selectRowIndexes([row], byExtendingSelection: false)
+                return
+            }
+        }
+    }
+
+    // MARK: - Outline data
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        switch item {
+        case nil: mode == .days ? dayNodes.count : topicNodes.count
+        case let day as DayNode: day.sessions.count
+        case let topic as TopicNode: sessions(of: topic).count
+        default: 0
+        }
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        switch item {
+        case nil: mode == .days ? dayNodes[index] : topicNodes[index]
+        case let day as DayNode: day.sessions[index]
+        case let topic as TopicNode: sessions(of: topic)[index]
+        default: fatalError("Session rows have no children")
+        }
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        item is DayNode || item is TopicNode
+    }
+
+    private func sessions(of topic: TopicNode) -> [SessionNode] {
+        if let loaded = topic.sessions { return loaded }
+        do {
+            let kept = try browser.sessions(inTopic: topic.summary.id, entity: entityFilter)
+            topic.sessions = kept.map(SessionNode.init)
+        } catch {
+            Self.logger.error(
+                "Topic sessions failed: \(String(describing: error), privacy: .public)")
+            topic.sessions = []
+        }
+        return topic.sessions ?? []
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        item is DayNode ? 26 : 42
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any)
+        -> NSView?
+    {
+        let format = HistoryFormat()
+        switch item {
+        case let day as DayNode:
+            let title = NSTextField(labelWithString: format.dayTitle(day.section.day))
+            title.font = .boldSystemFont(ofSize: 13)
+            return title
+        case let session as SessionNode:
+            return Self.twoLines(
+                format.sessionTitle(session.summary), format.sessionSubtitle(session.summary))
+        case let topic as TopicNode:
+            return Self.twoLines(
+                topic.summary.label, format.topicSubtitle(topic.summary), titleWeight: .semibold)
+        default: return nil
+        }
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        (notification.userInfo?["NSObject"] as? TopicNode)?.isExpanded = true
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        (notification.userInfo?["NSObject"] as? TopicNode)?.isExpanded = false
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        let format = HistoryFormat()
+        switch outline.item(atRow: outline.selectedRow) {
+        case let day as DayNode:
+            let count = day.sessions.count
+            selectScope(
+                .day(day.section.day),
+                header: "\(format.dayTitle(day.section.day)) · "
+                    + (count == 1 ? "1 Session" : "\(count) Sessions"))
+        case let session as SessionNode:
+            selectScope(.session(session.summary.id), header: sessionHeader(session.summary))
+        case let topic as TopicNode:
+            let words = topic.summary.keywords.joined(separator: ", ")
+            selectScope(
+                .topic(topic.summary.id),
+                header: "\(topic.summary.label) · \(format.topicSubtitle(topic.summary))"
+                    + (words.isEmpty ? "" : "\nBegriffe: \(words)"))
+        default: selectScope(.all, header: "")
+        }
+    }
+
+    private func sessionHeader(_ session: SessionSummary) -> String {
+        let format = HistoryFormat()
+        var header = "\(format.dateTime(session.startedAt)) · \(session.explanation)"
+        do {
+            if let topic = try browser.topicInfo(ofSession: session.id) {
+                header += "\nThema: \(topic.label) – \(topic.reason)"
+                if topic.isLocked { header += " (von Hand zugeordnet)" }
+            }
+        } catch {
+            Self.logger.error("Topic info failed: \(String(describing: error), privacy: .public)")
+        }
+        return header
+    }
+
+    // MARK: - Entries
+
+    private func selectScope(_ newScope: HistoryScope, header: String) {
+        scope = newScope
+        baseHeader = header
+        reloadRows()
+    }
+
+    private var query: String {
+        searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func reloadRows() {
+        let format = HistoryFormat()
+        entryCursor = nil
+        entriesExhausted = true
+        var note = ""
+        do {
+            if query.isEmpty, case .session(let id) = scope {
+                let page = try browser.entries(inSession: id, limit: Self.entryPageSize)
+                rows = page.map { HistoryRow(entry: $0, format: format) }
+                entryCursor = page.last
+                entriesExhausted = page.count < Self.entryPageSize
+            } else {
+                let hits = try search.search(
+                    query, filter: scope.filter(limit: Self.searchLimit))
+                rows = hits.map { HistoryRow(hit: $0, format: format) }
+                if hits.count == Self.searchLimit {
+                    note = "Zeigt die ersten \(Self.searchLimit) Treffer – Suche eingrenzen."
+                }
+            }
+        } catch {
+            Self.logger.error("Entries failed: \(String(describing: error), privacy: .public)")
+            rows = []
+        }
+        headerLabel.stringValue = [baseHeader, note].filter { !$0.isEmpty }.joined(separator: "\n")
+        table.deselectAll(nil)
+        table.reloadData()
+        tableScroll.contentView.scroll(to: .zero)
+        showNoDetail()
+    }
+
+    private func loadMoreEntries() {
+        guard !entriesExhausted, !isLoading, query.isEmpty, case .session(let id) = scope else {
+            return
+        }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let page = try browser.entries(
+                inSession: id, limit: Self.entryPageSize, after: entryCursor)
+            let format = HistoryFormat()
+            entriesExhausted = page.count < Self.entryPageSize
+            guard let last = page.last else { return }
+            entryCursor = last
+            let selected = table.selectedRow
+            rows += page.map { HistoryRow(entry: $0, format: format) }
+            table.reloadData()
+            if selected >= 0 { table.selectRowIndexes([selected], byExtendingSelection: false) }
+        } catch {
+            entriesExhausted = true
+            Self.logger.error("More entries failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    @objc private func tableScrolled() {
+        if isNearEnd(tableScroll) { loadMoreEntries() }
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        reloadRows()
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
+        -> NSView?
+    {
+        Self.twoLines(rows[row].title, rows[row].subtitle)
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let index = table.selectedRow
+        guard rows.indices.contains(index) else {
+            showNoDetail()
+            return
+        }
+        showDetail(contentID: rows[index].contentID)
+    }
+
+    private static func twoLines(
+        _ title: String, _ subtitle: String, titleWeight: NSFont.Weight = .regular
+    ) -> NSView {
+        let first = NSTextField(labelWithString: title)
+        first.font = .systemFont(ofSize: 13, weight: titleWeight)
+        first.lineBreakMode = .byTruncatingTail
+        let second = NSTextField(labelWithString: subtitle)
+        second.font = .systemFont(ofSize: 11)
+        second.textColor = .secondaryLabelColor
+        second.lineBreakMode = .byTruncatingTail
+        let stack = NSStackView(views: [first, second])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 1
+        stack.edgeInsets = NSEdgeInsets(top: 3, left: 4, bottom: 3, right: 4)
+        return stack
+    }
+
+    // MARK: - Detail
+
+    private func showNoDetail() {
+        detail = nil
+        contentView.string = rows.isEmpty ? "Keine Einträge." : "Eintrag auswählen."
+        infoView.string = ""
+        updateButtons()
+    }
+
+    private func showDetail(contentID: Int64) {
+        lastDeletedID = nil
+        do {
+            guard let loaded = try browser.detail(contentID: contentID) else {
+                showNoDetail()
+                return
+            }
+            detail = loaded
+            contentView.string = loaded.text
+            infoView.string = info(for: loaded).joined(separator: "\n")
+        } catch {
+            Self.logger.error("Detail failed: \(String(describing: error), privacy: .public)")
+            showNoDetail()
+            return
+        }
+        updateButtons()
+    }
+
+    private func info(for entry: EntryDetail) -> [String] {
+        let format = HistoryFormat()
+        var lines = ["\(entry.occurrenceCount)× kopiert"]
+        if entry.kind == ContentKind.secret.rawValue {
+            lines.append("Gesichertes Secret: der Wert liegt im Schlüsselbund, nicht hier.")
+        }
+        for occurrence in entry.occurrences {
+            let place = [occurrence.appName, occurrence.windowTitle, occurrence.url]
+                .compactMap { $0 }.joined(separator: " · ")
+            lines.append(
+                "• \(format.dateTime(occurrence.copiedAt))" + (place.isEmpty ? "" : " · \(place)"))
+        }
+        if entry.occurrenceCount > entry.occurrences.count {
+            lines.append("• … und \(entry.occurrenceCount - entry.occurrences.count) ältere")
+        }
+        if !entry.entities.isEmpty {
+            lines.append(
+                "Erkannt: "
+                    + entry.entities.map { "\(HistoryFormat.entityKindName($0.kind)) \($0.value)" }
+                    .joined(separator: ", "))
+        }
+        if let score = entry.score {
+            lines.append("")
+            lines.append("Warum so wichtig:")
+            lines += format.scoreLines(score).map { "  \($0)" }
+        }
+        return lines
+    }
+
+    private func updateButtons() {
+        let isSecret = detail?.kind == ContentKind.secret.rawValue
+        copyButton.isEnabled = detail != nil && !isSecret
+        pinButton.isEnabled = detail != nil
+        starButton.isEnabled = detail != nil
+        deleteButton.isEnabled = detail != nil
+        pinButton.title = detail?.isPinned == true ? "Lösen" : "Anheften"
+        starButton.title = detail?.isStarred == true ? "Markierung entfernen" : "Markieren"
+        undoButton.isHidden = lastDeletedID == nil
+    }
+
+    @objc private func copyClicked() {
+        guard let detail else { return }
+        copyWriter.copy(detail.text)
+    }
+
+    @objc private func pinClicked() {
+        guard let detail else { return }
+        let pinned = !detail.isPinned
+        guard run({ try actions.setPinned(pinned, contentID: detail.contentID) }) else { return }
+        refreshRow(isPinned: pinned, isStarred: detail.isStarred)
+    }
+
+    @objc private func starClicked() {
+        guard let detail else { return }
+        let starred = !detail.isStarred
+        guard run({ try actions.setStarred(starred, contentID: detail.contentID) }) else { return }
+        refreshRow(isPinned: detail.isPinned, isStarred: starred)
+    }
+
+    @objc private func deleteClicked() {
+        guard let detail, run({ try actions.delete(contentID: detail.contentID) }) else { return }
+        if let index = rows.firstIndex(where: { $0.contentID == detail.contentID }) {
+            rows.remove(at: index)
+            table.deselectAll(nil)
+            table.removeRows(at: [index], withAnimation: [])
+        }
+        showNoDetail()
+        lastDeletedID = detail.contentID
+        updateButtons()
+    }
+
+    @objc private func undoClicked() {
+        guard let id = lastDeletedID, run({ try actions.restore(contentID: id) }) else { return }
+        lastDeletedID = nil
+        reloadRows()
+    }
+
+    private func run(_ action: () throws -> Bool) -> Bool {
+        do {
+            return try action()
+        } catch {
+            Self.logger.error("Action failed: \(String(describing: error), privacy: .public)")
+            return false
+        }
+    }
+
+    /// Updates the selected row and the detail in place, so the list keeps its place.
+    private func refreshRow(isPinned: Bool, isStarred: Bool) {
+        let index = table.selectedRow
+        guard rows.indices.contains(index) else { return }
+        rows[index] = rows[index].with(isPinned: isPinned, isStarred: isStarred)
+        table.reloadData(forRowIndexes: [index], columnIndexes: [0])
+        showDetail(contentID: rows[index].contentID)
+    }
+}

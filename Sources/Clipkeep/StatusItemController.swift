@@ -24,6 +24,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenMessageItem = NSMenuItem()
     private let paletteItem = NSMenuItem()
     private var palette: PaletteController?
+    private let historyItem = NSMenuItem()
+    private var history: HistoryWindowController?
     private let exceptionsItem = NSMenuItem()
     private var secrets: SecretParker?
     private var control: CaptureControl?
@@ -49,6 +51,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         paletteItem.action = #selector(openPalette)
         paletteItem.isEnabled = false
         menu.addItem(paletteItem)
+
+        historyItem.title = "Verlauf öffnen …"
+        historyItem.target = self
+        historyItem.action = #selector(openHistory)
+        historyItem.isEnabled = false
+        menu.addItem(historyItem)
         pauseItem.target = self
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
@@ -168,6 +176,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hotKeyRegistered
             ? "Suchpalette öffnen (⌃⌥V)" : "Suchpalette öffnen (Kurzbefehl ⌃⌥V ist belegt)"
         paletteItem.isEnabled = true
+    }
+
+    func attach(history: HistoryWindowController) {
+        self.history = history
+        historyItem.isEnabled = true
+    }
+
+    @objc private func openHistory() {
+        DispatchQueue.main.async { [history] in history?.show() }
     }
 
     @objc private func openPalette() {

@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watcher: ClipboardWatcher?
     private var bitwarden: BitwardenSync?
     private var palette: PaletteController?
+    private var history: HistoryWindowController?
     private var paletteHotKey: GlobalHotKey?
     private let systemContext = SystemContext()
     private let secretNotifier = SecretNotifier()
@@ -89,7 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 watcher.start()
                 await self?.captureStarted(
                     watcher, control: control, bitwarden: bitwarden, secrets: parker,
-                    search: PaletteSearch(database: database))
+                    search: PaletteSearch(database: database),
+                    history: HistoryWindowController(
+                        browser: HistoryBrowser(database: database),
+                        search: SearchService(database: database),
+                        actions: ItemActions(database: database)))
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -111,13 +116,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func captureStarted(
         _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync,
-        secrets: SecretParker, search: PaletteSearch
+        secrets: SecretParker, search: PaletteSearch,
+        history: HistoryWindowController
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
         statusItemController?.attach(bitwarden: bitwarden)
         statusItemController?.attach(secrets: secrets)
+        self.history = history
+        statusItemController?.attach(history: history)
         let palette = PaletteController(search: search)
         self.palette = palette
         // Control + Option + V.
