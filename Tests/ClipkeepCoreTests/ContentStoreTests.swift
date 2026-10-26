@@ -125,7 +125,7 @@ import Testing
             }
         }
         #expect(kinds == ["url"])
-        #expect(entities == ["domain:github.com", "repo:github.com/groue/GRDB.swift"])
+        #expect(entities == ["domain:github.com", "repo:github.com/groue/grdb.swift"])
     }
 
     @Test func recopyingDoesNotDuplicateEntities() throws {

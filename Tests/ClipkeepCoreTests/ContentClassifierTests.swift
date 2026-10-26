@@ -110,3 +110,84 @@ import Testing
             ContentClassifier.classify("Exception in thread \"main\" X\n" + frames) == .stacktrace)
     }
 }
+
+@Suite struct ContentClassifierReviewTests {
+    @Test func germanAndMixedLanguageSamplesLandInTheRightKind() {
+        #expect(ContentClassifier.classify("Bitte die Rechnung bis Freitag überweisen.") == .text)
+        #expect(
+            ContentClassifier.classify(
+                "Einkaufsliste:\n- Milch (2 Liter)\n- Brot (Vollkorn)\n- Käse (Gruyère)")
+                == .text)
+        #expect(
+            ContentClassifier.classify("Meeting notes (draft)\nAgenda (v2)\nOutcome (tbd)") == .text
+        )
+        #expect(
+            ContentClassifier.classify("Das Ticket CLIPK-12 ist erledigt, please review.") == .text)
+        #expect(ContentClassifier.classify("1'234.50") == .number)
+        #expect(ContentClassifier.classify("hans.müller@beispiel.ch") == .email)
+        #expect(ContentClassifier.classify("~/Dokumente/Büro/Rechnung März.pdf") == .path)
+        #expect(
+            ContentClassifier.classify("git commit -m \"Fehler beim Speichern behoben\"")
+                == .command)
+    }
+
+    @Test func proseStartingWithACommandWordIsText() {
+        for sentence in [
+            "go to the store and buy milk", "find out what happened", "make sure it works",
+            "make the call tomorrow, ok?", "cat is cute", "go ahead", "ls of files attached",
+            "echo of the past",
+        ] {
+            #expect(ContentClassifier.classify(sentence) == .text, "\(sentence)")
+        }
+    }
+
+    @Test func realCommandsAreRecognizedIncludingPrefixesAndScripts() {
+        for command in [
+            "FOO=bar npm run build", "LANG=C sort file.txt | uniq -c", "user@host:~$ ls -la",
+            "apt install jq", "make", "cd ~/Projects", "find . -name '*.swift'", "go test ./...",
+            "echo $PATH", "cat file.txt | grep error", "ls -la /tmp",
+            "#!/bin/bash\nset -e\nfor f in *.txt; do echo \"$f\"; done",
+        ] {
+            #expect(ContentClassifier.classify(command) == .command, "\(command)")
+        }
+    }
+
+    @Test func agendaNotesAreNotStackTraces() {
+        #expect(ContentClassifier.classify("Agenda\nat 10:00 standup\nat 14:00 review") == .text)
+        #expect(
+            ContentClassifier.classify("at the moment (we think: maybe)\nat home (now: yes)")
+                == .text)
+    }
+
+    @Test func realStackFramesAreRecognized() {
+        let node =
+            "Error: boom\n    at Object.<anonymous> (/app/index.js:3:9)\n    at Module._compile (node:internal/modules/cjs/loader:1:1)"
+        let nodeBare = "Error\n    at /app/server.js:10:5\n    at /app/server.js:20:7"
+
+        #expect(ContentClassifier.classify(node) == .stacktrace)
+        #expect(ContentClassifier.classify(nodeBare) == .stacktrace)
+    }
+
+    @Test func versionsAndAddressesAreNotNumbers() {
+        for sample in ["127.0.0.1", "1.2.3", "+41 79 123 45 67", "1,2,3", "10.0.0.5:8080"] {
+            #expect(ContentClassifier.classify(sample) != .number, "\(sample)")
+        }
+        for sample in ["1234", "1,234,567.50", "1'234'567", "-0.5", "3,14"] {
+            #expect(ContentClassifier.classify(sample) == .number, "\(sample)")
+        }
+    }
+
+    @Test func eachItemIsClassifiedWithinFiveMilliseconds() {
+        let samples = [
+            String(repeating: "Lorem ipsum dolor sit amet, consectetur.\n", count: 800),
+            String(repeating: "func f() { return 1; }\n", count: 800),
+            String(repeating: "    at com.example.App.run(App.java:42)\n", count: 800),
+        ]
+        let started = Date()
+
+        for sample in samples { _ = ContentClassifier.classify(sample) }
+
+        let perItem = Date().timeIntervalSince(started) / Double(samples.count)
+        #expect(perItem < 0.005, "took \(perItem * 1000) ms per item")
+    }
+}
