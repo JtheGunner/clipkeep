@@ -82,6 +82,31 @@ import Testing
 
         _ = ContentClassifier.classify(text)
 
-        #expect(Date().timeIntervalSince(started) < 1)
+        #expect(Date().timeIntervalSince(started) < 0.1)
+    }
+
+    @Test func longLinesDoNotCauseQuadraticBacktracking() {
+        let started = Date()
+
+        for prefix in ["at ", "  File \"", "#1 0x"] {
+            _ = ContentClassifier.classify(prefix + String(repeating: "a", count: 30_000))
+            _ = ContentClassifier.classify(
+                "x\n" + prefix + String(repeating: "a b", count: 10_000))
+        }
+
+        #expect(Date().timeIntervalSince(started) < 0.5)
+    }
+
+    @Test func oversizedPastesAreTreatedAsText() {
+        let json = "[" + String(repeating: "1,", count: 600_000) + "1]"
+
+        #expect(ContentClassifier.classify(json) == .text)
+    }
+
+    @Test func aTraceBeyondTheSampleStillCountsByItsStart() {
+        let frames = String(repeating: "    at com.example.App.run(App.java:42)\n", count: 2_000)
+
+        #expect(
+            ContentClassifier.classify("Exception in thread \"main\" X\n" + frames) == .stacktrace)
     }
 }

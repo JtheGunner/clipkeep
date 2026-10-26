@@ -18,7 +18,7 @@ public enum ContentClassifier {
     private static let url = regex(#"^(?:https?://|ftp://|mailto:|www\.)\S+$"#)
     private static let windowsPath = regex(#"^[A-Za-z]:\\"#)
     private static let stackFrames = [
-        regex(#"^\s*at\s+\S+.*[(:]"#),  // Java, JavaScript
+        regex(#"^\s*at\s+\S[^\n(:]*[(:]"#),  // Java, JavaScript; the class excludes the terminator, so no backtracking
         regex(#"^\s*File ".+", line \d+"#),  // Python
         regex(#"^\s*#\d+\s+0x[0-9a-fA-F]+"#),  // native backtraces
         regex(#"^\s*\d+\s+\S+\s+0x[0-9a-fA-F]+\s"#),  // Apple crash logs
@@ -30,9 +30,17 @@ public enum ContentClassifier {
         #"\b(?:func|function|def|class|struct|enum|interface|import|return|const|let|var|public|private|namespace|use|fn|impl)\b|=>|->|::|<\?php|</?[a-z][a-z0-9]*[ >]"#
     )
 
+    /// Pastes beyond this size are plain text: classifying them costs time inside the capture path
+    /// and no rule here is meant for megabyte-sized content.
+    static let maximumClassifiedBytes = 1_048_576
+    /// Line-based rules look at the start of the text only.
+    static let sampleCharacters = 32 * 1024
+    /// Real stack frames are short; longer lines are skipped by the frame rules.
+    static let maximumFrameLineLength = 2_000
+
     public static func classify(_ text: String) -> ContentKind {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return .text }
+        guard !trimmed.isEmpty, trimmed.utf8.count <= maximumClassifiedBytes else { return .text }
         let isSingleLine = !trimmed.contains(where: \.isNewline)
 
         if isSingleLine {
@@ -42,9 +50,10 @@ public enum ContentClassifier {
             if isPath(trimmed) { return .path }
         }
         if isJSON(trimmed) { return .json }
-        if isStackTrace(trimmed) { return .stacktrace }
-        if isCommand(trimmed) { return .command }
-        if isCode(trimmed, isSingleLine: isSingleLine) { return .code }
+        let sample = String(trimmed.prefix(sampleCharacters))
+        if isStackTrace(sample) { return .stacktrace }
+        if isCommand(sample) { return .command }
+        if isCode(sample, isSingleLine: isSingleLine) { return .code }
         return .text
     }
 
@@ -67,7 +76,7 @@ public enum ContentClassifier {
     private static func isStackTrace(_ text: String) -> Bool {
         let lines = text.split(whereSeparator: \.isNewline).map(String.init)
         let frames = lines.filter { line in
-            stackFrames.contains { matches($0, line) }
+            line.count <= maximumFrameLineLength && stackFrames.contains { matches($0, line) }
         }
         if frames.count >= 2 { return true }
         return matches(stackHeaders, text) && lines.count >= 2
