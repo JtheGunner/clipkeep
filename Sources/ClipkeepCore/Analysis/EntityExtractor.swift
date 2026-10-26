@@ -27,7 +27,8 @@ public enum EntityExtractor {
     static let analysedBytes = 64 * 1024
     static let maximumEntities = 50
 
-    private static let urlPattern = regex(#"[A-Za-z][A-Za-z0-9+.\-]*://[^\s<>"'`)\]]+"#)
+    private static let urlPattern = regex(
+        #"(?<![A-Za-z0-9+.\-])[A-Za-z][A-Za-z0-9+.\-]{0,31}://[^\s<>"'`)\]]+"#)
     private static let emailPattern = regex(
         #"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]{1,64}@([A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,})(?![A-Za-z0-9:])"#
     )

@@ -174,3 +174,29 @@ import Testing
         #expect(Date().timeIntervalSince(started) < 0.5)
     }
 }
+
+@Suite struct ExtractorAdversarialInputTests {
+    @Test func longRunsBeforeASchemeStayFast() {
+        let inputs = [
+            String(repeating: "a", count: 60_000),
+            String(repeating: "a.", count: 30_000),
+            String(repeating: "a+", count: 30_000) + "://",
+            String(repeating: "http", count: 15_000),
+        ]
+        let started = Date()
+
+        for input in inputs { _ = EntityExtractor.extract(from: input) }
+
+        #expect(Date().timeIntervalSince(started) < 1)
+    }
+
+    @Test func schemesStillMatchAfterPunctuation() {
+        let entities = EntityExtractor.extract(
+            from: "see (https://example.com/x) and ftp://files.example.org/a")
+
+        #expect(
+            entities.filter { $0.kind == .domain }.map(\.value) == [
+                "example.com", "files.example.org",
+            ])
+    }
+}

@@ -111,6 +111,12 @@ import Testing
     }
 }
 
+private func threadCPUSeconds() -> Double {
+    var time = timespec()
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time)
+    return Double(time.tv_sec) + Double(time.tv_nsec) / 1e9
+}
+
 @Suite struct ContentClassifierReviewTests {
     @Test func germanAndMixedLanguageSamplesLandInTheRightKind() {
         #expect(ContentClassifier.classify("Bitte die Rechnung bis Freitag überweisen.") == .text)
@@ -183,15 +189,45 @@ import Testing
             String(repeating: "func f() { return 1; }\n", count: 800),
             String(repeating: "    at com.example.App.run(App.java:42)\n", count: 800),
         ]
-        // The first call compiles the static regexes, so warm up, then take the best of three runs.
+        // The first call compiles the static regexes, so warm up. CPU time of this thread is used
+        // because other tests run in parallel and wall-clock time would include their load.
         for sample in samples { _ = ContentClassifier.classify(sample) }
 
         let perItem =
             (0..<3).map { _ -> Double in
-                let started = Date()
+                let started = threadCPUSeconds()
                 for sample in samples { _ = ContentClassifier.classify(sample) }
-                return Date().timeIntervalSince(started) / Double(samples.count)
+                return (threadCPUSeconds() - started) / Double(samples.count)
             }.min() ?? .infinity
-        #expect(perItem < 0.005, "took \(perItem * 1000) ms per item")
+        // The 5 ms target is for release builds; unoptimized test builds run several times slower.
+        #if DEBUG
+            let limit = 0.025
+        #else
+            let limit = 0.005
+        #endif
+        #expect(perItem < limit, "took \(perItem * 1000) ms per item")
+    }
+}
+
+@Suite struct ClassifierAdversarialInputTests {
+    @Test func hostileLinesStayFast() {
+        let inputs = [
+            String(repeating: "@", count: 30_000),
+            "a@" + String(repeating: ":", count: 30_000),
+            String(repeating: "a@b:", count: 8_000),
+            "import " + String(repeating: " ", count: 30_000) + "x",
+            "import " + String(repeating: "a ", count: 15_000),
+            String(repeating: "return ", count: 5_000),
+            "FOO=" + String(repeating: "a=b ", count: 8_000),
+            String(repeating: "$ ", count: 15_000),
+        ]
+        let started = Date()
+
+        for input in inputs {
+            _ = ContentClassifier.classify(input)
+            _ = ContentClassifier.classify("x\n" + input + "\ny")
+        }
+
+        #expect(Date().timeIntervalSince(started) < 1)
     }
 }

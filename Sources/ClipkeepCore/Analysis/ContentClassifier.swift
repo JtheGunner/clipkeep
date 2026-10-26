@@ -29,7 +29,8 @@ public enum ContentClassifier {
     private static let url = regex(#"^(?:https?://|ftp://|mailto:|www\.)\S+$"#)
     private static let windowsPath = regex(#"^[A-Za-z]:\\"#)
     private static let envAssignments = regex(#"^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+"#)
-    private static let promptPrefix = regex(#"^(?:\S+@\S+:\S*[$#%]|[$%])\s+"#)
+    private static let promptPrefix = regex(
+        #"^(?:[^\s@]{1,64}@[^\s:]{1,255}:[^\s$#%]{0,1024}[$#%]|[$%])\s+"#)
     private static let shellSignal = regex(#"(?:\s-{1,2}[A-Za-z]|[|&;<>$~=]|\./|\s/|^\S+$)"#)
     private static let stackFrames = [
         // Java and JavaScript frames name a dotted or slashed symbol and a location; the segment
@@ -45,7 +46,7 @@ public enum ContentClassifier {
         #"(?m)^(?:Traceback \(most recent call last\):|Exception in thread|Fatal error:|Uncaught \w*(?:Error|Exception)|PHP (?:Fatal|Warning))"#
     )
     private static let codeSignals = regex(
-        #"\b(?:func|function|def|fn)\s+\w*\s*\(|\b(?:class|struct|enum|interface|impl|namespace)\s+\w+\s*(?:[{:(<]|extends|implements|$)|\b(?:const|let|var)\s+\w+\s*[=:]|^\s*import\s+[\w.{}*, ]+(?:\s+from\s|;|$)|\breturn\b[^\n]*;|=>|::|<\?php|</?[a-z][a-z0-9]*[ >]"#
+        #"\b(?:func|function|def|fn)\s+\w*\s*\(|\b(?:class|struct|enum|interface|impl|namespace)\s+\w+\s*(?:[{:(<]|extends|implements|$)|\b(?:const|let|var)\s+\w+\s*[=:]|^\s*import\s+[\w.{}*,]{1,200}(?:\s+from\s|;|$)|\breturn\b[^\n]*;|=>|::|<\?php|</?[a-z][a-z0-9]*[ >]"#
     )
 
     /// Pastes beyond this size are plain text: classifying them costs time inside the capture path
@@ -56,7 +57,9 @@ public enum ContentClassifier {
     /// Real stack frames are short; longer lines are skipped by the frame rules.
     static let maximumFrameLineLength = 500
     /// Line-based rules inspect at most this many lines; the start of a text shows what it is.
-    static let maximumInspectedLines = 120
+    static let maximumInspectedLines = 60
+    /// Each inspected line is cut to this length, which bounds every per-line regex.
+    static let maximumInspectedLineLength = 500
 
     public static func classify(_ text: String) -> ContentKind {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -131,7 +134,9 @@ public enum ContentClassifier {
     }
 
     private static func inspectedLines(of text: String) -> [String] {
-        text.split(whereSeparator: \.isNewline).prefix(maximumInspectedLines).map(String.init)
+        text.split(whereSeparator: \.isNewline).prefix(maximumInspectedLines).map {
+            String($0.prefix(maximumInspectedLineLength))
+        }
     }
 
     private static func replacing(_ regex: NSRegularExpression, in text: String) -> String {
