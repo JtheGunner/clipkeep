@@ -14,8 +14,9 @@ public enum BrowserCatalog {
 
     public static func isBrowser(_ bundleID: String) -> Bool { bundleIDs.contains(bundleID) }
 
-    /// AppleScript that returns the address of the front tab, or an empty string. Private
-    /// windows of Chromium browsers are not read. The script ends quickly when the browser hangs.
+    /// AppleScript that returns the address of the front tab, or an empty string. Chromium browsers are only read when the window is
+    /// known to be normal (private or unknown windows are not). Safari offers no way to tell a
+    /// private window apart, so its addresses are read regardless. The script ends quickly when the browser hangs.
     public static func script(forBundleID bundleID: String) -> String? {
         if safari.contains(bundleID) {
             return """
@@ -32,11 +33,11 @@ public enum BrowserCatalog {
             with timeout of 1 seconds
                 tell application id "\(bundleID)"
                     if (count of windows) is 0 then return ""
-                    set windowMode to ""
+                    set windowMode to "unknown"
                     try
                         set windowMode to mode of front window
                     end try
-                    if windowMode is "incognito" then return ""
+                    if windowMode is not "normal" then return ""
                     return URL of active tab of front window
                 end tell
             end timeout

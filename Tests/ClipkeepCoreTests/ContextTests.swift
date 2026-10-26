@@ -48,7 +48,8 @@ import Testing
 
     @Test func chromiumScriptsSkipPrivateWindowsAndSafariUsesDocuments() {
         let chrome = BrowserCatalog.script(forBundleID: "com.google.Chrome") ?? ""
-        #expect(chrome.contains("incognito"))
+        #expect(chrome.contains("is not \"normal\""))
+        #expect(chrome.contains("\"unknown\""))
         #expect(chrome.contains("active tab"))
         let safari = BrowserCatalog.script(forBundleID: "com.apple.Safari") ?? ""
         #expect(safari.contains("front document"))
