@@ -34,6 +34,12 @@ public final class ClipboardPoller: @unchecked Sendable {
             lastPollAt = now
             return nil
         }
+        // While paused the pasteboard is not even read, and the change is forgotten for good.
+        if pipeline.control.isPaused {
+            lastChangeCount = pasteboard.changeCount
+            lastPollAt = now
+            return .skipped(.paused)
+        }
         // A snapshot that failed keeps the window open, so the retry still covers the apps that
         // were frontmost since the last processed poll.
         guard let snapshot = pasteboard.snapshot() else { return nil }

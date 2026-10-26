@@ -13,6 +13,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let accessibilityItem = NSMenuItem()
     private let automationItem = NSMenuItem()
     private let safariItem = NSMenuItem()
+    private let pauseItem = NSMenuItem()
+    private let ignoreAppItem = NSMenuItem()
+    private let ignoredAppsItem = NSMenuItem()
+    private var control: CaptureControl?
 
     init(launchAtLogin: LaunchAtLoginController, systemContext: SystemContext) {
         self.launchAtLogin = launchAtLogin
@@ -26,6 +30,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
+
+        pauseItem.target = self
+        pauseItem.action = #selector(togglePause)
+        pauseItem.isEnabled = false
+        menu.addItem(pauseItem)
+        ignoreAppItem.target = self
+        ignoreAppItem.action = #selector(ignoreFrontmostApp)
+        ignoreAppItem.isEnabled = false
+        menu.addItem(ignoreAppItem)
+        ignoredAppsItem.title = "Ignorierte Apps"
+        ignoredAppsItem.submenu = NSMenu()
+        ignoredAppsItem.isHidden = true
+        menu.addItem(ignoredAppsItem)
+        menu.addItem(.separator())
 
         launchAtLoginItem.title = "Beim Anmelden starten"
         launchAtLoginItem.target = self
@@ -62,6 +80,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
+        let paused = control?.isPaused ?? false
+        pauseItem.title = paused ? "Aufzeichnung fortsetzen" : "Aufzeichnung pausieren"
+        ignoreAppItem.title = "Frontmost-App ignorieren"
+        refreshIgnoredApps()
+        updateIcon()
         let status = systemContext.permissionStatus
         accessibilityItem.title =
             status.accessibilityGranted
@@ -72,6 +95,65 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         safariItem.state = Self.readsSafari ? .on : .off
         errorItem.title = launchAtLogin.errorMessage ?? ""
         errorItem.isHidden = launchAtLogin.errorMessage == nil
+    }
+
+    /// Enables the pause and ignore items once the database is open.
+    func attach(control: CaptureControl) {
+        self.control = control
+        pauseItem.isEnabled = true
+        ignoreAppItem.isEnabled = true
+        updateIcon()
+    }
+
+    private func updateIcon() {
+        let paused = control?.isPaused ?? false
+        statusItem.button?.image = NSImage(
+            systemSymbolName: paused ? "pause.circle" : "doc.on.clipboard",
+            accessibilityDescription: paused ? "\(AppInfo.name) pausiert" : AppInfo.name)
+    }
+
+    @objc private func togglePause() {
+        do {
+            try control?.togglePause()
+        } catch {
+            showCaptureProblem("Pause konnte nicht gespeichert werden")
+        }
+        updateIcon()
+    }
+
+    @objc private func ignoreFrontmostApp() {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+            let bundleID = app.bundleIdentifier, bundleID != Bundle.main.bundleIdentifier
+        else { return }
+        do {
+            try control?.addIgnoredApp(bundleID)
+        } catch {
+            showCaptureProblem("Regel konnte nicht gespeichert werden")
+        }
+    }
+
+    @objc private func removeIgnoredApp(_ sender: NSMenuItem) {
+        guard let bundleID = sender.representedObject as? String else { return }
+        do {
+            try control?.removeIgnoredApp(bundleID)
+        } catch {
+            showCaptureProblem("Regel konnte nicht gespeichert werden")
+        }
+    }
+
+    private func refreshIgnoredApps() {
+        let apps = (control?.rules.apps ?? []).sorted()
+        ignoredAppsItem.isHidden = apps.isEmpty
+        let submenu = NSMenu()
+        for bundleID in apps {
+            let item = NSMenuItem(
+                title: "\(bundleID) – entfernen", action: #selector(removeIgnoredApp(_:)),
+                keyEquivalent: "")
+            item.target = self
+            item.representedObject = bundleID
+            submenu.addItem(item)
+        }
+        ignoredAppsItem.submenu = submenu
     }
 
     /// Tells the user that nothing is being recorded, so history does not silently stay empty.
