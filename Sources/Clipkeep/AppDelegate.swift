@@ -63,6 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func captureFailed() {
         statusItemController?.showCaptureProblem(
-            "Aufzeichnung inaktiv: Datenbank konnte nicht geöffnet werden")
+            "Aufzeichnung inaktiv: Datenbank oder Einstellungen nicht lesbar")
     }
 }

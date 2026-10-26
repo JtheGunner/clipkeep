@@ -17,6 +17,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let ignoreAppItem = NSMenuItem()
     private let ignoredAppsItem = NSMenuItem()
     private var control: CaptureControl?
+    private var fatalProblem: String?
 
     init(launchAtLogin: LaunchAtLoginController, systemContext: SystemContext) {
         self.launchAtLogin = launchAtLogin
@@ -30,6 +31,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
+        menu.autoenablesItems = false
 
         pauseItem.target = self
         pauseItem.action = #selector(togglePause)
@@ -39,7 +41,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ignoreAppItem.action = #selector(ignoreFrontmostApp)
         ignoreAppItem.isEnabled = false
         menu.addItem(ignoreAppItem)
-        ignoredAppsItem.title = "Ignorierte Apps"
+        ignoredAppsItem.title = "Ignorieren"
         ignoredAppsItem.submenu = NSMenu()
         ignoredAppsItem.isHidden = true
         menu.addItem(ignoredAppsItem)
@@ -82,7 +84,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
         let paused = control?.isPaused ?? false
         pauseItem.title = paused ? "Aufzeichnung fortsetzen" : "Aufzeichnung pausieren"
-        ignoreAppItem.title = "Frontmost-App ignorieren"
+        let front = Self.frontmostForeignApp()
+        ignoreAppItem.title = front.map { "„\($0.name)“ ignorieren" } ?? "Frontmost-App ignorieren"
+        ignoreAppItem.isEnabled = control != nil && front != nil
+        captureItem.title = fatalProblem ?? ""
+        captureItem.isHidden = fatalProblem == nil
         refreshIgnoredApps()
         updateIcon()
         let status = systemContext.permissionStatus
@@ -101,7 +107,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func attach(control: CaptureControl) {
         self.control = control
         pauseItem.isEnabled = true
-        ignoreAppItem.isEnabled = true
         updateIcon()
     }
 
@@ -116,20 +121,79 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         do {
             try control?.togglePause()
         } catch {
-            showCaptureProblem("Pause konnte nicht gespeichert werden")
+            // Pausing still took effect; only the saved state is missing.
+            showSaveProblem()
         }
         updateIcon()
     }
 
-    @objc private func ignoreFrontmostApp() {
+    /// The app in front, unless it is Clipkeep itself or has no bundle identifier.
+    private static func frontmostForeignApp() -> (bundleID: String, name: String)? {
         guard let app = NSWorkspace.shared.frontmostApplication,
             let bundleID = app.bundleIdentifier, bundleID != Bundle.main.bundleIdentifier
-        else { return }
+        else { return nil }
+        return (bundleID, app.localizedName ?? bundleID)
+    }
+
+    @objc private func ignoreFrontmostApp() {
+        guard let front = Self.frontmostForeignApp() else { return }
         do {
-            try control?.addIgnoredApp(bundleID)
+            try control?.addIgnoredApp(front.bundleID)
         } catch {
-            showCaptureProblem("Regel konnte nicht gespeichert werden")
+            showSaveProblem()
         }
+    }
+
+    @objc private func addContentRule() {
+        let alert = NSAlert()
+        alert.messageText = "Inhalte ignorieren"
+        alert.informativeText =
+            "Kopien, auf die dieser reguläre Ausdruck passt, werden nicht gespeichert (geprüft werden die ersten 20 000 Zeichen)."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = "^intern-"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Hinzufügen")
+        alert.addButton(withTitle: "Abbrechen")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn, !field.stringValue.isEmpty else {
+            return
+        }
+        do {
+            try control?.addPattern(field.stringValue)
+        } catch let error as CaptureControlError {
+            showRuleError(error)
+        } catch {
+            showSaveProblem()
+        }
+    }
+
+    @objc private func removeContentRule(_ sender: NSMenuItem) {
+        guard let pattern = sender.representedObject as? String else { return }
+        do {
+            try control?.removePattern(pattern)
+        } catch {
+            showSaveProblem()
+        }
+    }
+
+    private func showRuleError(_ error: CaptureControlError) {
+        let alert = NSAlert()
+        alert.messageText = "Regel nicht übernommen"
+        switch error {
+        case .invalidPattern: alert.informativeText = "Der reguläre Ausdruck ist ungültig."
+        case .patternTooLong: alert.informativeText = "Der Ausdruck ist zu lang."
+        case .patternTooSlow:
+            alert.informativeText = "Der Ausdruck ist zu langsam auf normalem Text."
+        case .tooManyPatterns: alert.informativeText = "Es sind höchstens 50 Regeln möglich."
+        default: alert.informativeText = "Die Regel konnte nicht gespeichert werden."
+        }
+        alert.runModal()
+    }
+
+    /// Shown until the menu is opened again.
+    private func showSaveProblem() {
+        captureItem.title = "Einstellung konnte nicht gespeichert werden"
+        captureItem.isHidden = false
     }
 
     @objc private func removeIgnoredApp(_ sender: NSMenuItem) {
@@ -137,15 +201,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         do {
             try control?.removeIgnoredApp(bundleID)
         } catch {
-            showCaptureProblem("Regel konnte nicht gespeichert werden")
+            showSaveProblem()
         }
     }
 
     private func refreshIgnoredApps() {
-        let apps = (control?.rules.apps ?? []).sorted()
-        ignoredAppsItem.isHidden = apps.isEmpty
+        let rules = control?.rules ?? IgnoreRules()
         let submenu = NSMenu()
-        for bundleID in apps {
+        submenu.autoenablesItems = false
+        for bundleID in rules.apps.sorted() {
             let item = NSMenuItem(
                 title: "\(bundleID) – entfernen", action: #selector(removeIgnoredApp(_:)),
                 keyEquivalent: "")
@@ -153,11 +217,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             item.representedObject = bundleID
             submenu.addItem(item)
         }
+        for pattern in rules.patterns {
+            let item = NSMenuItem(
+                title: "/\(pattern)/ – entfernen", action: #selector(removeContentRule(_:)),
+                keyEquivalent: "")
+            item.target = self
+            item.representedObject = pattern
+            submenu.addItem(item)
+        }
+        if submenu.numberOfItems > 0 { submenu.addItem(.separator()) }
+        let add = NSMenuItem(
+            title: "Inhaltsregel hinzufügen …", action: #selector(addContentRule), keyEquivalent: ""
+        )
+        add.target = self
+        add.isEnabled = control != nil
+        submenu.addItem(add)
         ignoredAppsItem.submenu = submenu
+        ignoredAppsItem.isHidden = false
     }
 
     /// Tells the user that nothing is being recorded, so history does not silently stay empty.
     func showCaptureProblem(_ message: String) {
+        fatalProblem = message
         captureItem.title = message
         captureItem.isHidden = false
     }

@@ -73,7 +73,70 @@ import Testing
         let text = String(repeating: "a", count: 5_000) + "b"
         let start = Date()
         #expect(control.matchesPattern(text))
-        #expect(Date().timeIntervalSince(start) < 2)
+        #expect(Date().timeIntervalSince(start) < 0.5)
+    }
+
+    @Test func unreadableSettingsKeepCaptureOff() throws {
+        for (key, value) in [
+            ("capture.paused", "maybe"), ("capture.ignoredApps", "{not json"),
+            ("capture.ignoredPatterns", "[\"(unclosed\"]"),
+        ] {
+            let temp = try TemporaryDatabase()
+            defer { temp.remove() }
+            let settings = SettingsStore(database: try temp.open())
+            try settings.set(value, for: key)
+            #expect(throws: CaptureControlError.corruptSetting(key)) {
+                _ = try CaptureControl(settings: settings)
+            }
+        }
+    }
+
+    @Test func storedDuplicatePatternsAreMergedOnLoad() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let settings = SettingsStore(database: try temp.open())
+        try settings.set("[\"a+\",\"a+\",\"b\"]", for: "capture.ignoredPatterns")
+        let control = try CaptureControl(settings: settings)
+        #expect(control.rules.patterns == ["a+", "b"])
+        try control.removePattern("a+")
+        #expect(!control.matchesPattern("aaa"))
+    }
+
+    @Test func slowPatternsAreRejectedWhenAdded() {
+        let control = CaptureControl()
+        #expect(throws: CaptureControlError.patternTooSlow) {
+            try control.addPattern("(\\w+\\s?)*x")
+        }
+        #expect(control.rules.patterns.isEmpty)
+    }
+
+    @Test func pausingStaysInEffectWhenSavingFails() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let control = try CaptureControl(settings: SettingsStore(database: database))
+        try database.write { try $0.execute("DROP TABLE settings") }
+        #expect(throws: (any Error).self) { try control.setPaused(true) }
+        #expect(control.isPaused)
+        // Resuming is saved first, so a failed save keeps capture paused.
+        #expect(throws: (any Error).self) { try control.setPaused(false) }
+        #expect(control.isPaused)
+    }
+
+    @Test func concurrentEditsKeepRulesAndMatchersInSync() throws {
+        let control = CaptureControl()
+        DispatchQueue.concurrentPerform(iterations: 20) { index in
+            try? control.addPattern("rule\(index)x")
+        }
+        #expect(control.rules.patterns.count == 20)
+        for index in 0..<20 { #expect(control.matchesPattern("..rule\(index)x..")) }
+    }
+
+    @Test func scanLimitCountsUTF16UnitsAndKeepsCharactersWhole() {
+        let control = CaptureControl(rules: IgnoreRules(patterns: ["needle"]))
+        let emoji = String(repeating: "😀", count: CaptureControl.maximumScannedCharacters)
+        #expect(!control.matchesPattern(emoji + "needle"))
+        #expect(control.matchesPattern("😀😀 needle"))
     }
 
     @Test func patternsOnlyLookAtTheStartOfHugeContent() {
@@ -176,6 +239,62 @@ import Testing
         else {
             Issue.record("Expected a non-matching copy to be recorded")
             return
+        }
+    }
+
+    @Test func aCopyDuringAPauseThatEndedBeforeTheNextPollIsDropped() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let board = PausedBoard()
+        let poller = ClipboardPoller(
+            pasteboard: board, source: PausedSource(), pipeline: fixture.pipeline)
+        try fixture.control.setPaused(true)
+        board.set(PasteboardSnapshot(changeCount: 2, text: "copied in a short pause"))
+        try fixture.control.setPaused(false)
+        #expect(poller.poll() == .skipped(.paused))
+        #expect(try fixture.contentCount() == 0)
+        // A pause and resume without any copy does not swallow the next copy.
+        try fixture.control.setPaused(true)
+        try fixture.control.setPaused(false)
+        #expect(poller.poll() == nil)
+        board.set(PasteboardSnapshot(changeCount: 3, text: "copied after resuming"))
+        guard case .recorded = poller.poll() else {
+            Issue.record("Expected the copy after resuming to be recorded")
+            return
+        }
+    }
+
+    @Test func aPauseDuringDetailLookupStopsTheCopy() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let control = CaptureControl()
+        let pipeline = CapturePipeline(
+            store: ContentStore(database: database),
+            contextDetails: PausingDetails(control: control), control: control)
+        let outcome = try pipeline.process(snapshot("sensitive words"), source: editor)
+        #expect(outcome == .skipped(.paused))
+        let count = try database.read {
+            try $0.query("SELECT count(*) FROM contents") { $0.int(0) }.first
+        }
+        #expect(count == 0)
+    }
+
+    @Test func anIgnoredAppAnywhereInTheSourceWindowBlocksTheCopy() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try fixture.control.addIgnoredApp("com.example.notes")
+        let outcome = try fixture.pipeline.process(
+            snapshot("window crossing"),
+            sources: [editor, CopyContext(appBundleID: "com.example.notes")])
+        #expect(outcome == .skipped(.blockedApp))
+    }
+
+    private struct PausingDetails: ContextDetailProviding {
+        let control: CaptureControl
+        func details(for source: CopyContext) -> CopyContext {
+            try? control.setPaused(true)
+            return source
         }
     }
 
