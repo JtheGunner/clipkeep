@@ -6,9 +6,13 @@ import Testing
 private final class MemoryVault: SecretVault, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: String] = [:]
+    var failDelete = false
     func store(_ secret: String, key: String) throws { lock.withLock { items[key] = secret } }
     func read(key: String) throws -> String? { lock.withLock { items[key] } }
-    func delete(key: String) throws { lock.withLock { _ = items.removeValue(forKey: key) } }
+    func delete(key: String) throws {
+        if failDelete { throw SecretVaultError.keychain(-1) }
+        lock.withLock { _ = items.removeValue(forKey: key) }
+    }
     func keys() throws -> [String] { lock.withLock { Array(items.keys) } }
     var parkedCount: Int {
         lock.withLock { items.keys.filter { $0 != SecretParker.fingerprintKeyName }.count }
@@ -196,5 +200,75 @@ private final class ParkedLog: @unchecked Sendable {
         _ = try fixture.copy(secret, at: base, context: browser)
         _ = try fixture.copy(secret, at: base.addingTimeInterval(10), context: browser)
         #expect(fixture.parked.all.count == 1)
+    }
+
+    @Test func undoingKeepsSessionsAndTimesConsistent() async throws {
+        let fixture = try Fixture()
+        _ = try fixture.copy("let x = 1", at: base, context: browser)
+        _ = try fixture.copy(secret, at: base.addingTimeInterval(30), context: browser)
+        _ = try fixture.copy(secret, at: base.addingTimeInterval(90), context: browser)
+        _ = try fixture.copy("let y = 2", at: base.addingTimeInterval(120), context: browser)
+        try fixture.parker.markNotSecret(id: try #require(try fixture.parker.pending().first).id)
+
+        let times = try fixture.database.read {
+            try $0.query(
+                "SELECT first_seen_at, last_copied_at FROM contents WHERE text = ?", [.text(secret)]
+            ) {
+                ($0.double(0), $0.double(1))
+            }
+        }
+        #expect(times.first?.0 == base.addingTimeInterval(30).timeIntervalSince1970)
+        #expect(times.first?.1 == base.addingTimeInterval(90).timeIntervalSince1970)
+        let dangling = try fixture.database.read {
+            try $0.query("SELECT count(*) FROM copy_events WHERE session_id IS NULL") { $0.int(0) }
+                .first ?? 0
+        }
+        #expect(dangling == 0)
+        #expect(try fixture.events(text: secret) == 2)
+    }
+
+    @Test func aPlaceholderSharedWithAnotherSecretIsLeftAlone() async throws {
+        let fixture = try Fixture()
+        // Two different keys copied in the same second from the same page share one label.
+        let other = "sk-ant-api03-" + String(repeating: "Zz9yY8xX7w", count: 8)
+        _ = try fixture.copy(secret, at: base, context: browser)
+        _ = try fixture.copy(other, at: base, context: browser)
+        let all = try fixture.parker.pending()
+        #expect(all.count == 2)
+        #expect(all[0].contentID == all[1].contentID)
+
+        try fixture.parker.markNotSecret(id: all[0].id)
+        #expect(try fixture.parker.pending().count == 1)
+        let placeholders = try fixture.database.read {
+            try $0.query("SELECT count(*) FROM contents WHERE kind = 'secret'") { $0.int(0) }.first
+                ?? 0
+        }
+        #expect(placeholders == 1)
+        #expect(try fixture.events(text: secret) == 1)
+    }
+
+    @Test func aCopyWaitingForTheLockIsNotParkedAfterTheException() async throws {
+        let fixture = try Fixture()
+        _ = try fixture.copy(secret, at: base, context: browser)
+        try fixture.parker.markNotSecret(id: try #require(try fixture.parker.pending().first).id)
+        // What the pipeline would do after it checked the exception too early.
+        fixture.parker.handle(
+            secret: secret, context: browser, copiedAt: base.addingTimeInterval(1))
+        #expect(try fixture.parker.pending().isEmpty)
+        #expect(fixture.vault.parkedCount == 0)
+    }
+
+    @Test func aFailedKeychainDeleteIsFinishedLater() async throws {
+        let fixture = try Fixture()
+        _ = try fixture.copy(secret, at: base, context: browser)
+        let id = try #require(try fixture.parker.pending().first).id
+        fixture.vault.failDelete = true
+        try fixture.parker.markNotSecret(id: id)
+        #expect(fixture.vault.parkedCount == 1)
+        #expect(try fixture.parker.pending().isEmpty)
+
+        fixture.vault.failDelete = false
+        _ = try fixture.parker.reconcile()
+        #expect(fixture.vault.parkedCount == 0)
     }
 }

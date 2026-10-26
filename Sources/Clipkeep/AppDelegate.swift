@@ -13,12 +13,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let systemContext = SystemContext()
     private let secretNotifier = SecretNotifier()
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The delegate must exist before launch ends to receive the action that started the app.
+        secretNotifier.start()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItemController = StatusItemController(
             launchAtLogin: LaunchAtLoginController(service: SystemLoginItemService()),
             systemContext: systemContext
         )
-        secretNotifier.start()
         startCapture()
     }
 

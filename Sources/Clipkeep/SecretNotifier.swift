@@ -30,7 +30,7 @@ final class SecretNotifier: NSObject, UNUserNotificationCenterDelegate, @uncheck
         guard let center else { return }
         center.delegate = self
         let undo = UNNotificationAction(
-            identifier: Self.actionID, title: "Kein Secret", options: [])
+            identifier: Self.actionID, title: "Kein Secret", options: [.authenticationRequired])
         center.setNotificationCategories([
             UNNotificationCategory(
                 identifier: Self.categoryID, actions: [undo], intentIdentifiers: [])
@@ -103,6 +103,6 @@ final class SecretNotifier: NSObject, UNUserNotificationCenterDelegate, @uncheck
         report(
             worked
                 ? "Als normaler Eintrag wiederhergestellt"
-                : "Wiederherstellen fehlgeschlagen – bei Bitwarden entsperren und erneut versuchen")
+                : "Wiederherstellen fehlgeschlagen")
     }
 }

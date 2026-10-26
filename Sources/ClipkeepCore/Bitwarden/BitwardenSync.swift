@@ -100,8 +100,9 @@ public actor BitwardenSync {
                     do {
                         try await transfer(secret, folder: folder, existing: existing, session: key)
                         transferred += 1
-                    } catch ParkingError.vaultItemMissing {
-                        // Its Keychain item vanished, so it cannot be moved; the others can.
+                    } catch ParkingError.vaultItemMissing, ParkingError.notParked {
+                        // Gone from the Keychain or taken back as "not a secret" meanwhile; the
+                        // others can still be moved.
                         continue
                     } catch let error as BitwardenError where !error.endsTheRun {
                         // This secret stays parked; one bad secret must not block the rest.
@@ -141,6 +142,8 @@ public actor BitwardenSync {
     /// Takes a secret back to a normal history entry ("not a secret"). If it already moved to
     /// Bitwarden, the value is fetched from there first, which needs an unlocked vault.
     public func markNotSecret(id: Int64) async throws {
+        // Not while a transfer is moving this very secret.
+        guard !isTransferring else { throw BitwardenError.busy }
         do {
             try parker.markNotSecret(id: id)
         } catch ParkingError.vaultItemMissing {

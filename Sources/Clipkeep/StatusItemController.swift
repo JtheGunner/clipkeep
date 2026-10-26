@@ -167,7 +167,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let exceptions = (try? secrets.exceptions()) ?? []
         for exception in exceptions {
             let item = NSMenuItem(
-                title: "\(exception.label) – entfernen",
+                title: "\(exception.label) – Ausnahme entfernen (Verlaufseintrag bleibt)",
                 action: #selector(removeSecretException(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = exception.id
