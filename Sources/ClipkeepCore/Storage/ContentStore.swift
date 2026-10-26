@@ -28,10 +28,15 @@ public struct RecordedCopy: Sendable, Equatable {
 public struct ContentStore: Sendable {
     private let database: Database
     private let duplicates: DuplicateConfiguration
+    private let ranking: RankingConfiguration
 
-    public init(database: Database, duplicates: DuplicateConfiguration = .default) {
+    public init(
+        database: Database, duplicates: DuplicateConfiguration = .default,
+        ranking: RankingConfiguration = .default
+    ) {
         self.database = database
         self.duplicates = duplicates
+        self.ranking = ranking
     }
 
     /// Analysis of a text that is stored for the first time. Computed outside the write
@@ -107,8 +112,10 @@ public struct ContentStore: Sendable {
                     SQLValue(context.appName), SQLValue(context.windowTitle),
                     SQLValue(context.url),
                 ])
-            return RecordedCopy(
-                contentID: contentID, eventID: connection.lastInsertRowID, isNewContent: isNew)
+            let eventID = connection.lastInsertRowID
+            try RankingService.refresh(
+                contentID: contentID, in: connection, configuration: ranking, now: copiedAt)
+            return RecordedCopy(contentID: contentID, eventID: eventID, isNewContent: isNew)
         }
     }
 

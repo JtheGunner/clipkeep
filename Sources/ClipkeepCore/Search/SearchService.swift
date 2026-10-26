@@ -4,6 +4,8 @@ import Foundation
 /// by BM25; shorter terms fall back to a substring test. Without a query, the newest items win.
 public struct SearchService: Sendable {
     private static let trigramMinimum = 3
+    /// How many BM25 points a fully important item gains over an unimportant one.
+    private static let importanceBoost = 2.0
     private let database: Database
 
     public init(database: Database) {
@@ -21,10 +23,13 @@ public struct SearchService: Sendable {
         let short = terms.filter { $0.count < Self.trigramMinimum }
 
         // Rank, filter and limit first, then look up the details of the surviving rows only.
-        var inner = "SELECT c.id, c.text, c.kind, c.last_copied_at, "
+        // BM25 is negative (lower is better); the importance boost pulls important items forward.
+        // Without an indexed term the listing orders by importance, which has its own index.
+        var inner = "SELECT c.id, c.text, c.kind, c.last_copied_at, c.importance, "
         inner +=
             indexed.isEmpty
-            ? "0.0 AS score\nFROM contents c" : "bm25(contents_fts) AS score\nFROM contents c"
+            ? "0.0 AS score\nFROM contents c"
+            : "bm25(contents_fts) - \(Self.importanceBoost) * c.importance AS score\nFROM contents c"
         var parameters: [SQLValue] = []
 
         if !indexed.isEmpty {
@@ -66,7 +71,10 @@ public struct SearchService: Sendable {
         }
 
         if !conditions.isEmpty { inner += "\nWHERE " + conditions.joined(separator: " AND ") }
-        let order = "score, last_copied_at DESC, id DESC"
+        let order =
+            indexed.isEmpty
+            ? "importance DESC, last_copied_at DESC, id DESC"
+            : "score, last_copied_at DESC, id DESC"
         inner += "\nORDER BY \(order)\nLIMIT ?"
         parameters.append(.int(Int64(filter.limit)))
 
