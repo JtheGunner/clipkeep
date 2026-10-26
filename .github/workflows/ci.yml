@@ -16,5 +16,7 @@ jobs:
         run: ./scripts/lint.sh
       - name: Build
         run: swift build
-      - name: Test
+      - name: Test (debug)
         run: ./scripts/test.sh
+      - name: Test (release, enforces timing budgets)
+        run: ./scripts/test.sh -c release -Xswiftc -enable-testing

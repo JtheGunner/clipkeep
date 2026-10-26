@@ -199,13 +199,9 @@ private func threadCPUSeconds() -> Double {
                 for sample in samples { _ = ContentClassifier.classify(sample) }
                 return (threadCPUSeconds() - started) / Double(samples.count)
             }.min() ?? .infinity
-        // The 5 ms target is for release builds; unoptimized test builds run several times slower.
-        #if DEBUG
-            let limit = 0.025
-        #else
-            let limit = 0.005
-        #endif
-        #expect(perItem < limit, "took \(perItem * 1000) ms per item")
+        #expect(
+            !PerformanceBudget.isEnforced || perItem < 0.005,
+            "took \(perItem * 1000) ms per item")
     }
 }
 

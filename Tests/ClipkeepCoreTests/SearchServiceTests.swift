@@ -294,12 +294,16 @@ import Testing
             ),
         ]
         for (name, seconds) in timings {
-            #expect(seconds < 0.1, "\(name) took \(Int(seconds * 1000)) ms")
+            #expect(
+                !PerformanceBudget.isEnforced || seconds < 0.1,
+                "\(name) took \(Int(seconds * 1000)) ms")
         }
 
         // A term in every item must rank all 100,000 rows. It is the worst case, so it only
         // has to stay well within interactive range, with headroom for slow CI machines.
         let everything = try measure("payload")
-        #expect(everything < 0.4, "term in every item took \(Int(everything * 1000)) ms")
+        #expect(
+            !PerformanceBudget.isEnforced || everything < 0.4,
+            "term in every item took \(Int(everything * 1000)) ms")
     }
 }

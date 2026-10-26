@@ -63,7 +63,9 @@ import Testing
         for _ in 0..<20 { _ = EntityExtractor.extract(from: text) }
 
         let perItem = Date().timeIntervalSince(started) / 20
-        #expect(perItem < 0.005, "took \(perItem * 1000) ms per item")
+        #expect(
+            !PerformanceBudget.isEnforced || perItem < 0.005,
+            "took \(perItem * 1000) ms per item")
     }
 
     @Test func hugePastesOnlyCostTheAnalysedPrefix() {
