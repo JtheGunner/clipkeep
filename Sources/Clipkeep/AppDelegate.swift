@@ -32,10 +32,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let database = try AppDatabase.open()
                 let control = try CaptureControl(settings: SettingsStore(database: database))
+                let store = ContentStore(database: database)
+                let parker = SecretParker(
+                    database: database, store: store, vault: KeychainSecretVault(),
+                    onError: { error in
+                        Self.logger.error(
+                            "Parking a secret failed: \(String(describing: error), privacy: .public)"
+                        )
+                    })
+                // Before capture starts: remove Keychain items left behind by an interrupted park.
+                _ = try parker.reconcile()
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
-                        store: ContentStore(database: database),
+                        store: store, secretSink: parker,
                         contextDetails: ContextReader(
                             environment: systemContext.environment,
                             readsSafari: { StatusItemController.readsSafari }),

@@ -8,4 +8,6 @@ public enum ContentKind: String, Sendable, Equatable, CaseIterable {
     case stacktrace
     case code
     case number
+    /// Placeholder for a secret that was parked in the Keychain.
+    case secret
 }
