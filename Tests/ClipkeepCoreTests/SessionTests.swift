@@ -462,6 +462,30 @@ import Testing
         #expect(session.topEntities.contains { $0.value == "github.com/acme/web" })
     }
 
+    @Test func deletingRecutsSessionsAndDropsTheDeletedContextFromExplanations() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        try copy(fixture, "x", minute: 0, url: "https://a.example/p")
+        try copy(fixture, "y", minute: 1, url: "https://a.example/q")
+        let p1 = try copy(fixture, "z", minute: 2, url: "https://private.example.org/1")
+        let p2 = try copy(fixture, "w", minute: 3, url: "https://private.example.org/2")
+        #expect(
+            try fixture.service.sessions().map(\.explanation).contains {
+                $0.contains("private.example.org")
+            })
+
+        let actions = ItemActions(database: fixture.database)
+        try actions.delete(contentID: p1.contentID)
+        try actions.delete(contentID: p2.contentID)
+        let afterDelete = try fixture.service.sessions()
+        #expect(afterDelete.count == 1)
+        #expect(afterDelete.allSatisfy { !$0.explanation.contains("private.example.org") })
+
+        try actions.restore(contentID: p1.contentID)
+        try actions.restore(contentID: p2.contentID)
+        #expect(try fixture.service.sessions().count == 2)
+    }
+
     @Test func contextConfirmationSkipsCopiesWithoutContext() {
         let events = [
             SessionEvent(id: 1, time: Date(timeIntervalSince1970: 0), context: "a"),

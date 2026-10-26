@@ -204,7 +204,8 @@ public struct ItemActions: Sendable {
                 contentID: contentID, in: connection, configuration: configuration, now: now)
             try Self.log(action, contentID: contentID, snapshot: before, now: now, in: connection)
             if action == .delete || action == .restore {
-                try SessionService.refreshMetadata(ofContent: contentID, in: connection)
+                try SessionService.recut(
+                    ofContent: contentID, in: connection, configuration: sessions)
             }
             return true
         }

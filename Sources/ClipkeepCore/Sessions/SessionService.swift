@@ -180,14 +180,33 @@ public struct SessionService: Sendable {
         try writeMetadata(of: sessionID, in: connection)
     }
 
-    /// Refreshes the summary of every session that holds a copy of this content, for example
-    /// after the content was deleted or restored.
-    static func refreshMetadata(ofContent contentID: Int64, in connection: Connection) throws {
-        let ids = try connection.query(
-            "SELECT DISTINCT session_id FROM copy_events WHERE content_id = ? AND session_id IS NOT NULL",
-            [.int(contentID)]
-        ) { $0.int(0) }
-        for id in ids { try writeMetadata(of: id, in: connection) }
+    /// Re-cuts the sessions around a content after it was deleted or restored: its context stops
+    /// (or starts) to count, so cuts, start reasons and summaries may change. The re-cut starts two
+    /// sessions before the earliest affected one, because a cut looks ahead a few copies.
+    static func recut(
+        ofContent contentID: Int64, in connection: Connection, configuration: SessionConfiguration
+    ) throws {
+        guard
+            let earliest = try connection.query(
+                """
+                SELECT s.started_at, s.first_event_id FROM sessions s
+                WHERE s.id IN (SELECT DISTINCT session_id FROM copy_events WHERE content_id = ?)
+                ORDER BY s.started_at, s.first_event_id LIMIT 1
+                """,
+                [.int(contentID)]
+            ) { (time: $0.double(0), id: $0.int(1)) }.first
+        else { return }
+        let start = try connection.query(
+            """
+            SELECT started_at, first_event_id FROM sessions
+            WHERE (started_at, first_event_id) < (?, ?)
+            ORDER BY started_at DESC, first_event_id DESC LIMIT 1 OFFSET 1
+            """,
+            [.double(earliest.time), .int(earliest.id)]
+        ) { (time: $0.double(0), id: $0.int(1)) }.first
+        try resegment(
+            from: start, preserveFirstStart: start != nil, in: connection,
+            configuration: configuration)
     }
 
     /// Flags that sessions need a rebuild, for example after a failed incremental assignment.
