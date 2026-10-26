@@ -1,0 +1,34 @@
+import Foundation
+
+/// Narrows a search. Every set field must hold for at least one copy event of an item.
+public struct SearchFilter: Sendable, Equatable {
+    public var appBundleID: String?
+    public var copiedAfter: Date?
+    public var copiedBefore: Date?
+    public var sessionID: Int64?
+    public var kind: String?
+    public var limit: Int
+
+    public init(
+        appBundleID: String? = nil, copiedAfter: Date? = nil, copiedBefore: Date? = nil,
+        sessionID: Int64? = nil, kind: String? = nil, limit: Int = 50
+    ) {
+        self.appBundleID = appBundleID
+        self.copiedAfter = copiedAfter
+        self.copiedBefore = copiedBefore
+        self.sessionID = sessionID
+        self.kind = kind
+        self.limit = limit
+    }
+}
+
+public struct SearchHit: Sendable, Equatable {
+    public let contentID: Int64
+    public let text: String
+    public let kind: String
+    public let lastCopiedAt: Date
+    public let occurrenceCount: Int
+    public let lastAppName: String?
+    public let lastWindowTitle: String?
+    public let lastURL: String?
+}

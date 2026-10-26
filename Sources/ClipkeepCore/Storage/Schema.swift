@@ -1,5 +1,7 @@
 public enum Schema {
-    public static let migrator = Migrator(migrations: [version1])
+    public static let latestVersion = 2
+    public static let migrations = [version1, version2]
+    public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
         version: 1,
@@ -54,5 +56,36 @@ public enum Schema {
             )
             """,
             "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        ])
+
+    /// Full-text index over `contents.text`. The trigram tokenizer matches substrings
+    /// ("serDa" finds "getUserData") and ignores case; queries need at least three characters.
+    private static let version2 = Migration(
+        version: 2,
+        statements: [
+            """
+            CREATE VIRTUAL TABLE contents_fts USING fts5(
+                text, content='contents', content_rowid='id', tokenize='trigram'
+            )
+            """,
+            """
+            CREATE TRIGGER contents_fts_insert AFTER INSERT ON contents BEGIN
+                INSERT INTO contents_fts(rowid, text) VALUES (new.id, new.text);
+            END
+            """,
+            """
+            CREATE TRIGGER contents_fts_delete AFTER DELETE ON contents BEGIN
+                INSERT INTO contents_fts(contents_fts, rowid, text)
+                VALUES ('delete', old.id, old.text);
+            END
+            """,
+            """
+            CREATE TRIGGER contents_fts_update AFTER UPDATE OF text ON contents BEGIN
+                INSERT INTO contents_fts(contents_fts, rowid, text)
+                VALUES ('delete', old.id, old.text);
+                INSERT INTO contents_fts(rowid, text) VALUES (new.id, new.text);
+            END
+            """,
+            "INSERT INTO contents_fts(contents_fts) VALUES ('rebuild')",
         ])
 }
