@@ -486,6 +486,113 @@ import Testing
         #expect(try fixture.service.sessions().count == 2)
     }
 
+    private func fullState(_ fixture: Fixture) throws -> [String] {
+        try fixture.database.read { connection in
+            try connection.query(
+                """
+                SELECT id, started_at, event_count, start_reason, start_detail, topic_id
+                FROM sessions ORDER BY started_at, first_event_id
+                """
+            ) { row in
+                (0..<6).map { column in
+                    row.isNull(Int32(column))
+                        ? "-" : (column == 1 ? String(row.double(1)) : row.text(Int32(column)))
+                }.joined(separator: "|")
+            }
+        }
+    }
+
+    /// Context switch whose confirmation arrives only after several app-switch sessions.
+    private func lookaheadStream(_ fixture: Fixture) throws -> RecordedCopy {
+        try copy(fixture, "a1", minute: 0, app: "T", url: "https://a.example/1")
+        try copy(fixture, "a2", minute: 1, app: "T", url: "https://a.example/2")
+        try copy(fixture, "b1", minute: 2, app: "T", url: "https://secret.example/1")
+        try copy(fixture, "n1", minute: 13, app: "X")
+        try copy(fixture, "n2", minute: 24, app: "Z")
+        return try copy(fixture, "b2", minute: 25, app: "Z", url: "https://secret.example/2")
+    }
+
+    @Test func incrementalAssignmentMatchesARebuildWhenAContextIsConfirmedLate() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try lookaheadStream(fixture)
+        let incremental = try shape(fixture.service)
+        try fixture.service.rebuild()
+        #expect(try shape(fixture.service) == incremental)
+    }
+
+    @Test func deleteRecutEqualsARebuildEvenWhenTheLookaheadReachesFarBack() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let confirming = try lookaheadStream(fixture)
+        try fixture.service.rebuild()
+        try ItemActions(database: fixture.database).delete(contentID: confirming.contentID)
+        let recut = try fullState(fixture)
+        try fixture.service.rebuild()
+        #expect(try fullState(fixture) == recut)
+    }
+
+    @Test func restoreRecutEqualsARebuildEvenWhenTheLookaheadReachesFarBack() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let confirming = try lookaheadStream(fixture)
+        let actions = ItemActions(database: fixture.database)
+        try actions.delete(contentID: confirming.contentID)
+        try fixture.service.rebuild()
+        try actions.restore(contentID: confirming.contentID)
+        let recut = try fullState(fixture)
+        try fixture.service.rebuild()
+        #expect(try fullState(fixture) == recut)
+    }
+
+    @Test func recutOfALateSessionKeepsEarlierSessionsAndTopicsUntouched() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        var late: RecordedCopy?
+        for block in 0..<4 {
+            let base = Double(block * 200)
+            try copy(
+                fixture, "block \(block) one", minute: base, url: "https://site\(block).example/a")
+            late = try copy(
+                fixture, "block \(block) two", minute: base + 1,
+                url: "https://site\(block).example/b")
+        }
+        try fixture.database.write { connection in
+            try connection.execute("INSERT INTO topics (label, created_at) VALUES ('t', 0)")
+            try connection.execute(
+                "UPDATE sessions SET topic_id = ?", [.int(connection.lastInsertRowID)])
+        }
+        let before = try fullState(fixture)
+        try ItemActions(database: fixture.database).delete(contentID: try #require(late).contentID)
+        let after = try fullState(fixture)
+        #expect(after.count == before.count)
+        #expect(Array(after.dropLast()) == Array(before.dropLast()))
+        try fixture.service.rebuild()
+        #expect(try fullState(fixture).dropLast() == after.dropLast())
+    }
+
+    @Test func aFailingRecutDoesNotBlockTheDeleteAndFlagsARebuild() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let first = try copy(fixture, "one", minute: 0)
+        try copy(fixture, "two", minute: 1)
+        try fixture.database.write { connection in
+            // A trigger that makes every session update fail simulates a broken re-cut.
+            try connection.execute(
+                "CREATE TRIGGER fail_session_update BEFORE UPDATE ON sessions BEGIN SELECT RAISE(ABORT, 'boom'); END"
+            )
+        }
+        #expect(try ItemActions(database: fixture.database).delete(contentID: first.contentID))
+        let deletedAt = try fixture.database.read {
+            try $0.query("SELECT deleted_at FROM contents WHERE id = ?", [.int(first.contentID)]) {
+                $0.optionalText(0)
+            }
+        }
+        #expect(deletedAt.first.flatMap { $0 } != nil)
+        try fixture.database.write { try $0.execute("DROP TRIGGER fail_session_update") }
+        #expect(try fixture.service.rebuildIfNeeded())
+    }
+
     @Test func contextConfirmationSkipsCopiesWithoutContext() {
         let events = [
             SessionEvent(id: 1, time: Date(timeIntervalSince1970: 0), context: "a"),
