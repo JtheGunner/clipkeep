@@ -473,4 +473,33 @@ import Testing
         }
         #expect(stored.allSatisfy { !$0.contains("aB3dE6gH9k") })
     }
+
+    @Test func keysStraddlingTheIndexCutOffAreNotIndexed() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let key = "ghp_" + String(repeating: "aB3dE6gH9k", count: 3) + "xyz012"
+        let text = String(repeating: "kubernetes ", count: 180) + key + " trailing"
+        _ = try fixture.store.record(text: text, copiedAt: base)
+        try fixture.topics.cluster(now: later)
+        let stored = try fixture.database.read { connection in
+            try connection.query("SELECT term_counts FROM sessions") { $0.text(0) }
+        }
+        #expect(stored.allSatisfy { !$0.contains("ab3de6gh9k") && !$0.contains("kubernetes") })
+    }
+
+    @Test func labelsFollowADeletionWithoutNewPlacements() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let secret = try fixture.store.record(
+            text: "confidential merger acquisition negotiation", copiedAt: base)
+        _ = try fixture.store.record(
+            text: "confidential merger acquisition schedule", copiedAt: base.addingTimeInterval(60))
+        try fixture.topics.cluster(now: later)
+        #expect(try fixture.topics.topics().first?.keywords.contains("merger") == true)
+        _ = try ItemActions(database: fixture.database).delete(
+            contentID: secret.contentID, now: base)
+        #expect(try fixture.topics.cluster(now: later) == 0)
+        let keywords = try fixture.topics.topics().first?.keywords ?? []
+        #expect(!keywords.contains("negotiation"))
+    }
 }
