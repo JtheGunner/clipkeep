@@ -84,22 +84,41 @@ public struct SessionService: Sendable {
         return try database.read { connection in
             try connection.query(
                 """
-                SELECT id, started_at, ended_at, event_count, start_reason, start_detail,
-                    dominant_apps, top_entities, topic_id
+                SELECT \(Self.summaryColumns)
                 FROM sessions WHERE event_count > 0 AND (started_at, id) < (?, ?)
                 ORDER BY started_at DESC, id DESC LIMIT ?
                 """,
-                [.double(cursor.0), .int(cursor.1), .int(Int64(limit))]
-            ) { row in
-                SessionSummary(
-                    id: row.int(0), startedAt: Date(timeIntervalSince1970: row.double(1)),
-                    endedAt: Date(timeIntervalSince1970: row.double(2)),
-                    eventCount: Int(row.int(3)),
-                    start: SessionStart(code: row.text(4), detail: row.text(5)) ?? .first,
-                    dominantApps: Self.decode(row.text(6)), topEntities: Self.decode(row.text(7)),
-                    topicID: row.isNull(8) ? nil : row.int(8))
+                [.double(cursor.0), .int(cursor.1), .int(Int64(limit))], map: Self.summary)
+        }
+    }
+
+    /// The sessions with these ids, newest first. Unknown ids are left out.
+    public func sessions(ids: [Int64]) throws -> [SessionSummary] {
+        try ids.chunked(into: Self.chunk).flatMap { chunk in
+            try database.read { connection in
+                try connection.query(
+                    """
+                    SELECT \(Self.summaryColumns) FROM sessions
+                    WHERE event_count > 0 AND id IN (\(chunk.map { _ in "?" }.joined(separator: ",")))
+                    """,
+                    chunk.map { .int($0) }, map: Self.summary)
             }
         }
+        .sorted { ($0.startedAt, $0.id) > ($1.startedAt, $1.id) }
+    }
+
+    static let summaryColumns = """
+        id, started_at, ended_at, event_count, start_reason, start_detail, dominant_apps, \
+        top_entities, topic_id
+        """
+
+    static func summary(from row: Row) -> SessionSummary {
+        SessionSummary(
+            id: row.int(0), startedAt: Date(timeIntervalSince1970: row.double(1)),
+            endedAt: Date(timeIntervalSince1970: row.double(2)), eventCount: Int(row.int(3)),
+            start: SessionStart(code: row.text(4), detail: row.text(5)) ?? .first,
+            dominantApps: decode(row.text(6)), topEntities: decode(row.text(7)),
+            topicID: row.isNull(8) ? nil : row.int(8))
     }
 
     /// Assigns a freshly inserted event, inside the caller's transaction.
@@ -410,7 +429,7 @@ public struct SessionService: Sendable {
         return (try? encoder.encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
     }
 
-    private static func decode<T: Decodable>(_ text: String) -> [T] {
+    static func decode<T: Decodable>(_ text: String) -> [T] {
         (try? JSONDecoder().decode([T].self, from: Data(text.utf8))) ?? []
     }
 

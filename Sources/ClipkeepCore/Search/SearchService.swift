@@ -27,7 +27,8 @@ public struct SearchService: Sendable {
 
         // Rank, filter and limit first, then look up the details of the surviving rows only.
         // BM25 is negative (lower is better), so scaling it up pulls important items forward.
-        var inner = "SELECT c.id, c.text, c.kind, c.last_copied_at, c.importance, "
+        var inner =
+            "SELECT c.id, c.text, c.kind, c.last_copied_at, c.importance, c.pinned, c.starred, "
         inner +=
             indexed.isEmpty
             ? "0.0 AS score\nFROM contents c"
@@ -72,6 +73,11 @@ public struct SearchService: Sendable {
             eventConditions.append("e.session_id = ?")
             parameters.append(.int(sessionID))
         }
+        if let topicID = filter.topicID {
+            eventConditions.append(
+                "e.session_id IN (SELECT id FROM sessions WHERE topic_id = ?)")
+            parameters.append(.int(topicID))
+        }
         if !eventConditions.isEmpty {
             conditions.append(
                 "EXISTS (SELECT 1 FROM copy_events e WHERE e.content_id = c.id AND "
@@ -88,7 +94,7 @@ public struct SearchService: Sendable {
 
         let sql = """
             WITH page AS (\(inner))
-            SELECT page.id, page.text, page.kind, page.last_copied_at,
+            SELECT page.id, page.text, page.kind, page.last_copied_at, page.pinned, page.starred,
                 (SELECT count(*) FROM copy_events WHERE content_id = page.id),
                 (SELECT app_name FROM copy_events WHERE content_id = page.id
                     ORDER BY copied_at DESC, id DESC LIMIT 1),
@@ -105,8 +111,9 @@ public struct SearchService: Sendable {
                 SearchHit(
                     contentID: row.int(0), text: row.text(1), kind: row.text(2),
                     lastCopiedAt: Date(timeIntervalSince1970: row.double(3)),
-                    occurrenceCount: Int(row.int(4)), lastAppName: row.optionalText(5),
-                    lastWindowTitle: row.optionalText(6), lastURL: row.optionalText(7))
+                    occurrenceCount: Int(row.int(6)), lastAppName: row.optionalText(7),
+                    lastWindowTitle: row.optionalText(8), lastURL: row.optionalText(9),
+                    isPinned: row.int(4) != 0, isStarred: row.int(5) != 0)
             }
         }
     }
