@@ -18,7 +18,8 @@ public enum ContentClassifier {
     private static let url = regex(#"^(?:https?://|ftp://|mailto:|www\.)\S+$"#)
     private static let windowsPath = regex(#"^[A-Za-z]:\\"#)
     private static let stackFrames = [
-        regex(#"^\s*at\s+\S[^\n(:]*[(:]"#),  // Java, JavaScript; the class excludes the terminator, so no backtracking
+        // Java, JavaScript. The class excludes the terminator, so the match cannot backtrack.
+        regex(#"^\s*at\s+\S[^\n(:]*[(:]"#),
         regex(#"^\s*File ".+", line \d+"#),  // Python
         regex(#"^\s*#\d+\s+0x[0-9a-fA-F]+"#),  // native backtraces
         regex(#"^\s*\d+\s+\S+\s+0x[0-9a-fA-F]+\s"#),  // Apple crash logs
