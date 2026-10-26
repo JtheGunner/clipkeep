@@ -280,6 +280,28 @@ import Testing
         #expect(count == 0)
     }
 
+    @Test func aPauseThatEndsDuringDetailLookupStillStopsTheCopy() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let control = CaptureControl()
+        let pipeline = CapturePipeline(
+            store: ContentStore(database: database),
+            contextDetails: PauseResumeDetails(control: control), control: control)
+        #expect(
+            try pipeline.process(snapshot("sensitive words"), source: editor) == .skipped(.paused))
+        #expect(!control.isPaused)
+    }
+
+    private struct PauseResumeDetails: ContextDetailProviding {
+        let control: CaptureControl
+        func details(for source: CopyContext) -> CopyContext {
+            try? control.setPaused(true)
+            try? control.setPaused(false)
+            return source
+        }
+    }
+
     @Test func anIgnoredAppAnywhereInTheSourceWindowBlocksTheCopy() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
