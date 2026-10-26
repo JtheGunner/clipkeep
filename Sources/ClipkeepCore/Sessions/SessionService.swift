@@ -49,7 +49,8 @@ public struct SessionService: Sendable {
     public func rebuild() throws -> Int {
         try database.write { connection in
             let count = try Self.resegment(
-                from: nil, preserveFirstStart: false, in: connection, configuration: configuration)
+                from: nil, until: nil, preserveFirstStart: false, in: connection,
+                configuration: configuration)
             try connection.execute("DELETE FROM settings WHERE key = ?", [.text(Self.dirtyKey)])
             return count
         }
@@ -135,7 +136,7 @@ public struct SessionService: Sendable {
                     eventID: eventID, time: event, start: .first, in: connection)
             } else {
                 try resegment(
-                    from: nil, preserveFirstStart: false, in: connection,
+                    from: nil, until: nil, preserveFirstStart: false, in: connection,
                     configuration: configuration)
             }
             return
@@ -148,20 +149,54 @@ public struct SessionService: Sendable {
                 in: connection)
             return
         }
+        // Re-cut from the last pause-based boundary: unlike an app switch or a context switch,
+        // it depends on timestamps only, and a context switch decided here may be confirmed
+        // by copies that arrive after an app switch.
         guard
             let tail = try connection.query(
                 """
                 SELECT started_at, first_event_id FROM sessions
                 ORDER BY started_at DESC, first_event_id DESC LIMIT 1
                 """
-            ) { (time: $0.double(0), id: $0.int(1)) }.first
+            ) { (time: $0.double(0), id: $0.int(1)) }.first,
+            let anchor = try anchor(atOrBefore: tail, in: connection)
         else {
             try resegment(
-                from: nil, preserveFirstStart: false, in: connection, configuration: configuration)
+                from: nil, until: nil, preserveFirstStart: false, in: connection,
+                configuration: configuration)
             return
         }
         try resegment(
-            from: tail, preserveFirstStart: true, in: connection, configuration: configuration)
+            from: anchor, until: nil, preserveFirstStart: true, in: connection,
+            configuration: configuration)
+    }
+
+    typealias Key = (time: Double, id: Int64)
+
+    /// The newest session at or before `key` that starts with a pause (or is the very first one).
+    /// The segmenter's state is reset there and its lookahead never crosses a pause, so cuts
+    /// before it cannot depend on later events.
+    private static func anchor(atOrBefore key: Key, in connection: Connection) throws -> Key? {
+        try connection.query(
+            """
+            SELECT started_at, first_event_id FROM sessions
+            WHERE start_reason IN ('gap', 'first') AND (started_at, first_event_id) <= (?, ?)
+            ORDER BY started_at DESC, first_event_id DESC LIMIT 1
+            """,
+            [.double(key.time), .int(key.id)]
+        ) { (time: $0.double(0), id: $0.int(1)) }.first
+    }
+
+    /// The oldest pause-based session strictly after `key`, if any.
+    private static func anchor(after key: Key, in connection: Connection) throws -> Key? {
+        try connection.query(
+            """
+            SELECT started_at, first_event_id FROM sessions
+            WHERE start_reason IN ('gap', 'first') AND (started_at, first_event_id) > (?, ?)
+            ORDER BY started_at, first_event_id LIMIT 1
+            """,
+            [.double(key.time), .int(key.id)]
+        ) { (time: $0.double(0), id: $0.int(1)) }.first
     }
 
     private static func insertSession(
@@ -180,14 +215,42 @@ public struct SessionService: Sendable {
         try writeMetadata(of: sessionID, in: connection)
     }
 
-    /// Refreshes the summary of every session that holds a copy of this content, for example
-    /// after the content was deleted or restored.
-    static func refreshMetadata(ofContent contentID: Int64, in connection: Connection) throws {
-        let ids = try connection.query(
-            "SELECT DISTINCT session_id FROM copy_events WHERE content_id = ? AND session_id IS NOT NULL",
+    /// Re-cuts the sessions around a content after it was deleted or restored: its context stops
+    /// (or starts) to count, so cuts, start reasons and summaries may change. The re-cut covers
+    /// everything between the pause-based boundary before the first affected session and the one
+    /// after the last, so the result equals a full rebuild. Best effort: a failure only flags a
+    /// rebuild and never blocks the user's action.
+    static func recut(
+        ofContent contentID: Int64, in connection: Connection, configuration: SessionConfiguration
+    ) throws {
+        try connection.execute("SAVEPOINT session_recut")
+        do {
+            try recutUnguarded(ofContent: contentID, in: connection, configuration: configuration)
+            try connection.execute("RELEASE session_recut")
+        } catch {
+            try connection.execute("ROLLBACK TO session_recut")
+            try connection.execute("RELEASE session_recut")
+            try markDirty(in: connection)
+        }
+    }
+
+    private static func recutUnguarded(
+        ofContent contentID: Int64, in connection: Connection, configuration: SessionConfiguration
+    ) throws {
+        let affected = try connection.query(
+            """
+            SELECT s.started_at, s.first_event_id FROM sessions s
+            WHERE s.id IN (SELECT DISTINCT session_id FROM copy_events WHERE content_id = ?)
+            ORDER BY s.started_at, s.first_event_id
+            """,
             [.int(contentID)]
-        ) { $0.int(0) }
-        for id in ids { try writeMetadata(of: id, in: connection) }
+        ) { (time: $0.double(0), id: $0.int(1)) }
+        guard let earliest = affected.first, let latest = affected.last else { return }
+        let start = try anchor(atOrBefore: earliest, in: connection)
+        let end = try anchor(after: latest, in: connection)
+        try resegment(
+            from: start, until: end, preserveFirstStart: start != nil, in: connection,
+            configuration: configuration)
     }
 
     /// Flags that sessions need a rebuild, for example after a failed incremental assignment.
@@ -200,7 +263,7 @@ public struct SessionService: Sendable {
 
     @discardableResult
     private static func resegment(
-        from start: (time: Double, id: Int64)?, preserveFirstStart: Bool,
+        from start: Key?, until end: Key?, preserveFirstStart: Bool,
         in connection: Connection, configuration: SessionConfiguration
     ) throws -> Int {
         var sql = """
@@ -213,10 +276,19 @@ public struct SessionService: Sendable {
             FROM copy_events e JOIN contents c ON c.id = e.content_id
             """
         var parameters: [SQLValue] = []
+        var eventBounds: [String] = []
+        var sessionBounds: [String] = []
         if let start {
-            sql += " WHERE (e.copied_at, e.id) >= (?, ?)"
-            parameters = [.double(start.time), .int(start.id)]
+            eventBounds.append("(e.copied_at, e.id) >= (?, ?)")
+            sessionBounds.append("(started_at, first_event_id) >= (?, ?)")
+            parameters += [.double(start.time), .int(start.id)]
         }
+        if let end {
+            eventBounds.append("(e.copied_at, e.id) < (?, ?)")
+            sessionBounds.append("(started_at, first_event_id) < (?, ?)")
+            parameters += [.double(end.time), .int(end.id)]
+        }
+        if !eventBounds.isEmpty { sql += " WHERE " + eventBounds.joined(separator: " AND ") }
         sql += " ORDER BY e.copied_at, e.id"
         let events = try connection.query(sql, parameters) { row in
             SessionEvent(
@@ -227,9 +299,10 @@ public struct SessionService: Sendable {
         let drafts = SessionSegmenter.segment(events, configuration: configuration)
 
         let existing = try connection.query(
-            start == nil
+            sessionBounds.isEmpty
                 ? "SELECT id, first_event_id FROM sessions"
-                : "SELECT id, first_event_id FROM sessions WHERE (started_at, first_event_id) >= (?, ?)",
+                : "SELECT id, first_event_id FROM sessions WHERE "
+                    + sessionBounds.joined(separator: " AND "),
             parameters
         ) { (id: $0.int(0), firstEvent: $0.isNull(1) ? nil : $0.int(1)) }
         var sessionByFirstEvent: [Int64: Int64] = [:]
