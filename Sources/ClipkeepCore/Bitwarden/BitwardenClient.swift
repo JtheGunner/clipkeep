@@ -50,6 +50,8 @@ public struct BitwardenCLIClient: BitwardenClient {
     static let markerFieldName = "clipkeep-id"
 
     private let runner: any CommandRunning
+    /// `bw` keeps its state in one file, so only one command runs at a time.
+    private let gate = CommandGate()
 
     public init(runner: any CommandRunning = ProcessCommandRunner()) {
         self.runner = runner
@@ -69,12 +71,16 @@ public struct BitwardenCLIClient: BitwardenClient {
     }
 
     public func unlock(masterPassword: String) async throws -> String {
-        // The password travels in the environment of this one command, not in its arguments.
+        // The password travels in the environment of this one command, not in its arguments or on
+        // disk. Other processes of the same user can still read a process's environment.
         let output = try await run(
             ["unlock", "--passwordenv", Self.passwordVariable, "--raw"], session: nil,
             extraEnvironment: [Self.passwordVariable: masterPassword])
         let key = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { throw BitwardenError.unexpectedOutput }
+        // A single token; an update notice or other extra output is not a key.
+        guard !key.isEmpty, !key.contains(where: \.isWhitespace) else {
+            throw BitwardenError.unexpectedOutput
+        }
         return key
     }
 
@@ -124,16 +130,22 @@ public struct BitwardenCLIClient: BitwardenClient {
     ) async throws -> String {
         var environment = extraEnvironment
         if let session { environment["BW_SESSION"] = session }
-        let result: CommandResult
+        let outcome: Result<CommandResult, Error>
+        await gate.acquire()
         do {
-            result = try await runner.run(
-                arguments: arguments, environment: environment, standardInput: standardInput)
-        } catch CommandError.notFound {
-            throw BitwardenError.notInstalled
-        } catch CommandError.timedOut {
-            throw BitwardenError.timedOut
+            outcome = .success(
+                try await runner.run(
+                    arguments: arguments, environment: environment, standardInput: standardInput))
         } catch {
-            throw BitwardenError.commandFailed
+            outcome = .failure(error)
+        }
+        await gate.release()
+        let result: CommandResult
+        switch outcome {
+        case .success(let value): result = value
+        case .failure(CommandError.notFound): throw BitwardenError.notInstalled
+        case .failure(CommandError.timedOut): throw BitwardenError.timedOut
+        case .failure: throw BitwardenError.commandFailed
         }
         guard result.exitCode == 0 else { throw Self.classify(errorOutput: result.standardError) }
         return result.standardOutput
@@ -208,5 +220,27 @@ public struct BitwardenCLIClient: BitwardenClient {
         let notes: String
         let folderId: String
         let fields: [Field]
+    }
+}
+
+/// Lets one caller at a time through, in the order they arrived.
+private actor CommandGate {
+    private var isBusy = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if isBusy {
+            await withCheckedContinuation { waiting.append($0) }
+        } else {
+            isBusy = true
+        }
+    }
+
+    func release() {
+        if waiting.isEmpty {
+            isBusy = false
+        } else {
+            waiting.removeFirst().resume()
+        }
     }
 }

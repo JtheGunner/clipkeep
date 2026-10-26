@@ -5,7 +5,14 @@ public struct TransferReport: Sendable, Equatable {
     public let transferred: Int
     /// Secrets still parked in the Keychain.
     public let remaining: Int
+    /// Why the run stopped or why a secret was skipped; nil when everything went through.
     public let failure: BitwardenError?
+
+    public init(transferred: Int, remaining: Int, failure: BitwardenError?) {
+        self.transferred = transferred
+        self.remaining = remaining
+        self.failure = failure
+    }
 }
 
 /// Moves parked secrets into Bitwarden as secure notes and fetches them back later.
@@ -18,21 +25,30 @@ public actor BitwardenSync {
     private let parker: SecretParker
     private var session: String?
     private var isTransferring = false
+    private let idleTimeout: Duration
+    private var idleLock: Task<Void, Never>?
 
-    public init(client: any BitwardenClient, parker: SecretParker) {
+    /// The vault locks again after `idleTimeout` without use, so the session key does not
+    /// stay valid for days.
+    public init(
+        client: any BitwardenClient, parker: SecretParker, idleTimeout: Duration = .seconds(300)
+    ) {
         self.client = client
         self.parker = parker
+        self.idleTimeout = idleTimeout
     }
 
     public var isUnlocked: Bool { session != nil }
 
     /// What the menu shows. Never throws: a problem is a status too.
     public func status() async -> Result<BitwardenStatus, BitwardenError> {
+        let used = session
         do {
-            let status = try await client.status(session: session)
+            let status = try await client.status(session: used)
             // A vault unlocked elsewhere is no use without the session key.
-            if status == .unlocked, session == nil { return .success(.locked) }
-            if status != .unlocked { session = nil }
+            if status == .unlocked, used == nil { return .success(.locked) }
+            // Not if a newer session was obtained while the command ran.
+            if status != .unlocked, session == used { session = nil }
             return .success(status)
         } catch let error as BitwardenError {
             return .failure(error)
@@ -44,10 +60,13 @@ public actor BitwardenSync {
     /// Unlocks the vault, then moves everything that is waiting.
     public func unlock(masterPassword: String) async throws -> TransferReport {
         session = try await client.unlock(masterPassword: masterPassword)
+        scheduleIdleLock()
         return try await transferPending()
     }
 
     public func lock() async {
+        idleLock?.cancel()
+        idleLock = nil
         guard let key = session else { return }
         session = nil
         try? await client.lock(session: key)
@@ -67,6 +86,7 @@ public actor BitwardenSync {
         }
         isTransferring = true
         defer { isTransferring = false }
+        scheduleIdleLock()
 
         let pending = try parker.pending()
         var transferred = 0
@@ -83,13 +103,16 @@ public actor BitwardenSync {
                     } catch ParkingError.vaultItemMissing {
                         // Its Keychain item vanished, so it cannot be moved; the others can.
                         continue
+                    } catch let error as BitwardenError where !error.endsTheRun {
+                        // This secret stays parked; one bad secret must not block the rest.
+                        failure = failure ?? error
                     }
                 }
             } catch let error as BitwardenError {
                 failure = error
             }
         }
-        if failure == .locked { session = nil }
+        if failure == .locked, session == key { session = nil }
         // Also finishes what an interrupted run confirmed but did not delete.
         try parker.purgeTransferred()
         return TransferReport(
@@ -100,11 +123,11 @@ public actor BitwardenSync {
         _ secret: ParkedSecret, folder: String, existing: [BitwardenNote], session: String
     ) async throws {
         let value = try parker.reveal(id: secret.id)
-        // A run that died after creating the note must not create it twice.
-        let alreadyThere = existing.contains {
-            $0.clipkeepID == secret.vaultKey && $0.notes == value
-        }
-        if !alreadyThere {
+        // A run that died after creating the note must not create it twice. A note with our
+        // marker but another content is a conflict: the secret stays parked.
+        let marked = existing.first { $0.clipkeepID == secret.vaultKey }
+        if let marked, marked.notes != value { throw BitwardenError.unexpectedOutput }
+        if marked == nil {
             let created = try await client.createSecureNote(
                 name: secret.label, secret: value, clipkeepID: secret.vaultKey, folderID: folder,
                 session: session)
@@ -123,6 +146,7 @@ public actor BitwardenSync {
             throw ParkingError.vaultItemMissing
         }
         guard let key = session else { throw BitwardenError.locked }
+        scheduleIdleLock()
         do {
             let folder = try await client.folderID(named: Self.folderName, session: key)
             let notes = try await client.notes(inFolder: folder, session: key)
@@ -131,8 +155,30 @@ public actor BitwardenSync {
             }
             return value
         } catch BitwardenError.locked {
-            session = nil
+            if session == key { session = nil }
             throw BitwardenError.locked
+        }
+    }
+}
+
+extension BitwardenSync {
+    private func scheduleIdleLock() {
+        idleLock?.cancel()
+        let timeout = idleTimeout
+        idleLock = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            await self?.lock()
+        }
+    }
+}
+
+extension BitwardenError {
+    /// Whether the error concerns the whole run rather than one secret.
+    fileprivate var endsTheRun: Bool {
+        switch self {
+        case .locked, .loggedOut, .offline, .timedOut, .notInstalled, .busy: true
+        case .invalidMasterPassword, .unexpectedOutput, .commandFailed: false
         }
     }
 }

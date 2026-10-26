@@ -121,8 +121,13 @@ public struct ProcessCommandRunner: CommandRunning {
 
         let timedOut = Flag()
         let watchdog = DispatchWorkItem {
+            guard process.isRunning else { return }
             timedOut.set()
             process.terminate()
+            // A child that ignores SIGTERM is killed after a short grace period.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
 
@@ -143,9 +148,14 @@ public struct ProcessCommandRunner: CommandRunning {
             try? input.fileHandleForWriting.write(contentsOf: Data(standardInput.utf8))
         }
         try? input.fileHandleForWriting.close()
-        group.wait()
-        process.waitUntilExit()
+        // A grandchild may keep the pipes open after the child is gone; the call still ends.
+        let drained = group.wait(timeout: .now() + timeout + 3)
         watchdog.cancel()
+        if drained == .timedOut {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            throw CommandError.timedOut
+        }
+        process.waitUntilExit()
 
         if timedOut.isSet { throw CommandError.timedOut }
         return CommandResult(

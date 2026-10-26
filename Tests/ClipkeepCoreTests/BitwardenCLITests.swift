@@ -37,7 +37,7 @@ private struct FakeBitwardenCLI {
                 else echo "Invalid master password." >&2; exit 1; fi ;;
               lock) echo "Your vault is locked." ;;
               sync) need_session; echo "Syncing complete." ;;
-              hang) sleep 5 ;;
+              hang) sleep 30 ;;
               list)
                 need_session
                 if [ "$2" = folders ]; then cat "$DIR/folders.json" 2>/dev/null || echo '[]'
@@ -164,9 +164,12 @@ private final class MemoryVault: SecretVault, @unchecked Sendable {
         let fake = try FakeBitwardenCLI()
         defer { fake.remove() }
         let runner = fake.runner(timeout: 0.5)
+        let started = Date()
         await #expect(throws: CommandError.timedOut) {
             try await runner.run(arguments: ["hang"], environment: [:], standardInput: nil)
         }
+        // The shell is killed, but its `sleep` keeps the pipes open: the call still ends.
+        #expect(Date().timeIntervalSince(started) < 10)
     }
 
     // MARK: - End to end

@@ -39,6 +39,8 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         }
     }
     private var failureForCreate: BitwardenError = .offline
+    private var rejectedSecret: String?
+    func rejectCreate(ofSecret secret: String) { lock.withLock { rejectedSecret = secret } }
     func echoWrongNotes() { lock.withLock { corruptNotes = true } }
     func preload(_ note: BitwardenNote) { lock.withLock { stored.append(note) } }
 
@@ -75,6 +77,7 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         try check(session: session)
         return try lock.withLock {
             if let limit = failAfterCreates, created >= limit { throw failureForCreate }
+            if secret == rejectedSecret { throw BitwardenError.commandFailed }
             created += 1
             let note = BitwardenNote(
                 id: "item-\(created)", notes: secret, clipkeepID: clipkeepID)
@@ -265,6 +268,54 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         #expect(result == .failure(.notInstalled))
     }
 
+    @Test func oneRejectedSecretDoesNotBlockTheOthers() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 3)
+        fixture.bitwarden.rejectCreate(ofSecret: secret(0))
+        let report = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        #expect(report == TransferReport(transferred: 2, remaining: 1, failure: .commandFailed))
+        #expect(fixture.vault.parkedValues == [secret(0)])
+        #expect(
+            try await fixture.sync.retrieve(secretID: try fixture.parker.pending()[0].id)
+                == secret(0))
+    }
+
+    @Test func aNoteWithOurMarkerButOtherContentIsNeverDuplicated() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 1)
+        let pending = try #require(try fixture.parker.pending().first)
+        fixture.bitwarden.preload(
+            BitwardenNote(id: "old", notes: "changed", clipkeepID: pending.vaultKey))
+        for _ in 0..<2 {
+            _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        }
+        #expect(fixture.bitwarden.notes.count == 1)
+        #expect(fixture.vault.parkedValues.count == 1)
+    }
+
+    @Test func aSlowStatusCheckDoesNotWipeANewSession() async throws {
+        let fixture = try Fixture()
+        let slow = BitwardenSync(client: SlowStatus(), parker: fixture.parker)
+        async let status = slow.status()
+        try await Task.sleep(for: .milliseconds(30))
+        _ = try await slow.unlock(masterPassword: FakeBitwarden.goodPassword)
+        _ = await status
+        #expect(await slow.isUnlocked)
+    }
+
+    @Test func theVaultLocksAfterBeingIdle() async throws {
+        let fixture = try Fixture()
+        let quick = BitwardenSync(
+            client: fixture.bitwarden, parker: fixture.parker, idleTimeout: .milliseconds(100))
+        _ = try await quick.unlock(masterPassword: FakeBitwarden.goodPassword)
+        #expect(await quick.isUnlocked)
+        // Poll instead of sleeping a fixed time: a busy CI runner delays the timer.
+        for _ in 0..<100 where await quick.isUnlocked {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(await !quick.isUnlocked)
+    }
+
     // MARK: - Retrieval
 
     @Test func aParkedSecretComesBackFromTheKeychain() async throws {
@@ -317,6 +368,23 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
 
 private struct EmptyVault: BitwardenClient {
     func status(session: String?) async throws -> BitwardenStatus { .unlocked }
+    func unlock(masterPassword: String) async throws -> String { FakeBitwarden.sessionKey }
+    func lock(session: String) async throws {}
+    func sync(session: String) async throws {}
+    func folderID(named name: String, session: String) async throws -> String { "f" }
+    func createSecureNote(
+        name: String, secret: String, clipkeepID: String, folderID: String, session: String
+    ) async throws -> BitwardenNote {
+        BitwardenNote(id: "x", notes: secret, clipkeepID: clipkeepID)
+    }
+    func notes(inFolder folderID: String, session: String) async throws -> [BitwardenNote] { [] }
+}
+
+private struct SlowStatus: BitwardenClient {
+    func status(session: String?) async throws -> BitwardenStatus {
+        try await Task.sleep(for: .milliseconds(200))
+        return .locked
+    }
     func unlock(masterPassword: String) async throws -> String { FakeBitwarden.sessionKey }
     func lock(session: String) async throws {}
     func sync(session: String) async throws {}
