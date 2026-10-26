@@ -24,6 +24,13 @@ public struct ParkedSecret: Sendable, Equatable {
     let vaultKey: String
 }
 
+/// A text the user declared "not a secret"; shown without the text itself.
+public struct SecretException: Sendable, Equatable {
+    public let id: Int64
+    public let label: String
+    public let createdAt: Date
+}
+
 public enum ParkingError: Error, Equatable {
     case notFound
     case notParked
@@ -44,12 +51,17 @@ public struct SecretParker: SecretSink {
     private let vault: any SecretVault
     private let detector: SecretDetector
     private let onError: @Sendable (Error) -> Void
+    private let onParked: @Sendable (ParkedSecret) -> Void
 
+    /// - Parameter onParked: called for every newly parked secret, for example to offer the
+    ///   "not a secret" undo.
     public init(
         database: Database, store: ContentStore, vault: any SecretVault,
         detector: SecretDetector = SecretDetector(),
-        onError: @escaping @Sendable (Error) -> Void = { _ in }
+        onError: @escaping @Sendable (Error) -> Void = { _ in },
+        onParked: @escaping @Sendable (ParkedSecret) -> Void = { _ in }
     ) {
+        self.onParked = onParked
         self.database = database
         self.store = store
         self.vault = vault
@@ -61,23 +73,31 @@ public struct SecretParker: SecretSink {
 
     public func handle(secret text: String, context: CopyContext, copiedAt: Date) {
         do {
-            try park(text, context: context, copiedAt: copiedAt)
+            if let parked = try park(text, context: context, copiedAt: copiedAt) {
+                onParked(parked)
+            }
         } catch {
             // The secret stays out of the history even when parking fails.
             onError(error)
         }
     }
 
-    private func park(_ text: String, context: CopyContext, copiedAt: Date) throws {
+    /// Returns the secret if a new one was parked.
+    private func park(_ text: String, context: CopyContext, copiedAt: Date) throws -> ParkedSecret?
+    {
         // Parking and reconciling never overlap, so a Keychain item that is still being
         // registered is never mistaken for a leftover.
-        try Self.lock.withLock {
+        let created: String? = try Self.lock.withLock {
             let kind =
                 detector.detect(in: text).max { $0.confidence < $1.confidence }?.kind
                 ?? .highEntropyToken
             let fingerprint = try fingerprint(of: text)
+            // The user may have declared it "not a secret" while this copy waited for the lock.
+            if try isExceptionFingerprint(fingerprint) { return nil }
 
             // Copying the same secret again adds a copy to its placeholder instead of a new entry.
+            // This also holds once it moved to Bitwarden, so a copy fetched back from there
+            // does not park it a second time.
             if let existing = try parkedSecret(withFingerprint: fingerprint) {
                 _ = try store.record(
                     text: existing.label, copiedAt: copiedAt, context: context, kind: .secret
@@ -86,7 +106,7 @@ public struct SecretParker: SecretSink {
                         "UPDATE parked_secrets SET content_id = ? WHERE id = ?",
                         [.int(recorded.contentID), .int(existing.id)])
                 }
-                return
+                return nil
             }
 
             let key = UUID().uuidString
@@ -113,12 +133,16 @@ public struct SecretParker: SecretSink {
                 try? vault.delete(key: key)
                 throw error
             }
+            return key
         }
+        guard let created else { return nil }
+        return try secrets(where: "vault_key = ?", [.text(created)], limit: 1).first
     }
 
     private func parkedSecret(withFingerprint fingerprint: String) throws -> ParkedSecret? {
         try secrets(
-            where: "state = 'parked' AND fingerprint = ?", [.text(fingerprint)], limit: 1
+            where: "state IN ('parked', 'transferred', 'deleted') AND fingerprint = ?",
+            [.text(fingerprint)], limit: 1
         ).first
     }
 
@@ -251,7 +275,159 @@ public struct SecretParker: SecretSink {
                 }
                 if state == "lost" { lost += 1 }
             }
+            // A "not a secret" undo whose Keychain delete failed leaves an item to remove.
+            _ = try? purgeTransferred(at: now)
             return (adopted, lost)
+        }
+    }
+
+    // MARK: - "Not a secret"
+
+    /// Whether the user declared this text "not a secret". Any failure counts as no, so the
+    /// text is parked rather than stored.
+    public func isException(_ text: String) -> Bool {
+        guard let fingerprint = try? fingerprint(of: text) else { return false }
+        return (try? isExceptionFingerprint(fingerprint)) ?? false
+    }
+
+    private func isExceptionFingerprint(_ fingerprint: String) throws -> Bool {
+        try database.read { connection in
+            try !connection.query(
+                "SELECT 1 FROM secret_exceptions WHERE fingerprint = ?", [.text(fingerprint)]
+            ) { _ in 1 }.isEmpty
+        }
+    }
+
+    /// Turns a parked secret back into a normal history entry with all its copies, removes it
+    /// from the Keychain and remembers the text as an exception, so it is never parked again.
+    /// `value` is needed only once the Keychain item is gone (the secret moved to Bitwarden).
+    public func markNotSecret(id: Int64, value providedValue: String? = nil) throws {
+        try Self.lock.withLock {
+            guard let secret = try secret(id: id) else { throw ParkingError.notFound }
+            guard secret.state != .lost else { throw ParkingError.vaultItemMissing }
+            let value: String
+            if let stored = try vault.read(key: secret.vaultKey) {
+                value = stored
+            } else if let providedValue {
+                value = providedValue
+            } else {
+                throw ParkingError.vaultItemMissing
+            }
+            // The fingerprint taken when the secret was copied; a value fetched back from
+            // Bitwarden may differ in whitespace.
+            let stored = try database.read { connection in
+                try connection.query(
+                    "SELECT fingerprint FROM parked_secrets WHERE id = ?", [.int(id)]
+                ) { $0.text(0) }.first ?? ""
+            }
+            let fingerprint = stored.isEmpty ? try fingerprint(of: value) : stored
+            // A placeholder shared with another parked secret (same label) is left alone.
+            let shared =
+                try secret.contentID.map { placeholder in
+                    try database.read { connection in
+                        try !connection.query(
+                            "SELECT 1 FROM parked_secrets WHERE content_id = ? AND id != ?",
+                            [.int(placeholder), .int(id)]
+                        ) { _ in 1 }.isEmpty
+                    }
+                } ?? false
+            let events =
+                shared
+                ? []
+                : try database.read { connection in
+                    try connection.query(
+                        """
+                        SELECT id, copied_at, app_bundle_id, app_name, window_title, url
+                        FROM copy_events WHERE content_id = ? ORDER BY copied_at, id
+                        """,
+                        [secret.contentID.map { .int($0) } ?? .null]
+                    ) { row in
+                        (
+                            id: row.int(0), copiedAt: Date(timeIntervalSince1970: row.double(1)),
+                            context: CopyContext(
+                                appBundleID: row.isNull(2) ? nil : row.text(2),
+                                appName: row.isNull(3) ? nil : row.text(3),
+                                windowTitle: row.isNull(4) ? nil : row.text(4),
+                                url: row.isNull(5) ? nil : row.text(5))
+                        )
+                    }
+                }
+            let first = events.first
+            _ = try store.record(
+                text: value, copiedAt: first?.copiedAt ?? secret.parkedAt,
+                context: first?.context ?? CopyContext()
+            ) { connection, recorded in
+                try connection.execute(
+                    "UPDATE parked_secrets SET content_id = NULL WHERE id = ?", [.int(secret.id)])
+                if let placeholder = secret.contentID, !shared {
+                    // Every copy follows the text to its new entry; the event `record` just made
+                    // for the first copy is redundant.
+                    try connection.execute(
+                        "UPDATE copy_events SET content_id = ? WHERE content_id = ?",
+                        [.int(recorded.contentID), .int(placeholder)])
+                    try connection.execute(
+                        "DELETE FROM copy_events WHERE id = ?", [.int(recorded.eventID)])
+                    try connection.execute(
+                        "DELETE FROM contents WHERE id = ?", [.int(placeholder)])
+                    try connection.execute(
+                        """
+                        UPDATE contents SET
+                            first_seen_at = (SELECT min(copied_at) FROM copy_events WHERE content_id = ?1),
+                            last_copied_at = (SELECT max(copied_at) FROM copy_events WHERE content_id = ?1)
+                        WHERE id = ?1 AND EXISTS (SELECT 1 FROM copy_events WHERE content_id = ?1)
+                        """,
+                        [.int(recorded.contentID)])
+                    // The moved copies change what the sessions hold.
+                    try SessionService.recut(
+                        ofContent: recorded.contentID, in: connection, configuration: .default)
+                }
+                _ = try RankingService.refresh(
+                    contentID: recorded.contentID, in: connection, configuration: .default,
+                    now: Date())
+                // "transferred" lets `purgeTransferred` finish removing the Keychain item even
+                // if deleting it below fails.
+                try connection.execute(
+                    """
+                    UPDATE parked_secrets SET state = 'transferred', transferred_at = ?
+                    WHERE id = ? AND state = 'parked'
+                    """,
+                    [SQLValue(Date()), .int(secret.id)])
+                // The empty fingerprint frees the text for parking should the exception be
+                // removed again.
+                try connection.execute(
+                    "UPDATE parked_secrets SET fingerprint = '' WHERE id = ?", [.int(secret.id)])
+                try connection.execute(
+                    """
+                    INSERT OR IGNORE INTO secret_exceptions (fingerprint, label, created_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    [.text(fingerprint), .text(secret.label), SQLValue(Date())])
+            }
+        }
+        do {
+            try deleteFromVault(id: id)
+        } catch {
+            // Stays "transferred", so a later purge removes it; the caller should know.
+            onError(error)
+        }
+    }
+
+    public func exceptions() throws -> [SecretException] {
+        try database.read { connection in
+            try connection.query(
+                "SELECT id, label, created_at FROM secret_exceptions ORDER BY id DESC", []
+            ) {
+                SecretException(
+                    id: $0.int(0), label: $0.text(1),
+                    createdAt: Date(timeIntervalSince1970: $0.double(2)))
+            }
+        }
+    }
+
+    /// The text is treated as a secret again the next time it is copied.
+    public func removeException(id: Int64) throws {
+        try database.write { connection in
+            try connection.execute("DELETE FROM secret_exceptions WHERE id = ?", [.int(id)])
         }
     }
 

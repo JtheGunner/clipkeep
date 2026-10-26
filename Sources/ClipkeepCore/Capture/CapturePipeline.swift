@@ -62,6 +62,12 @@ public enum CaptureOutcome: Sendable, Equatable {
 /// a sink may park the value somewhere safe (see the Keychain parking task).
 public protocol SecretSink: Sendable {
     func handle(secret text: String, context: CopyContext, copiedAt: Date)
+    /// Whether the user declared this exact text "not a secret".
+    func isException(_ text: String) -> Bool
+}
+
+extension SecretSink {
+    public func isException(_ text: String) -> Bool { false }
 }
 
 /// The capture pipeline as single stages that can be tested one by one.
@@ -173,7 +179,7 @@ public struct CapturePipeline: Sendable {
             return .skipped(reason)
         }
         if control.matchesPattern(text) { return .skipped(.ignoredByRule) }
-        if detector.containsSecret(in: text) {
+        if detector.containsSecret(in: text), !(secretSink?.isException(text) ?? false) {
             if control.isPaused || control.pauseGeneration != pauseGeneration {
                 return .skipped(.paused)
             }
