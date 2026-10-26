@@ -1,5 +1,7 @@
 public enum Schema {
-    public static let migrator = Migrator(migrations: [version1])
+    public static let latestVersion = 2
+    public static let migrations = [version1, version2]
+    public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
         version: 1,
@@ -54,5 +56,55 @@ public enum Schema {
             )
             """,
             "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        ])
+
+    /// Search support: a folded copy of the text, the time of the latest copy (so listing and
+    /// ranking never scan `copy_events`), and a trigram full-text index over the folded text.
+    /// The trigram tokenizer matches substrings and ignores case; queries need three characters.
+    /// `search_text` is filled by `SearchText.fold`; the backfill below is ASCII-only and exists
+    /// for databases created before this version.
+    private static let version2 = Migration(
+        version: 2,
+        statements: [
+            "ALTER TABLE contents ADD COLUMN search_text TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE contents ADD COLUMN last_copied_at REAL NOT NULL DEFAULT 0",
+            """
+            UPDATE contents SET
+                search_text = lower(text),
+                last_copied_at = COALESCE(
+                    (SELECT max(copied_at) FROM copy_events WHERE content_id = contents.id),
+                    first_seen_at)
+            """,
+            "CREATE INDEX contents_last_copied_at ON contents(last_copied_at DESC, id DESC)",
+            """
+            CREATE TRIGGER copy_events_touch_content AFTER INSERT ON copy_events BEGIN
+                UPDATE contents SET last_copied_at = max(last_copied_at, new.copied_at)
+                WHERE id = new.content_id;
+            END
+            """,
+            """
+            CREATE VIRTUAL TABLE contents_fts USING fts5(
+                search_text, content='contents', content_rowid='id', tokenize='trigram'
+            )
+            """,
+            """
+            CREATE TRIGGER contents_fts_insert AFTER INSERT ON contents BEGIN
+                INSERT INTO contents_fts(rowid, search_text) VALUES (new.id, new.search_text);
+            END
+            """,
+            """
+            CREATE TRIGGER contents_fts_delete AFTER DELETE ON contents BEGIN
+                INSERT INTO contents_fts(contents_fts, rowid, search_text)
+                VALUES ('delete', old.id, old.search_text);
+            END
+            """,
+            """
+            CREATE TRIGGER contents_fts_update AFTER UPDATE OF id, search_text ON contents BEGIN
+                INSERT INTO contents_fts(contents_fts, rowid, search_text)
+                VALUES ('delete', old.id, old.search_text);
+                INSERT INTO contents_fts(rowid, search_text) VALUES (new.id, new.search_text);
+            END
+            """,
+            "INSERT INTO contents_fts(contents_fts) VALUES ('rebuild')",
         ])
 }

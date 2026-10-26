@@ -33,6 +33,8 @@ public final class Database: @unchecked Sendable {
             try Self.verifyKey(setup)
             _ = try setup.query("PRAGMA journal_mode = WAL") { $0.text(0) }
             try setup.execute("PRAGMA foreign_keys = ON")
+            // REPLACE conflicts delete rows implicitly; the index triggers must fire for those too.
+            try setup.execute("PRAGMA recursive_triggers = ON")
         } catch {
             sqlite3_close(handle)
             throw error

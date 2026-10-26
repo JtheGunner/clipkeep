@@ -13,7 +13,7 @@ import Testing
 
         let database = try temp.open()
 
-        #expect(try userVersion(database) == 1)
+        #expect(try userVersion(database) == Schema.latestVersion)
         let tables = try database.read {
             try $0.query("SELECT name FROM sqlite_master WHERE type = 'table'") { $0.text(0) }
         }
@@ -29,7 +29,7 @@ import Testing
 
         try Schema.migrator.migrate(database)
 
-        #expect(try userVersion(database) == 1)
+        #expect(try userVersion(database) == Schema.latestVersion)
     }
 
     @Test func onlyPendingMigrationsRun() throws {
@@ -71,7 +71,7 @@ import Testing
         let database = try temp.open()
         try database.write { try $0.execute("PRAGMA user_version = 99") }
 
-        #expect(throws: DatabaseError.schemaTooNew(found: 99, supported: 1)) {
+        #expect(throws: DatabaseError.schemaTooNew(found: 99, supported: Schema.latestVersion)) {
             try Schema.migrator.migrate(database)
         }
     }
