@@ -1,13 +1,58 @@
 import AppKit
 import ClipkeepCore
+import os
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private nonisolated static let logger = Logger(
+        subsystem: AppInfo.bundleIdentifier, category: "capture")
+
     private var statusItemController: StatusItemController?
+    private var watcher: ClipboardWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItemController = StatusItemController(
             launchAtLogin: LaunchAtLoginController(service: SystemLoginItemService())
         )
+        startCapture()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        watcher?.stop()
+    }
+
+    /// Opens the database off the main thread (the Keychain may prompt). Without a database the
+    /// app keeps running, shows the problem in its menu and records nothing.
+    private func startCapture() {
+        let tracker = FrontmostApplicationTracker()
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                let database = try AppDatabase.open()
+                let poller = ClipboardPoller(
+                    pasteboard: SystemPasteboard(), source: tracker,
+                    pipeline: CapturePipeline(store: ContentStore(database: database)),
+                    onError: { error in
+                        // Never log copied content, only the error.
+                        Self.logger.error(
+                            "Capture failed: \(String(describing: error), privacy: .public)")
+                    })
+                let watcher = ClipboardWatcher(poller: poller)
+                watcher.start()
+                await self?.captureStarted(watcher)
+            } catch {
+                Self.logger.error(
+                    "Capture disabled: \(String(describing: error), privacy: .public)")
+                await self?.captureFailed()
+            }
+        }
+    }
+
+    private func captureStarted(_ watcher: ClipboardWatcher) {
+        self.watcher = watcher
+    }
+
+    private func captureFailed() {
+        statusItemController?.showCaptureProblem(
+            "Aufzeichnung inaktiv: Datenbank konnte nicht geöffnet werden")
     }
 }
