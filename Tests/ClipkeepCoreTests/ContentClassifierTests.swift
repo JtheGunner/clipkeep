@@ -82,7 +82,7 @@ import Testing
 
         _ = ContentClassifier.classify(text)
 
-        #expect(Date().timeIntervalSince(started) < 0.1)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(0.1))
     }
 
     @Test func longLinesDoNotCauseQuadraticBacktracking() {
@@ -94,7 +94,7 @@ import Testing
                 "x\n" + prefix + String(repeating: "a b", count: 10_000))
         }
 
-        #expect(Date().timeIntervalSince(started) < 0.5)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(0.5))
     }
 
     @Test func oversizedPastesAreTreatedAsText() {
@@ -224,6 +224,6 @@ private func threadCPUSeconds() -> Double {
             _ = ContentClassifier.classify("x\n" + input + "\ny")
         }
 
-        #expect(Date().timeIntervalSince(started) < 1)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(1))
     }
 }

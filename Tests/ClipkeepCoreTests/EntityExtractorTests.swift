@@ -75,7 +75,7 @@ import Testing
         let entities = EntityExtractor.extract(from: text)
 
         #expect(entities.isEmpty)
-        #expect(Date().timeIntervalSince(started) < 1)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(1))
     }
 }
 
@@ -173,7 +173,7 @@ import Testing
 
         _ = EntityExtractor.extract(from: text)
 
-        #expect(Date().timeIntervalSince(started) < 0.5)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(0.5))
     }
 }
 
@@ -189,7 +189,7 @@ import Testing
 
         for input in inputs { _ = EntityExtractor.extract(from: input) }
 
-        #expect(Date().timeIntervalSince(started) < 1)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(1))
     }
 
     @Test func schemesStillMatchAfterPunctuation() {

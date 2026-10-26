@@ -221,6 +221,6 @@ private enum Fixture {
 
         _ = detector.detect(in: text)
 
-        #expect(Date().timeIntervalSince(started) < 5)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(5))
     }
 }
