@@ -3,7 +3,8 @@ import Carbon.HIToolbox
 /// A system-wide keyboard shortcut. It needs no permission; the handler runs on the main thread.
 @MainActor
 final class GlobalHotKey {
-    nonisolated static let hotKeyID = EventHotKeyID(signature: OSType(0x434C_504B), id: 1)  // "CLPK"
+    /// Signature "CLPK".
+    nonisolated static let hotKeyID = EventHotKeyID(signature: OSType(0x434C_504B), id: 1)
 
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
