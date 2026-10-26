@@ -9,6 +9,7 @@ public final class ClipboardPoller: @unchecked Sendable {
     private let onError: @Sendable (Error) -> Void
     private var lastChangeCount: Int
     private var lastPollAt: Date
+    private var lastPauseGeneration: Int
 
     /// The pasteboard content present at start is the baseline and is not captured.
     public init(
@@ -22,6 +23,7 @@ public final class ClipboardPoller: @unchecked Sendable {
         self.onError = onError
         lastChangeCount = pasteboard.changeCount
         lastPollAt = now
+        lastPauseGeneration = pipeline.control.pauseGeneration
     }
 
     /// Returns the outcome when the pasteboard changed since the last call, nil otherwise (also
@@ -30,9 +32,20 @@ public final class ClipboardPoller: @unchecked Sendable {
     @discardableResult
     public func poll(now: Date = Date()) -> CaptureOutcome? {
         let windowStart = lastPollAt
+        let control = pipeline.control
+        let generation = control.pauseGeneration
         guard pasteboard.changeCount != lastChangeCount else {
             lastPollAt = now
+            lastPauseGeneration = generation
             return nil
+        }
+        // While paused, and after a pause that ended between two polls, the pasteboard is not
+        // read and the change is forgotten for good.
+        if control.isPaused || generation != lastPauseGeneration {
+            lastPauseGeneration = generation
+            lastChangeCount = pasteboard.changeCount
+            lastPollAt = now
+            return .skipped(.paused)
         }
         // A snapshot that failed keeps the window open, so the retry still covers the apps that
         // were frontmost since the last processed poll.

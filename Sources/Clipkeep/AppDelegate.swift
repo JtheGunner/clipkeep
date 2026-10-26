@@ -31,13 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task.detached(priority: .utility) { [weak self] in
             do {
                 let database = try AppDatabase.open()
+                let control = try CaptureControl(settings: SettingsStore(database: database))
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
                         store: ContentStore(database: database),
                         contextDetails: ContextReader(
                             environment: systemContext.environment,
-                            readsSafari: { StatusItemController.readsSafari })),
+                            readsSafari: { StatusItemController.readsSafari }),
+                        control: control),
                     onError: { error in
                         // Never log copied content, only the error.
                         Self.logger.error(
@@ -45,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     })
                 let watcher = ClipboardWatcher(poller: poller)
                 watcher.start()
-                await self?.captureStarted(watcher)
+                await self?.captureStarted(watcher, control: control)
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -54,12 +56,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func captureStarted(_ watcher: ClipboardWatcher) {
+    private func captureStarted(_ watcher: ClipboardWatcher, control: CaptureControl) {
         self.watcher = watcher
+        statusItemController?.attach(control: control)
     }
 
     private func captureFailed() {
         statusItemController?.showCaptureProblem(
-            "Aufzeichnung inaktiv: Datenbank konnte nicht geöffnet werden")
+            "Aufzeichnung inaktiv: Datenbank oder Einstellungen nicht lesbar")
     }
 }
