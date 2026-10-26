@@ -122,11 +122,14 @@ public struct CapturePipeline: Sendable {
     private let configuration: CaptureConfiguration
     private let detector: SecretDetector
     private let secretSink: (any SecretSink)?
+    private let contextDetails: (any ContextDetailProviding)?
 
     public init(
         store: ContentStore, configuration: CaptureConfiguration = CaptureConfiguration(),
-        detector: SecretDetector = SecretDetector(), secretSink: (any SecretSink)? = nil
+        detector: SecretDetector = SecretDetector(), secretSink: (any SecretSink)? = nil,
+        contextDetails: (any ContextDetailProviding)? = nil
     ) {
+        self.contextDetails = contextDetails
         self.store = store
         self.configuration = configuration
         self.detector = detector
@@ -164,6 +167,9 @@ public struct CapturePipeline: Sendable {
             secretSink?.handle(secret: text, context: source, copiedAt: copiedAt)
             return .skipped(.secret)
         }
-        return .recorded(try store.record(text: text, copiedAt: copiedAt, context: source))
+        // Details are read last, so skipped copies never cost an accessibility or Apple Event call.
+        // After an app switch inside the poll window the current window may belong to another app.
+        let context = sources.count == 1 ? (contextDetails?.details(for: source) ?? source) : source
+        return .recorded(try store.record(text: text, copiedAt: copiedAt, context: context))
     }
 }

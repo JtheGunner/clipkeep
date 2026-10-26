@@ -9,10 +9,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItemController: StatusItemController?
     private var watcher: ClipboardWatcher?
+    private let systemContext = SystemContext()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItemController = StatusItemController(
-            launchAtLogin: LaunchAtLoginController(service: SystemLoginItemService())
+            launchAtLogin: LaunchAtLoginController(service: SystemLoginItemService()),
+            systemContext: systemContext
         )
         startCapture()
     }
@@ -25,12 +27,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app keeps running, shows the problem in its menu and records nothing.
     private func startCapture() {
         let tracker = FrontmostApplicationTracker()
+        let systemContext = self.systemContext
         Task.detached(priority: .utility) { [weak self] in
             do {
                 let database = try AppDatabase.open()
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
-                    pipeline: CapturePipeline(store: ContentStore(database: database)),
+                    pipeline: CapturePipeline(
+                        store: ContentStore(database: database),
+                        contextDetails: ContextReader(
+                            environment: systemContext.environment,
+                            readsSafari: { StatusItemController.readsSafari })),
                     onError: { error in
                         // Never log copied content, only the error.
                         Self.logger.error(
