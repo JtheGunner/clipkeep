@@ -48,8 +48,8 @@ import Testing
         let yesterday = PaletteRow(hit: hit(ago: 86_400), now: now, calendar: calendar)
         #expect(yesterday.subtitle.contains("gestern"))
         let old = PaletteRow(hit: hit(ago: 10 * 86_400), now: now, calendar: calendar)
-        #expect(old.subtitle.contains("."))
-        #expect(!old.subtitle.contains("gestern"))
+        // 1_800_000_000 is 2027-01-15 09:00 in Zurich.
+        #expect(old.subtitle == "Safari · 05.01.2027 · Text")
     }
 
     @Test func theSubtitleHasAppTypeAndCount() {
@@ -70,6 +70,42 @@ import Testing
         _ = try store.record(text: "deploy token placeholder", copiedAt: now, kind: .secret)
         let rows = try PaletteSearch(database: database).rows(for: "deploy", now: now)
         #expect(rows.map(\.text) == ["deploy token notes"])
+    }
+
+    @Test func manySecretsDoNotCrowdOutTheRealRows() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let store = ContentStore(database: database)
+        for index in 0..<(PaletteSearch.rowLimit * 3) {
+            _ = try store.record(
+                text: "placeholder number \(index)",
+                copiedAt: now.addingTimeInterval(Double(index)),
+                kind: .secret)
+        }
+        for index in 0..<PaletteSearch.rowLimit {
+            _ = try store.record(
+                text: "ordinary entry \(index)",
+                copiedAt: now.addingTimeInterval(-1_000 - Double(index)))
+        }
+        let rows = try PaletteSearch(database: database).rows(for: "", now: now)
+        #expect(rows.count == PaletteSearch.rowLimit)
+        #expect(rows.allSatisfy { $0.text.hasPrefix("ordinary") })
+    }
+
+    @Test func ourMarkerWinsOverOtherMarkerTypes() {
+        let types: Set<String> = [OwnCopyWriter.markerType, "org.nspasteboard.ConcealedType"]
+        #expect(CaptureConfiguration.skipReason(forTypes: types) == .ownCopy)
+    }
+
+    @Test func theMarkerIsListedAsSoonAsThePasteboardChanges() throws {
+        let board = NSPasteboard(name: NSPasteboard.Name("clipkeep-test-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let before = board.changeCount
+        OwnCopyWriter(pasteboard: board).copy("text")
+        // The count moves once, with the marker already among the types.
+        #expect(board.changeCount == before + 1)
+        #expect(board.types?.map(\.rawValue).contains(OwnCopyWriter.markerType) == true)
     }
 
     @Test func anEmptyQueryListsTheNewestFirst() throws {

@@ -13,9 +13,11 @@ public struct OwnCopyWriter: @unchecked Sendable {
 
     @discardableResult
     public func copy(_ text: String) -> Bool {
-        pasteboard.clearContents()
-        let wrote = pasteboard.setString(text, forType: .string)
-        pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType(Self.markerType))
-        return wrote
+        // Both types are declared in one step: only that call changes the pasteboard's change
+        // count, so a poll can never see the text without the marker.
+        let marker = NSPasteboard.PasteboardType(Self.markerType)
+        pasteboard.declareTypes([.string, marker], owner: nil)
+        pasteboard.setData(Data(), forType: marker)
+        return pasteboard.setString(text, forType: .string)
     }
 }

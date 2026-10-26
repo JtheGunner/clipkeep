@@ -81,8 +81,7 @@ public struct PaletteSearch: Sendable {
     public func rows(for query: String, now: Date = Date()) throws -> [PaletteRow] {
         let hits = try search.search(
             query.trimmingCharacters(in: .whitespacesAndNewlines),
-            filter: SearchFilter(limit: Self.rowLimit * 2))
-        return hits.filter { $0.kind != ContentKind.secret.rawValue }
-            .prefix(Self.rowLimit).map { PaletteRow(hit: $0, now: now) }
+            filter: SearchFilter(excludedKind: ContentKind.secret.rawValue, limit: Self.rowLimit))
+        return hits.map { PaletteRow(hit: $0, now: now) }
     }
 }

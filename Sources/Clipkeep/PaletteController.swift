@@ -24,7 +24,6 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
     private let field = NSSearchField()
     private let table = NSTableView()
     private var rows: [PaletteRow] = []
-    private var generation = 0
 
     init(search: PaletteSearch, copyWriter: OwnCopyWriter = OwnCopyWriter()) {
         self.search = search
@@ -72,6 +71,8 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         table.target = self
         table.action = #selector(rowClicked)
         table.selectionHighlightStyle = .regular
+        // Keyboard focus stays in the search field, so Esc and Return always reach it.
+        table.refusesFirstResponder = true
 
         let scroll = NSScrollView()
         scroll.documentView = table
@@ -114,7 +115,8 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
     /// Upper third of the screen the mouse is on.
     private func position() {
         let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        let screen =
+            NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return }
         resizePanel()
         let size = panel.frame.size
@@ -133,22 +135,12 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
 
     // MARK: - Searching
 
+    /// Runs on the main thread: the query is a few milliseconds, and an answer that is always
+    /// current means Return can never copy a row of an older query.
     private func reload(query: String) {
-        generation += 1
-        let current = generation
-        let search = search
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result { try search.rows(for: query) }
-            await self?.apply(result, generation: current)
-        }
-    }
-
-    private func apply(_ result: Result<[PaletteRow], Error>, generation: Int) {
-        // A slower, older search must not overwrite a newer one.
-        guard generation == self.generation else { return }
-        switch result {
-        case .success(let found): rows = found
-        case .failure(let error):
+        do {
+            rows = try search.rows(for: query)
+        } catch {
             Self.logger.error("Search failed: \(String(describing: error), privacy: .public)")
             rows = []
         }
@@ -191,6 +183,9 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
     }
 
     @objc private func rowClicked() {
+        let clicked = table.clickedRow
+        guard rows.indices.contains(clicked) else { return }
+        table.selectRowIndexes([clicked], byExtendingSelection: false)
         chooseSelected()
     }
 
