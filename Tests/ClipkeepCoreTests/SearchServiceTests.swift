@@ -273,10 +273,13 @@ import Testing
             }
         }
 
+        // Best of three: shared CI machines add noise, but a real slowdown shows in every run.
         func measure(_ query: String, _ filter: SearchFilter = SearchFilter()) throws -> Double {
-            let started = Date()
-            _ = try fixture.search.search(query, filter: filter)
-            return Date().timeIntervalSince(started)
+            try (0..<3).map { _ in
+                let started = Date()
+                _ = try fixture.search.search(query, filter: filter)
+                return Date().timeIntervalSince(started)
+            }.min() ?? .infinity
         }
 
         let timings: [(String, Double)] = [
