@@ -27,9 +27,11 @@ public struct RecordedCopy: Sendable, Equatable {
 /// Stores each distinct text once and one event per copy, so frequency falls out of the events.
 public struct ContentStore: Sendable {
     private let database: Database
+    private let duplicates: DuplicateConfiguration
 
-    public init(database: Database) {
+    public init(database: Database, duplicates: DuplicateConfiguration = .default) {
         self.database = database
+        self.duplicates = duplicates
     }
 
     /// Analysis of a text that is stored for the first time. Computed outside the write
@@ -39,12 +41,14 @@ public struct ContentStore: Sendable {
         let searchText: String
         let kind: ContentKind
         let entities: [Entity]
+        let fingerprint: UInt64?
 
         init(text: String) {
             normalizedHash = ContentHashing.normalizedHash(text)
             searchText = SearchText.fold(text)
             kind = ContentClassifier.classify(text)
             entities = EntityExtractor.extract(from: text)
+            fingerprint = SimHash.fingerprint(foldedText: searchText)
         }
     }
 
@@ -73,15 +77,18 @@ public struct ContentStore: Sendable {
                 try connection.execute(
                     """
                     INSERT INTO contents
-                        (hash, normalized_hash, text, search_text, kind, first_seen_at, last_copied_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (hash, normalized_hash, text, search_text, kind, first_seen_at, last_copied_at,
+                         simhash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         .text(hash), .text(analysis.normalizedHash), .text(text),
                         .text(analysis.searchText), .text(analysis.kind.rawValue),
                         SQLValue(copiedAt), SQLValue(copiedAt),
+                        analysis.fingerprint.map { .int(Int64(bitPattern: $0)) } ?? .null,
                     ])
                 contentID = connection.lastInsertRowID
+                try linkDuplicates(of: contentID, analysis: analysis, in: connection)
                 for entity in analysis.entities {
                     try connection.execute(
                         "INSERT OR IGNORE INTO entities (content_id, kind, value) VALUES (?, ?, ?)",
@@ -110,6 +117,145 @@ public struct ContentStore: Sendable {
             try connection.query(
                 "SELECT count(*) FROM copy_events WHERE content_id = ?", [.int(contentID)]
             ) { Int($0.int(0)) }.first ?? 0
+        }
+    }
+
+    /// Indexes the fingerprint and links the content to earlier ones with the same normalized text
+    /// or a close SimHash. Existing rows are never touched, so no copy or event is lost by
+    /// detecting a duplicate. The bands are written even when linking is off, so re-enabling it
+    /// later still finds everything stored in between.
+    private func linkDuplicates(
+        of contentID: Int64, analysis: Analysis, in connection: Connection
+    ) throws {
+        let bands = analysis.fingerprint.map(FingerprintBands.values(of:))
+        let candidates = try duplicateLinkCandidates(
+            of: contentID, analysis: analysis, bands: bands, in: connection)
+        if let fingerprint = analysis.fingerprint, let bands {
+            for (band, value) in bands.enumerated() {
+                try connection.execute(
+                    """
+                    INSERT INTO content_bands (content_id, band, value, simhash)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [
+                        .int(contentID), .int(Int64(band)), .int(value),
+                        .int(Int64(bitPattern: fingerprint)),
+                    ])
+            }
+        }
+        for link in candidates {
+            try connection.execute(
+                """
+                INSERT INTO content_links (content_id, related_id, kind, distance)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    .int(link.contentID), .int(link.relatedID), .text(link.kind.rawValue),
+                    .int(Int64(link.distance)),
+                ])
+        }
+    }
+
+    private func duplicateLinkCandidates(
+        of contentID: Int64, analysis: Analysis, bands: [Int64]?, in connection: Connection
+    ) throws -> [DuplicateLink] {
+        guard duplicates.maximumLinks > 0 else { return [] }
+        var links: [DuplicateLink] = try connection.query(
+            """
+            SELECT id FROM contents WHERE normalized_hash = ? AND id != ?
+            ORDER BY id LIMIT ?
+            """,
+            [.text(analysis.normalizedHash), .int(contentID), .int(Int64(duplicates.maximumLinks))]
+        ) {
+            DuplicateLink(
+                contentID: contentID, relatedID: $0.int(0), kind: .normalized, distance: 0)
+        }
+
+        if let fingerprint = analysis.fingerprint, let bands {
+            var seen = Set(links.map(\.relatedID))
+            var near: [DuplicateLink] = []
+            for (band, value) in bands.enumerated() {
+                let rows = try connection.query(
+                    """
+                    SELECT content_id, simhash FROM content_bands
+                    WHERE band = ? AND value = ? AND content_id != ?
+                    """,
+                    [.int(Int64(band)), .int(value), .int(contentID)]
+                ) { (id: $0.int(0), hash: UInt64(bitPattern: $0.int(1))) }
+                for row in rows where seen.insert(row.id).inserted {
+                    let distance = SimHash.distance(fingerprint, row.hash)
+                    if distance <= duplicates.maximumDistance {
+                        near.append(
+                            DuplicateLink(
+                                contentID: contentID, relatedID: row.id, kind: .near,
+                                distance: distance))
+                    }
+                }
+            }
+            near.sort { ($0.distance, $0.relatedID) < ($1.distance, $1.relatedID) }
+            links += near
+        }
+        return Array(links.prefix(duplicates.maximumLinks))
+    }
+
+    /// Fingerprints and indexes contents stored before duplicate detection existed, so new copies
+    /// can find them. Returns how many were processed; call repeatedly until it returns 0.
+    /// Old rows are not linked to each other.
+    @discardableResult
+    public func indexUnfingerprintedContents(batchSize: Int = 200) throws -> Int {
+        let rows = try database.read { connection in
+            try connection.query(
+                "SELECT id, search_text FROM contents WHERE simhash IS NULL ORDER BY id LIMIT ?",
+                [.int(Int64(max(batchSize, 1)))]
+            ) { (id: $0.int(0), searchText: $0.text(1)) }
+        }
+        guard !rows.isEmpty else { return 0 }
+        let fingerprints = rows.map { SimHash.fingerprint(foldedText: $0.searchText) }
+        try database.write { connection in
+            for (row, fingerprint) in zip(rows, fingerprints) {
+                guard let fingerprint else {
+                    // Too short to fingerprint: store 0 without bands so it is not picked again.
+                    try connection.execute(
+                        "UPDATE contents SET simhash = 0 WHERE id = ?", [.int(row.id)])
+                    continue
+                }
+                try connection.execute(
+                    "UPDATE contents SET simhash = ? WHERE id = ?",
+                    [.int(Int64(bitPattern: fingerprint)), .int(row.id)])
+                for (band, value) in FingerprintBands.values(of: fingerprint).enumerated() {
+                    try connection.execute(
+                        """
+                        INSERT OR IGNORE INTO content_bands (content_id, band, value, simhash)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        [
+                            .int(row.id), .int(Int64(band)), .int(value),
+                            .int(Int64(bitPattern: fingerprint)),
+                        ])
+                }
+            }
+        }
+        return rows.count
+    }
+
+    /// Links in both directions: contents this one resembles and contents that resemble it.
+    public func duplicateLinks(of contentID: Int64) throws -> [DuplicateLink] {
+        try database.read { connection in
+            try connection.query(
+                """
+                SELECT content_id, related_id, kind, distance FROM content_links
+                WHERE content_id = ?1 OR related_id = ?1
+                ORDER BY distance, content_id, related_id
+                LIMIT 100
+                """,
+                [.int(contentID)]
+            ) { row in
+                DuplicateKind(rawValue: row.text(2)).map {
+                    DuplicateLink(
+                        contentID: row.int(0), relatedID: row.int(1), kind: $0,
+                        distance: Int(row.int(3)))
+                }
+            }.compactMap { $0 }
         }
     }
 }

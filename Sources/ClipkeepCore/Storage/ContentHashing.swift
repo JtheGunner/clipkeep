@@ -7,13 +7,15 @@ public enum ContentHashing {
         hex(SHA256.hash(data: Data(text.utf8)))
     }
 
-    /// Hash that ignores case, surrounding whitespace and runs of whitespace.
+    /// Hash that ignores case, Unicode composition, surrounding whitespace and runs of whitespace.
     public static func normalizedHash(_ text: String) -> String {
         exactHash(normalize(text))
     }
 
     static func normalize(_ text: String) -> String {
-        text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        text.precomposedStringWithCanonicalMapping.lowercased().split(
+            whereSeparator: \.isWhitespace
+        ).joined(separator: " ")
     }
 
     private static func hex(_ digest: SHA256.Digest) -> String {
