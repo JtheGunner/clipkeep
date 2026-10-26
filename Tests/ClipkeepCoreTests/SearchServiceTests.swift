@@ -85,11 +85,9 @@ import Testing
         defer { fixture.temp.remove() }
         let filler = String(repeating: "lorem ipsum dolor sit amet ", count: 20)
         _ = try fixture.store.record(text: filler + "needle " + filler, copiedAt: base)
-        // Long enough that the length band gives both texts the same importance.
-        let dense = "needle needle needle"
-        _ = try fixture.store.record(text: dense, copiedAt: base)
+        _ = try fixture.store.record(text: "needle", copiedAt: base)
 
-        #expect(try fixture.search.search("needle").first?.text == dense)
+        #expect(try fixture.search.search("needle").first?.text == "needle")
     }
 
     @Test func filtersByAppAndTimeAndKind() throws {

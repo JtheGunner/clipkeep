@@ -215,7 +215,68 @@ import Testing
 
         let hits = try SearchService(database: database).search("deploy notes")
         #expect(hits.map(\.contentID) == [favourite.contentID, plain.contentID])
-        let listing = try SearchService(database: database).search("")
+        let listing = try SearchService(database: database).search(
+            "", filter: SearchFilter(listingOrder: .importance))
         #expect(listing.first?.contentID == favourite.contentID)
+    }
+
+    @Test func retentionIgnoresAPolicyMutatedAfterCreation() throws {
+        var configuration = RankingConfiguration()
+        configuration.policy.archiveRetentionDays = 1
+        let (store, ranking, _, temp) = try makeFixture(configuration)
+        defer { temp.remove() }
+        let warm = try store.record(text: "warm snippet stays", copiedAt: at(daysAgo: 20))
+        #expect(try ranking.applyRetention(now: now) == 0)
+        #expect(try ranking.explain(contentID: warm.contentID, now: now) != nil)
+    }
+
+    @Test func retentionRemovesDependentRowsInBatches() throws {
+        let configuration = RankingConfiguration(policy: TierPolicy(archiveRetentionDays: 100))
+        let (store, ranking, database, temp) = try makeFixture(configuration)
+        defer { temp.remove() }
+        for index in 0..<5 {
+            _ = try store.record(
+                text: "old note number \(index) about https://example.com/page\(index)",
+                copiedAt: at(daysAgo: 300))
+        }
+        #expect(try ranking.applyRetention(now: now, batchSize: 2) == 5)
+        for table in ["contents", "copy_events", "entities", "content_bands", "content_links"] {
+            let count = try database.read {
+                try $0.query("SELECT count(*) FROM \(table)") { $0.int(0) }
+            }
+            #expect(count == [0], "\(table) should be empty")
+        }
+        #expect(try SearchService(database: database).search("old note").isEmpty)
+    }
+
+    @Test func refreshAllPagesThroughEveryBatchAndSkipsUnchangedRows() throws {
+        let (store, ranking, database, temp) = try makeFixture()
+        defer { temp.remove() }
+        for index in 0..<5 {
+            _ = try store.record(text: "snippet number \(index) for paging", copiedAt: now)
+        }
+        try database.write {
+            try $0.execute("UPDATE contents SET importance = 0, tier = 'archive'")
+        }
+        #expect(try ranking.refreshAll(now: now, batchSize: 2) == 5)
+        #expect(try ranking.refreshAll(now: now, batchSize: 2) == 0)
+        let stale = try database.read {
+            try $0.query("SELECT count(*) FROM contents WHERE importance = 0") { $0.int(0) }
+        }
+        #expect(stale == [0])
+    }
+
+    @Test func plainListingIsNewestFirstEvenWhenAnOlderItemWasCopiedOften() throws {
+        let (store, _, database, temp) = try makeFixture()
+        defer { temp.remove() }
+        for _ in 0..<5 {
+            _ = try store.record(text: "frequent old command", copiedAt: at(daysAgo: 1))
+        }
+        let fresh = try store.record(text: "fresh single copy", copiedAt: now)
+        let search = SearchService(database: database)
+        #expect(try search.search("").first?.contentID == fresh.contentID)
+        #expect(
+            try search.search("", filter: SearchFilter(listingOrder: .importance)).first?.contentID
+                != fresh.contentID)
     }
 }

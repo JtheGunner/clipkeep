@@ -1,11 +1,14 @@
 import Foundation
 
 /// Searches stored contents. Terms of three or more characters use the trigram index and rank
-/// by BM25; shorter terms fall back to a substring test. Without a query, the newest items win.
+/// by BM25 scaled by importance; shorter terms fall back to a substring test. Without a query the
+/// listing is newest first, or by importance on request.
 public struct SearchService: Sendable {
     private static let trigramMinimum = 3
-    /// How many BM25 points a fully important item gains over an unimportant one.
-    private static let importanceBoost = 2.0
+    /// A fully important item scores this much better than an unimportant one with the same BM25.
+    /// Multiplying keeps the boost proportional to relevance: it reorders close matches but a
+    /// clearly better match still wins, and terms without any relevance signal stay unaffected.
+    private static let importanceBoost = 0.5
     private let database: Database
 
     public init(database: Database) {
@@ -23,13 +26,12 @@ public struct SearchService: Sendable {
         let short = terms.filter { $0.count < Self.trigramMinimum }
 
         // Rank, filter and limit first, then look up the details of the surviving rows only.
-        // BM25 is negative (lower is better); the importance boost pulls important items forward.
-        // Without an indexed term the listing orders by importance, which has its own index.
+        // BM25 is negative (lower is better), so scaling it up pulls important items forward.
         var inner = "SELECT c.id, c.text, c.kind, c.last_copied_at, c.importance, "
         inner +=
             indexed.isEmpty
             ? "0.0 AS score\nFROM contents c"
-            : "bm25(contents_fts) - \(Self.importanceBoost) * c.importance AS score\nFROM contents c"
+            : "bm25(contents_fts) * (1.0 + \(Self.importanceBoost) * c.importance) AS score\nFROM contents c"
         var parameters: [SQLValue] = []
 
         if !indexed.isEmpty {
@@ -72,7 +74,7 @@ public struct SearchService: Sendable {
 
         if !conditions.isEmpty { inner += "\nWHERE " + conditions.joined(separator: " AND ") }
         let order =
-            indexed.isEmpty
+            indexed.isEmpty && filter.listingOrder == .importance
             ? "importance DESC, last_copied_at DESC, id DESC"
             : "score, last_copied_at DESC, id DESC"
         inner += "\nORDER BY \(order)\nLIMIT ?"

@@ -13,7 +13,9 @@ public struct RankingConfiguration: Sendable, Equatable {
     }
 }
 
-/// Keeps `importance` and `tier` of stored contents up to date and explains them.
+/// Keeps `importance` and `tier` of stored contents up to date and explains them. Use the same
+/// `RankingConfiguration` as the `ContentStore`, otherwise stored scores and explanations differ.
+/// Run `refreshAll` after upgrading and periodically so tiers and importance follow the clock.
 /// Nothing is deleted unless `TierPolicy.archiveRetentionDays` was set explicitly.
 public struct RankingService: Sendable {
     private static let recentCopiesConsidered = 100
@@ -69,21 +71,30 @@ public struct RankingService: Sendable {
         }
     }
 
-    /// Deletes archived, unpinned contents older than the configured retention. Does nothing
-    /// unless `archiveRetentionDays` is set. Returns the number of deleted contents.
+    /// Deletes archived, unpinned contents whose last copy is older than the configured retention.
+    /// Does nothing unless `archiveRetentionDays` is set. The period is re-clamped here so even a
+    /// policy mutated after creation can never reach into the hot or warm window. Deletes in
+    /// small transactions so capture is never blocked for long. Returns the deleted count.
     @discardableResult
-    public func applyRetention(now: Date = Date()) throws -> Int {
-        guard let days = configuration.policy.archiveRetentionDays else { return 0 }
+    public func applyRetention(now: Date = Date(), batchSize: Int = 500) throws -> Int {
+        let policy = configuration.policy
+        guard let configured = policy.archiveRetentionDays else { return 0 }
+        let days = max(configured, policy.warmDays, policy.hotDays)
         let cutoff = now.addingTimeInterval(-days * 86_400).timeIntervalSince1970
-        return try database.write { connection in
-            let ids = try connection.query(
-                "SELECT id FROM contents WHERE pinned = 0 AND last_copied_at < ?",
-                [.double(cutoff)]
-            ) { $0.int(0) }
-            for id in ids {
-                try connection.execute("DELETE FROM contents WHERE id = ?", [.int(id)])
+        var deleted = 0
+        while true {
+            let count = try database.write { connection -> Int in
+                let ids = try connection.query(
+                    "SELECT id FROM contents WHERE pinned = 0 AND last_copied_at < ? LIMIT ?",
+                    [.double(cutoff), .int(Int64(max(batchSize, 1)))]
+                ) { $0.int(0) }
+                for id in ids {
+                    try connection.execute("DELETE FROM contents WHERE id = ?", [.int(id)])
+                }
+                return ids.count
             }
-            return ids.count
+            deleted += count
+            if count == 0 { return deleted }
         }
     }
 
@@ -97,13 +108,19 @@ public struct RankingService: Sendable {
             let explanation = try explanation(
                 of: contentID, in: connection, configuration: configuration, now: now)
         else { return false }
-        let previous = try connection.query(
-            "SELECT tier FROM contents WHERE id = ?", [.int(contentID)]
-        ) { $0.text(0) }.first
-        try connection.execute(
-            "UPDATE contents SET importance = ?, tier = ? WHERE id = ?",
-            [.double(explanation.importance), .text(explanation.tier.rawValue), .int(contentID)])
-        return previous != explanation.tier.rawValue
+        let stored = try connection.query(
+            "SELECT tier, importance FROM contents WHERE id = ?", [.int(contentID)]
+        ) { (tier: $0.text(0), importance: $0.double(1)) }.first
+        let tierChanged = stored?.tier != explanation.tier.rawValue
+        if tierChanged || abs((stored?.importance ?? -1) - explanation.importance) > 1e-9 {
+            try connection.execute(
+                "UPDATE contents SET importance = ?, tier = ? WHERE id = ?",
+                [
+                    .double(explanation.importance), .text(explanation.tier.rawValue),
+                    .int(contentID),
+                ])
+        }
+        return tierChanged
     }
 
     private static func explanation(

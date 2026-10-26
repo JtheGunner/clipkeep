@@ -146,6 +146,6 @@ public enum Schema {
             "ALTER TABLE contents ADD COLUMN tier TEXT NOT NULL DEFAULT 'hot'",
             "ALTER TABLE contents ADD COLUMN importance REAL NOT NULL DEFAULT 0",
             "CREATE INDEX contents_importance ON contents(importance DESC, last_copied_at DESC, id DESC)",
-            "CREATE INDEX contents_tier ON contents(tier)",
+            "CREATE INDEX copy_events_content_recent ON copy_events(content_id, copied_at DESC, id DESC)",
         ])
 }
