@@ -1,6 +1,6 @@
 public enum Schema {
-    public static let latestVersion = 2
-    public static let migrations = [version1, version2]
+    public static let latestVersion = 3
+    public static let migrations = [version1, version2, version3]
     public static let migrator = Migrator(migrations: migrations)
 
     private static let version1 = Migration(
@@ -106,5 +106,33 @@ public enum Schema {
             END
             """,
             "INSERT INTO contents_fts(contents_fts) VALUES ('rebuild')",
+        ])
+
+    /// Duplicate detection: a SimHash fingerprint per content, a band index that finds candidates
+    /// without scanning every row, and links between related contents. Nothing is merged or
+    /// overwritten; a link only records that two stored texts belong together.
+    private static let version3 = Migration(
+        version: 3,
+        statements: [
+            "ALTER TABLE contents ADD COLUMN simhash INTEGER",
+            """
+            CREATE TABLE content_bands (
+                content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+                band INTEGER NOT NULL,
+                value INTEGER NOT NULL,
+                PRIMARY KEY (content_id, band)
+            )
+            """,
+            "CREATE INDEX content_bands_lookup ON content_bands(band, value)",
+            """
+            CREATE TABLE content_links (
+                content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+                related_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL,
+                distance INTEGER NOT NULL,
+                PRIMARY KEY (content_id, related_id)
+            )
+            """,
+            "CREATE INDEX content_links_related ON content_links(related_id)",
         ])
 }
