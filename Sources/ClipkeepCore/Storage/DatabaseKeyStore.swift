@@ -67,6 +67,10 @@ public struct KeychainDatabaseKeyStore: DatabaseKeyStore {
         attributes[kSecValueData as String] = key
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status == errSecDuplicateItem, let existing = try load() {
+            // Another process created the key between our lookup and insert; use theirs.
+            return existing
+        }
         guard status == errSecSuccess else { throw KeyStoreError.keychain(status) }
         return key
     }

@@ -85,3 +85,61 @@ import Testing
         #expect(hits == ["getUserData()"])
     }
 }
+
+@Suite struct DatabaseRobustnessTests {
+    @Test func textWithEmbeddedNulRoundTrips() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        let text = "a\0b"
+
+        try database.write {
+            try $0.execute("INSERT INTO settings VALUES (?, ?)", [.text("k"), .text(text)])
+        }
+
+        let stored = try database.read { try $0.query("SELECT value FROM settings") { $0.text(0) } }
+        #expect(stored == [text])
+    }
+
+    @Test func emptyTextIsStoredAsEmptyNotNull() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+
+        try database.write {
+            try $0.execute("INSERT INTO settings VALUES (?, ?)", [.text("k"), .text("")])
+        }
+
+        let isNull = try database.read {
+            try $0.query("SELECT value IS NULL FROM settings") { $0.int(0) }
+        }
+        #expect(isNull == [0])
+    }
+
+    @Test func journalFileIsEncryptedWhileOpen() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        try database.write {
+            try $0.execute("INSERT INTO settings VALUES ('marker-key', 'marker-value')")
+        }
+
+        let walPath = temp.path + "-wal"
+        if let wal = FileManager.default.contents(atPath: walPath) {
+            #expect(wal.range(of: Data("marker-value".utf8)) == nil)
+        }
+        withExtendedLifetime(database) {}
+    }
+
+    @Test func repeatedFailedOpensAreSafe() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        _ = try temp.open()
+
+        for _ in 0..<50 {
+            #expect(throws: DatabaseError.wrongKey) {
+                try Database(path: temp.path, key: Data(repeating: 9, count: 32))
+            }
+        }
+    }
+}

@@ -95,3 +95,16 @@ import Testing
         #expect(stored == [text])
     }
 }
+
+@Suite struct ContentStoreNulTests {
+    @Test func textsDifferingAfterNulStayDistinct() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let store = ContentStore(database: try temp.open())
+
+        let first = try store.record(text: "a\0b")
+        let second = try store.record(text: "a\0c")
+
+        #expect(first.contentID != second.contentID)
+    }
+}

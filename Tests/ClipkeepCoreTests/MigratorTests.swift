@@ -63,3 +63,16 @@ import Testing
         #expect(tables.isEmpty)
     }
 }
+
+@Suite struct MigratorGuardTests {
+    @Test func newerSchemaThanSupportedIsRejected() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open()
+        try database.write { try $0.execute("PRAGMA user_version = 99") }
+
+        #expect(throws: DatabaseError.schemaTooNew(found: 99, supported: 1)) {
+            try Schema.migrator.migrate(database)
+        }
+    }
+}
