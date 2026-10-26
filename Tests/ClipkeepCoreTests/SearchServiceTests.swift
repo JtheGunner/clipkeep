@@ -169,7 +169,8 @@ import Testing
         try fixture.database.write {
             try $0.execute("DELETE FROM contents WHERE id = ?", [.int(first.contentID)])
             try $0.execute(
-                "UPDATE contents SET text = 'after edit' WHERE id = ?", [.int(second.contentID)])
+                "UPDATE contents SET text = 'after edit', search_text = 'after edit' WHERE id = ?",
+                [.int(second.contentID)])
         }
 
         #expect(try fixture.search.search("findable").isEmpty)
@@ -193,24 +194,104 @@ import Testing
         #expect(try SearchService(database: database).search("legacy").count == 1)
     }
 
-    @Test func searchesAHundredThousandItemsQuickly() throws {
+    @Test func literalAndUnicodeEdgeCasesBehave() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.record(text: "Größe Übung ÄÖ")
+        _ = try fixture.store.record(text: "Mu\u{0308}ller und Müller")
+
+        #expect(try fixture.search.search("üb").count == 1)
+        #expect(try fixture.search.search("äö").count == 1)
+        #expect(try fixture.search.search("ÜBUNG").count == 1)
+        #expect(try fixture.search.search("Müller").count == 1)
+        #expect(try fixture.search.search("mül").count == 1)
+        #expect(try fixture.search.search("a\u{0}bcd").isEmpty)
+        #expect(try fixture.search.search("\u{0}").count == 2)
+    }
+
+    @Test func nonPositiveLimitReturnsNothing() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.record(text: "something")
+
+        #expect(try fixture.search.search("", filter: SearchFilter(limit: 0)).isEmpty)
+        #expect(try fixture.search.search("", filter: SearchFilter(limit: -5)).isEmpty)
+    }
+
+    @Test func replaceConflictsKeepTheIndexConsistent() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let recorded = try fixture.store.record(text: "original replaceable")
+
+        try fixture.database.write {
+            try $0.execute(
+                """
+                INSERT OR REPLACE INTO contents
+                    (id, hash, normalized_hash, text, search_text, first_seen_at)
+                VALUES (?, 'new', 'new', 'brandnew', 'brandnew', 0)
+                """, [.int(recorded.contentID)])
+        }
+
+        #expect(try fixture.search.search("original").isEmpty)
+        #expect(try fixture.search.search("brandnew").count == 1)
+        try fixture.database.write {
+            try $0.execute("INSERT INTO contents_fts(contents_fts) VALUES ('integrity-check')")
+        }
+    }
+
+    @Test func realisticLargeDatabaseStaysFast() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
         let words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
+        let apps = ["com.apple.Safari", "com.apple.dt.Xcode", "com.apple.Terminal"]
         try fixture.database.write { connection in
             for index in 0..<100_000 {
                 let text = "\(words[index % 8]) \(words[(index / 8) % 8]) item-\(index) payload"
                 try connection.execute(
-                    "INSERT INTO contents (hash, normalized_hash, text, first_seen_at) VALUES (?, ?, ?, ?)",
-                    [.text("h\(index)"), .text("n\(index)"), .text(text), .double(Double(index))])
+                    """
+                    INSERT INTO contents
+                        (hash, normalized_hash, text, search_text, first_seen_at, last_copied_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        .text("h\(index)"), .text("n\(index)"), .text(text),
+                        .text(SearchText.fold(text)), .double(Double(index)),
+                        .double(Double(index)),
+                    ])
+                let contentID = connection.lastInsertRowID
+                for copy in 0..<2 {
+                    try connection.execute(
+                        """
+                        INSERT INTO copy_events (content_id, copied_at, app_bundle_id, app_name)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        [
+                            .int(contentID), .double(Double(index + copy)),
+                            .text(apps[index % 3]), .text("App"),
+                        ])
+                }
             }
         }
-        let started = Date()
 
-        let hits = try fixture.search.search("item-99999")
+        func measure(_ query: String, _ filter: SearchFilter = SearchFilter()) throws -> Double {
+            let started = Date()
+            _ = try fixture.search.search(query, filter: filter)
+            return Date().timeIntervalSince(started)
+        }
 
-        let elapsed = Date().timeIntervalSince(started)
-        #expect(hits.count == 1)
-        #expect(elapsed < 0.1, "search took \(elapsed) s")
+        let timings: [(String, Double)] = [
+            ("unique term", try measure("item-99999")),
+            ("empty query", try measure("")),
+            ("short term", try measure("a")),
+            ("broad term", try measure("payload")),
+            ("empty + app filter", try measure("", SearchFilter(appBundleID: "com.apple.Safari"))),
+            (
+                "term + app filter",
+                try measure("alpha", SearchFilter(appBundleID: "com.apple.Safari"))
+            ),
+        ]
+        for (name, seconds) in timings {
+            #expect(seconds < 0.1, "\(name) took \(Int(seconds * 1000)) ms")
+        }
     }
 }

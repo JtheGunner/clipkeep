@@ -48,12 +48,13 @@ public struct ContentStore: Sendable {
             } else {
                 try connection.execute(
                     """
-                    INSERT INTO contents (hash, normalized_hash, text, first_seen_at)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO contents
+                        (hash, normalized_hash, text, search_text, first_seen_at, last_copied_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     [
                         .text(hash), .text(ContentHashing.normalizedHash(text)), .text(text),
-                        SQLValue(copiedAt),
+                        .text(SearchText.fold(text)), SQLValue(copiedAt), SQLValue(copiedAt),
                     ])
                 contentID = connection.lastInsertRowID
             }
