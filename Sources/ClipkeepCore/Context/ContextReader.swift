@@ -65,6 +65,9 @@ public struct ContextReader: ContextDetailProviding {
         if let script = BrowserCatalog.script(forBundleID: bundleID) {
             let raw = environment.browserAddress(script, bundleID)
             if raw == BrowserCatalog.privateMarker { return source }
+            // Without a confirmed normal window (no permission, timeout, error) a Chromium
+            // title could belong to a private window, so nothing is read.
+            if raw == nil && !BrowserCatalog.isSafari(bundleID) { return source }
             address = ContextSanitizer.url(raw)
         }
         let title = ContextSanitizer.title(environment.windowTitle(front.processID))

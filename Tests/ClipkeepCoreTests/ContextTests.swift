@@ -162,6 +162,15 @@ import Testing
         #expect(firefox.details(for: source) == source)
     }
 
+    @Test func chromiumTitlesAreNotReadWithoutAConfirmedNormalWindow() {
+        let chrome = reader(bundleID: "com.google.Chrome", title: "Some page", address: nil)
+        let source = CopyContext(appBundleID: "com.google.Chrome", appName: "Chrome")
+        #expect(chrome.details(for: source) == source)
+        let confirmed = reader(
+            bundleID: "com.google.Chrome", title: "Some page", address: "https://example.com/p")
+        #expect(confirmed.details(for: source).windowTitle == "Some page")
+    }
+
     @Test func safariIsOnlyReadWhenAllowed() {
         let source = CopyContext(appBundleID: "com.apple.Safari")
         let blocked = reader(
