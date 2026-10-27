@@ -11,7 +11,8 @@ import Foundation
 struct Options {
     var corpus = "eval/synthetic-corpus.json"
     var gold = "eval/synthetic-gold.json"
-    var baseline: String? = "eval/baseline.json"
+    var baseline: String?
+    var usesText = false
     var text: String?
     var report: String?
     var writeBaseline = false
@@ -36,13 +37,14 @@ func parse(_ arguments: [String]) -> Options {
         case "--baseline": options.baseline = value()
         case "--text":
             options.text = value()
-            // Your own data has no baseline unless one is named.
-            options.baseline = nil
+            options.usesText = true
         case "--report": options.report = value()
         case "--write-baseline": options.writeBaseline = true
         default: fail("Unknown option \(argument)")
         }
     }
+    // Your own data has no baseline unless one is named, whatever the order of the options.
+    if options.baseline == nil, !options.usesText { options.baseline = "eval/baseline.json" }
     return options
 }
 
@@ -77,7 +79,15 @@ if options.writeBaseline {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     do {
-        try encoder.encode(EvalBaseline(metrics: metrics)).write(to: URL(fileURLWithPath: path))
+        // A refresh replaces the values and keeps a tolerance or ceiling set by hand.
+        var baseline = EvalBaseline(metrics: metrics)
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+            let existing = try? JSONDecoder().decode(EvalBaseline.self, from: data)
+        {
+            baseline.tolerance = existing.tolerance
+            baseline.maximumLatencyMs = existing.maximumLatencyMs
+        }
+        try encoder.encode(baseline).write(to: URL(fileURLWithPath: path))
     } catch {
         fail("Cannot write \(path): \(error)")
     }
@@ -89,6 +99,10 @@ if options.writeBaseline {
 let report = metrics.report(title: title, regressions: regressions)
 print(report, terminator: "")
 if let path = options.report {
-    try? Data(report.utf8).write(to: URL(fileURLWithPath: path))
+    do {
+        try Data(report.utf8).write(to: URL(fileURLWithPath: path))
+    } catch {
+        fail("Cannot write \(path): \(error)")
+    }
 }
 exit(regressions.isEmpty ? 0 : 1)

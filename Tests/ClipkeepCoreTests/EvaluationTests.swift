@@ -106,6 +106,14 @@ import Testing
             computed: ["1": "p", "2": "q", "3": "r", "4": "s"], labels: labels)
         #expect(split.0 == 0)
         #expect(split.1 == 0)
+        // Singletons only, computed apart: nothing to get wrong.
+        let apart = TestScores.scores(
+            computed: ["1": "p", "2": "q"], labels: ["1": "a", "2": "b"])
+        #expect(apart.0 == 1)
+        // An unlabelled event inside a computed session makes it inexact.
+        let extra = TestScores.scores(
+            computed: ["1": "p", "2": "p", "9": "p"], labels: ["1": "a", "2": "a"])
+        #expect(extra.1 == 0)
         let single = TestScores.scores(computed: ["1": "p"], labels: ["1": "a"])
         #expect(single.0 == nil)
     }
@@ -126,6 +134,15 @@ import Testing
         let found = baseline.regressions(of: metrics(recall: 0.7))
         #expect(found.map(\.metric).contains("recall@1"))
         #expect(found.map(\.metric).contains("MRR"))
+    }
+
+    @Test func aShrunkenGoldSetIsARegression() {
+        var fewer = metrics(recall: 0.8)
+        fewer.queryCount = 5
+        #expect(
+            EvalBaseline(metrics: metrics(recall: 0.8)).regressions(of: fewer).map(\.metric) == [
+                "queries"
+            ])
     }
 
     @Test func slowQueriesAndMissingSessionScoresAreRegressions() {

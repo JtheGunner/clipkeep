@@ -89,6 +89,12 @@ public struct EvalBaseline: Codable, Sendable, Equatable {
                 found.append(EvalRegression(metric: name, baseline: base, actual: value))
             }
         }
+        if actual.queryCount < metrics.queryCount {
+            found.append(
+                EvalRegression(
+                    metric: "queries", baseline: Double(metrics.queryCount),
+                    actual: Double(actual.queryCount)))
+        }
         check("recall@1", metrics.recallAt1, actual.recallAt1)
         check("recall@5", metrics.recallAt5, actual.recallAt5)
         check("recall@10", metrics.recallAt10, actual.recallAt10)
@@ -212,14 +218,16 @@ public enum EvalRunner {
         }
         let precision = truePositive / max(truePositive + falsePositive, 1)
         let recall = truePositive / max(truePositive + falseNegative, 1)
-        let f1 = precision + recall == 0 ? 0 : 2 * precision * recall / (precision + recall)
+        // No pair on either side (all labels are singletons) and none computed: a perfect match.
+        let f1 =
+            truePositive + falsePositive + falseNegative == 0
+            ? 1 : (precision + recall == 0 ? 0 : 2 * precision * recall / (precision + recall))
 
         var byLabel: [String: Set<String>] = [:]
         var byComputed: [String: Set<String>] = [:]
-        for id in ids {
-            byLabel[labels[id] ?? "", default: []].insert(id)
-            if let session = computed[id] { byComputed[session, default: []].insert(id) }
-        }
+        for id in ids { byLabel[labels[id] ?? "", default: []].insert(id) }
+        // Every computed event counts, so a session with extra unlabelled events is not exact.
+        for (id, session) in computed { byComputed[session, default: []].insert(id) }
         let computedSets = Set(byComputed.values)
         let exact = byLabel.values.filter { computedSets.contains($0) }.count
         return (f1, Double(exact) / Double(byLabel.count))

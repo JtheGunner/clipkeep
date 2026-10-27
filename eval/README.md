@@ -7,7 +7,7 @@ Measures how well Clipkeep finds things and groups sessions, so tuning is driven
 ./scripts/eval.sh --report out.md  # also write the report to a file
 ```
 
-The exit code is `1` when a metric falls below the baseline. The same check runs in the test
+The exit code is `1` when a metric falls below the baseline (`2` for bad options or unreadable files; a failed build of `swift run` also exits `1`). The same check runs in the test
 suite (`EvaluationTests`), so a regression fails CI.
 
 ---
