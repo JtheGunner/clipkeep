@@ -1,8 +1,8 @@
 public enum Schema {
-    public static let latestVersion = 10
+    public static let latestVersion = 11
     public static let migrations = [
         version1, version2, version3, version4, version5, version6, version7, version8, version9,
-        version10,
+        version10, version11,
     ]
     public static let migrator = Migrator(migrations: migrations)
 
@@ -270,4 +270,10 @@ public enum Schema {
     private static let version10 = Migration(
         version: 10,
         statements: ["CREATE INDEX entities_kind_value ON entities(kind, value, content_id)"])
+
+    /// The id Bitwarden gave the secure note, so a secret can be fetched back directly. It is
+    /// not secret: without an unlocked vault it opens nothing.
+    private static let version11 = Migration(
+        version: 11,
+        statements: ["ALTER TABLE parked_secrets ADD COLUMN vault_item_id TEXT"])
 }

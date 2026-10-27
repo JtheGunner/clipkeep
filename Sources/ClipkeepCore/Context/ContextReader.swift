@@ -45,7 +45,7 @@ public struct ContextReader: ContextDetailProviding {
     private let readsSafari: @Sendable () -> Bool
 
     /// - Parameter readsSafari: whether Safari may be read; its private windows cannot be told
-    ///   apart, so this is off unless the user opted in.
+    ///   apart, so the app lets the user switch it off. Off when not given.
     public init(
         environment: ContextEnvironment, detector: SecretDetector = SecretDetector(),
         readsSafari: @escaping @Sendable () -> Bool = { false }

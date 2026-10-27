@@ -124,6 +124,8 @@ import Testing
         #expect(entities("postgres://admin:hunter2@db.example.com:5432/app", .email).isEmpty)
         #expect(entities("https://user:pw@example.com/x", .email).isEmpty)
         #expect(entities("git clone git@github.com:foo/bar.git", .email).isEmpty)
+        #expect(entities("ssh root@server.example.org", .email).isEmpty)
+        #expect(entities("ssh root@server.example.org", .domain) == ["server.example.org"])
         #expect(
             entities("postgres://admin:hunter2@db.example.com:5432/app", .domain) == [
                 "db.example.com"

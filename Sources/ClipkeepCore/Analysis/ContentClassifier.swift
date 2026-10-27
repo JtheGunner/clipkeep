@@ -69,7 +69,7 @@ public enum ContentClassifier {
         if isSingleLine {
             if matches(number, trimmed) { return .number }
             if matches(url, trimmed) { return .url }
-            if matches(email, trimmed) { return .email }
+            if matches(email, trimmed), !MailAddress.isShellLogin(trimmed) { return .email }
             if isPath(trimmed) { return .path }
         }
         if isJSON(trimmed) { return .json }

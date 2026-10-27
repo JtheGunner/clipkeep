@@ -42,6 +42,8 @@ public protocol BitwardenClient: Sendable {
         name: String, secret: String, clipkeepID: String, folderID: String, session: String
     ) async throws -> BitwardenNote
     func notes(inFolder folderID: String, session: String) async throws -> [BitwardenNote]
+    /// One note by the id the vault gave it.
+    func note(id: String, session: String) async throws -> BitwardenNote
 }
 
 /// Talks to the Bitwarden CLI (`bw`).
@@ -120,6 +122,11 @@ public struct BitwardenCLIClient: BitwardenClient {
     public func notes(inFolder folderID: String, session: String) async throws -> [BitwardenNote] {
         let listed = try await run(["list", "items", "--folderid", folderID], session: session)
         return try decode([ItemResponse].self, from: listed).map(\.note)
+    }
+
+    public func note(id: String, session: String) async throws -> BitwardenNote {
+        let item = try await run(["get", "item", id], session: session)
+        return try decode(ItemResponse.self, from: item).note
     }
 
     // MARK: - Running

@@ -77,7 +77,7 @@ To build a distributable zip, run `VERSION=1.0.0 ./scripts/release.sh`. With a D
 | ♿ | Accessibility | Read the title of the front window as context | Optional |
 | 🌐 | Automation (Apple Events) | Read the address of the active browser tab | Optional |
 
-Safari context is opt-in in the menu.
+Reading Safari tab addresses is on by default and can be switched off in the menu; Safari cannot tell private windows apart, so their addresses are recorded too.
 
 ---
 
