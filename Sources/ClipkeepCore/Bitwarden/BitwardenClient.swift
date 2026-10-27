@@ -46,12 +46,6 @@ public protocol BitwardenClient: Sendable {
     func note(id: String, session: String) async throws -> BitwardenNote
 }
 
-extension BitwardenClient {
-    public func note(id: String, session: String) async throws -> BitwardenNote {
-        throw BitwardenError.commandFailed
-    }
-}
-
 /// Talks to the Bitwarden CLI (`bw`).
 public struct BitwardenCLIClient: BitwardenClient {
     static let passwordVariable = "CLIPKEEP_BW_PASSWORD"

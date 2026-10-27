@@ -63,6 +63,9 @@ private struct FakeBitwardenCLI {
                   printf %s "$item" > "$DIR/items/$n.json"
                   printf %s "$item"
                 fi ;;
+              get)
+                need_session
+                cat "$DIR/items/${3#item-}.json" 2>/dev/null || { echo "Not found." >&2; exit 1; } ;;
               *) echo "unknown command" >&2; exit 2 ;;
             esac
             """
@@ -230,6 +233,11 @@ private final class MemoryVault: SecretVault, @unchecked Sendable {
         let id = try #require(try fixture.parker.pending().first).id
         _ = try await fixture.sync.unlock(masterPassword: FakeBitwardenCLI.masterPassword)
         #expect(try await fixture.sync.retrieve(secretID: id) == privateKey)
+        // Fetched by its id, without listing the folder again.
+        let calls = try String(contentsOf: fake.arguments, encoding: .utf8)
+            .split(separator: "\n").map(String.init)
+        let direct = try #require(calls.firstIndex(of: "get item item-0"))
+        #expect(!calls[direct...].contains { $0.hasPrefix("list items") })
     }
 
     @Test func offlineKeepsEverythingParked() async throws {

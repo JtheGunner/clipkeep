@@ -166,11 +166,17 @@ public actor BitwardenSync {
         do {
             // Direct by id; a note that was moved, renamed or never got an id is found by its
             // marker instead.
-            if let itemID = secret.vaultItemID,
-                let note = try? await client.note(id: itemID, session: key),
-                note.clipkeepID == secret.vaultKey, let value = note.notes
-            {
-                return value
+            if let itemID = secret.vaultItemID {
+                do {
+                    let note = try await client.note(id: itemID, session: key)
+                    if note.clipkeepID == secret.vaultKey, let value = note.notes { return value }
+                } catch let error as BitwardenError
+                    where error == .locked || error == .timedOut || error == .offline
+                {
+                    throw error
+                } catch {
+                    // Not found or unreadable: the marker search below decides.
+                }
             }
             let folder = try await client.folderID(named: Self.folderName, session: key)
             let notes = try await client.notes(inFolder: folder, session: key)

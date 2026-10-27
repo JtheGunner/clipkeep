@@ -358,7 +358,7 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         #expect(fixture.bitwarden.lookupsByID == 1)
     }
 
-    @Test func aMissingNoteIdFallsBackToTheMarkerSearch() async throws {
+    @Test func aStaleNoteIdFallsBackToTheMarkerSearch() async throws {
         let fixture = try Fixture()
         park(fixture, count: 1)
         let id = try #require(try fixture.parker.pending().first).id
@@ -367,6 +367,33 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
             try $0.execute("UPDATE parked_secrets SET vault_item_id = 'gone'")
         }
         #expect(try await fixture.sync.retrieve(secretID: id) == secret(0))
+    }
+
+    @Test func aNoteIdPointingAtAnotherSecretIsNotTrusted() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 2)
+        let all = try fixture.parker.pending()
+        _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        let other = try #require(fixture.bitwarden.notes.last?.id)
+        try fixture.database.write {
+            try $0.execute(
+                "UPDATE parked_secrets SET vault_item_id = ? WHERE id = ?",
+                [.text(other), .int(all[0].id)])
+        }
+        #expect(try await fixture.sync.retrieve(secretID: all[0].id) == secret(0))
+        #expect(fixture.bitwarden.lookupsByID == 1)
+    }
+
+    @Test func aSecretTransferredBeforeIdsWereStoredIsFoundByItsMarker() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 1)
+        let id = try #require(try fixture.parker.pending().first).id
+        _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        try fixture.database.write {
+            try $0.execute("UPDATE parked_secrets SET vault_item_id = NULL")
+        }
+        #expect(try await fixture.sync.retrieve(secretID: id) == secret(0))
+        #expect(fixture.bitwarden.lookupsByID == 0)
     }
 
     @Test func aSecretAlreadyInBitwardenCanStillBeTakenBackAsNormal() async throws {
@@ -438,6 +465,9 @@ private struct EmptyVault: BitwardenClient {
         BitwardenNote(id: "x", notes: secret, clipkeepID: clipkeepID)
     }
     func notes(inFolder folderID: String, session: String) async throws -> [BitwardenNote] { [] }
+    func note(id: String, session: String) async throws -> BitwardenNote {
+        throw BitwardenError.commandFailed
+    }
 }
 
 private struct SlowStatus: BitwardenClient {
@@ -455,4 +485,7 @@ private struct SlowStatus: BitwardenClient {
         BitwardenNote(id: "x", notes: secret, clipkeepID: clipkeepID)
     }
     func notes(inFolder folderID: String, session: String) async throws -> [BitwardenNote] { [] }
+    func note(id: String, session: String) async throws -> BitwardenNote {
+        throw BitwardenError.commandFailed
+    }
 }
