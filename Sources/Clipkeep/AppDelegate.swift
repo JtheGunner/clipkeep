@@ -94,7 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     history: HistoryWindowController(
                         browser: HistoryBrowser(database: database),
                         search: SearchService(database: database),
-                        actions: ItemActions(database: database)))
+                        actions: ItemActions(database: database),
+                        exporter: MarkdownExporter(database: database)))
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")

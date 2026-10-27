@@ -20,9 +20,9 @@ public struct HistoryFormat: Sendable {
     }
 
     /// "Heute", "Gestern" or "Mo 26.10.2026".
-    public func dayTitle(_ day: Date) -> String {
-        if calendar.isDate(day, inSameDayAs: now) { return "Heute" }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+    public func dayTitle(_ day: Date, relativeTo: Bool = true) -> String {
+        if relativeTo, calendar.isDate(day, inSameDayAs: now) { return "Heute" }
+        if relativeTo, let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
             calendar.isDate(day, inSameDayAs: yesterday)
         {
             return "Gestern"

@@ -55,6 +55,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private let browser: HistoryBrowser
     private let search: SearchService
+    private let exporter: MarkdownExporter
     private let actions: ItemActions
     private let copyWriter: OwnCopyWriter
 
@@ -74,6 +75,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let pinButton = NSButton(title: "Anheften", target: nil, action: nil)
     private let starButton = NSButton(title: "Markieren", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Löschen", target: nil, action: nil)
+    private let exportButton = NSButton(title: "Exportieren …", target: nil, action: nil)
     private let undoButton = NSButton(title: "Löschen rückgängig", target: nil, action: nil)
 
     private var mode = Mode.days
@@ -91,14 +93,17 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var detail: EntryDetail?
     private var lastDeletedID: Int64?
     private var baseHeader = ""
+    private var exportNote = ""
     private var isLoading = false
 
     init(
         browser: HistoryBrowser, search: SearchService, actions: ItemActions,
+        exporter: MarkdownExporter,
         copyWriter: OwnCopyWriter = OwnCopyWriter()
     ) {
         self.browser = browser
         self.search = search
+        self.exporter = exporter
         self.actions = actions
         self.copyWriter = copyWriter
         window = NSWindow(
@@ -228,14 +233,14 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         for (button, selector) in [
             (copyButton, #selector(copyClicked)), (pinButton, #selector(pinClicked)),
             (starButton, #selector(starClicked)), (deleteButton, #selector(deleteClicked)),
-            (undoButton, #selector(undoClicked)),
+            (undoButton, #selector(undoClicked)), (exportButton, #selector(exportClicked)),
         ] {
             button.target = self
             button.action = selector
             button.bezelStyle = .rounded
         }
         let buttons = NSStackView(views: [
-            copyButton, pinButton, starButton, deleteButton, undoButton,
+            copyButton, pinButton, starButton, deleteButton, undoButton, exportButton,
         ])
         buttons.orientation = .horizontal
         buttons.spacing = 8
@@ -552,6 +557,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private func selectScope(_ newScope: HistoryScope, header: String) {
         scope = newScope
         baseHeader = header
+        exportNote = ""
         reloadRows()
     }
 
@@ -582,7 +588,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             Self.logger.error("Entries failed: \(String(describing: error), privacy: .public)")
             rows = []
         }
-        headerLabel.stringValue = [baseHeader, note].filter { !$0.isEmpty }.joined(separator: "\n")
+        headerLabel.stringValue = [baseHeader, exportNote, note].filter { !$0.isEmpty }.joined(
+            separator: "\n")
         table.deselectAll(nil)
         table.reloadData()
         tableScroll.contentView.scroll(to: .zero)
@@ -720,6 +727,57 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         pinButton.title = detail?.isPinned == true ? "Lösen" : "Anheften"
         starButton.title = detail?.isStarred == true ? "Markierung entfernen" : "Markieren"
         undoButton.isHidden = lastDeletedID == nil
+        exportButton.isEnabled = exportScope != nil
+    }
+
+    private var exportScope: ExportScope? {
+        switch scope {
+        case .all: nil
+        case .day(let date): .day(date)
+        case .session(let id): .session(id)
+        case .topic(let id): .topic(id)
+        }
+    }
+
+    /// Exports the selected day, session or topic into a folder the user picks.
+    @objc private func exportClicked() {
+        guard let exportScope else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Exportieren"
+        panel.message = "Zielordner für den Markdown-Export wählen"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let directory = panel.url else { return }
+            MainActor.assumeIsolated { self?.export(exportScope, to: directory) }
+        }
+    }
+
+    private func export(_ exportScope: ExportScope, to directory: URL) {
+        do {
+            guard let document = try exporter.export(exportScope) else {
+                exportNote = "Nichts zu exportieren."
+                reloadHeader()
+                return
+            }
+            let url = try MarkdownExporter.write(document, to: directory)
+            exportNote =
+                "Exportiert: \(url.lastPathComponent) (\(document.entryCount) Einträge"
+                + (document.withheldSecrets > 0
+                    ? ", \(document.withheldSecrets) Secrets nicht exportiert" : "") + ")"
+            reloadHeader()
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            Self.logger.error("Export failed: \(String(describing: error), privacy: .public)")
+            exportNote = "Export fehlgeschlagen: \(error.localizedDescription)"
+            reloadHeader()
+        }
+    }
+
+    private func reloadHeader() {
+        headerLabel.stringValue = [baseHeader, exportNote].filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     @objc private func copyClicked() {
