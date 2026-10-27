@@ -9,23 +9,32 @@ enum MaintenanceScheduler {
     private static let firstDelay = Duration.seconds(60)
     private static let interval = Duration.seconds(3_600)
 
-    static func start(database: Database) {
-        Task.detached(priority: .background) {
+    @MainActor private static var task: Task<Void, Never>?
+
+    /// Starts the loop once; a second call is ignored.
+    @MainActor static func start(database: Database) {
+        guard task == nil else { return }
+        task = Task.detached(priority: .utility) {
             let service = MaintenanceService(database: database)
-            try? await Task.sleep(for: firstDelay)
+            do { try await Task.sleep(for: firstDelay) } catch { return }
             while !Task.isCancelled {
                 let report = service.run()
                 if report.failures.isEmpty {
                     logger.info(
-                        "Maintenance done: \(report.topicsPlaced, privacy: .public) sessions placed, \(report.purged, privacy: .public) purged"
+                        "Maintenance done: sessionsRebuilt=\(report.sessionsRebuilt, privacy: .public) topics=\(report.topicsPlaced, privacy: .public) tiers=\(report.tierChanges, privacy: .public) purged=\(report.purged, privacy: .public) indexed=\(report.indexed, privacy: .public)"
                     )
                 } else {
                     logger.error(
                         "Maintenance steps failed: \(report.failures.joined(separator: ","), privacy: .public)"
                     )
                 }
-                try? await Task.sleep(for: interval)
+                do { try await Task.sleep(for: interval) } catch { return }
             }
         }
+    }
+
+    @MainActor static func stop() {
+        task?.cancel()
+        task = nil
     }
 }

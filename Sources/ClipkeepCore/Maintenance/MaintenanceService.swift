@@ -7,6 +7,7 @@ public struct MaintenanceReport: Sendable, Equatable {
     public var topicsPlaced = 0
     public var tierChanges = 0
     public var purged = 0
+    public var retained = 0
     public var indexed = 0
     public var failures: [String] = []
 }
@@ -30,29 +31,32 @@ public struct MaintenanceService: Sendable {
 
     public func run(now: Date = Date()) -> MaintenanceReport {
         var report = MaintenanceReport()
-        // Sessions first: topics and ranking read them.
-        step("sessions", &report) { report in
-            report.sessionsRebuilt = try SessionService(database: database).rebuildIfNeeded()
-        }
-        step("topics", &report) { report in
-            report.topicsPlaced = try TopicService(database: database).cluster(now: now)
-        }
-        step("ranking", &report) { report in
-            report.tierChanges = try RankingService(database: database, configuration: ranking)
-                .refreshAll(now: now)
-            _ = try RankingService(database: database, configuration: ranking)
-                .applyRetention(now: now)
-        }
-        step("purge", &report) { report in
-            report.purged = try ItemActions(database: database, configuration: ranking)
+        let sessions = SessionService(database: database)
+        let rankingService = RankingService(database: database, configuration: ranking)
+        // Purge and retention re-cut the sessions when they delete something, so they run
+        // before the steps that read sessions.
+        step("purge", &report) {
+            $0.purged = try ItemActions(database: database, configuration: ranking)
                 .purgeDeleted(olderThanDays: Self.undoWindowDays, now: now)
         }
-        step("index", &report) { report in
+        step("retention", &report) {
+            $0.retained = try rankingService.applyRetention(now: now)
+        }
+        step("sessions", &report) {
+            $0.sessionsRebuilt = try sessions.rebuildIfNeeded()
+        }
+        step("ranking", &report) {
+            $0.tierChanges = try rankingService.refreshAll(now: now)
+        }
+        step("topics", &report) {
+            $0.topicsPlaced = try TopicService(database: database).cluster(now: now)
+        }
+        step("index", &report) {
             let store = ContentStore(database: database, ranking: ranking)
             for _ in 0..<Self.indexBatches {
                 let done = try store.indexUnfingerprintedContents()
                 if done == 0 { break }
-                report.indexed += done
+                $0.indexed += done
             }
         }
         return report

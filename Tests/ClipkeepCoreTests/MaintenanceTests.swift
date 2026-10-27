@@ -81,7 +81,8 @@ import Testing
         _ = try store.record(text: "a settled session needing a topic", copiedAt: base)
         let recorded = try store.record(
             text: "deleted long ago", copiedAt: base.addingTimeInterval(4 * 3_600))
-        try ItemActions(database: fixture.database).delete(contentID: recorded.contentID, now: base)
+        try ItemActions(database: fixture.database).delete(
+            contentID: recorded.contentID, now: base.addingTimeInterval(4 * 3_600))
         // Break the topic step only.
         try fixture.database.write {
             try $0.execute(
@@ -91,6 +92,11 @@ import Testing
         let report = MaintenanceService(database: fixture.database).run(
             now: base.addingTimeInterval(40 * 86_400))
         #expect(report.failures.contains("topics"))
+        #expect(report.failures == ["topics"])
         #expect(report.purged == 1)
+        try fixture.database.write { try $0.execute("DROP TRIGGER fail_topics") }
+        let next = MaintenanceService(database: fixture.database).run(
+            now: base.addingTimeInterval(40 * 86_400))
+        #expect(next.failures.isEmpty)
     }
 }
