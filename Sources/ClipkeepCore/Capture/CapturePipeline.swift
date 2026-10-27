@@ -67,10 +67,13 @@ public protocol SecretSink: Sendable {
     func handle(secret text: String, context: CopyContext, copiedAt: Date)
     /// Whether the user declared this exact text "not a secret".
     func isException(_ text: String) -> Bool
+    func isParked(_ text: String) -> Bool
 }
 
 extension SecretSink {
     public func isException(_ text: String) -> Bool { false }
+    /// Whether this exact secret is already parked, so importing it again adds nothing.
+    public func isParked(_ text: String) -> Bool { false }
 }
 
 /// The capture pipeline as single stages that can be tested one by one.
@@ -106,12 +109,16 @@ public enum CaptureStages {
 
     /// Unifies line endings to `\n` and trims surrounding whitespace.
     public static func normalize(_ text: String) -> String {
+        normalizeLineBreaks(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// All line break variants become `\n`.
+    public static func normalizeLineBreaks(_ text: String) -> String {
         text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .replacingOccurrences(of: "\u{2028}", with: "\n")
             .replacingOccurrences(of: "\u{2029}", with: "\n")
             .replacingOccurrences(of: "\u{85}", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Length checks on normalized text.

@@ -25,6 +25,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let paletteItem = NSMenuItem()
     private var palette: PaletteController?
     private let historyItem = NSMenuItem()
+    private let importItem = NSMenuItem()
+    private var importer: ImportWindowController?
     private var history: HistoryWindowController?
     private let exceptionsItem = NSMenuItem()
     private var secrets: SecretParker?
@@ -57,6 +59,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         historyItem.action = #selector(openHistory)
         historyItem.isEnabled = false
         menu.addItem(historyItem)
+
+        importItem.title = "Textdatei importieren …"
+        importItem.target = self
+        importItem.action = #selector(openImport)
+        importItem.isEnabled = false
+        menu.addItem(importItem)
         pauseItem.target = self
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
@@ -181,6 +189,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func attach(history: HistoryWindowController) {
         self.history = history
         historyItem.isEnabled = true
+    }
+
+    func attach(importer: ImportWindowController) {
+        self.importer = importer
+        importItem.isEnabled = true
+    }
+
+    @objc private func openImport() {
+        DispatchQueue.main.async { [importer] in importer?.start() }
     }
 
     @objc private func openHistory() {
