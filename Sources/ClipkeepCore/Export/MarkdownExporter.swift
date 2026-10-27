@@ -83,16 +83,29 @@ public struct MarkdownExporter: Sendable {
             throw CocoaError(.fileWriteInvalidFileName)
         }
         let base = String(document.fileName.dropLast(3))
-        var target = directory.appendingPathComponent(document.fileName)
-        var number = 2
-        while FileManager.default.fileExists(atPath: target.path) {
-            target = directory.appendingPathComponent("\(base)-\(number).md")
-            number += 1
+        var number = 1
+        while true {
+            let name = number == 1 ? document.fileName : "\(base)-\(number).md"
+            let target = directory.appendingPathComponent(name)
+            // Created exclusively and private from the first moment, even in a shared folder.
+            let descriptor = open(target.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            if descriptor < 0 {
+                if errno == EEXIST {
+                    number += 1
+                    continue
+                }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            do {
+                try handle.write(contentsOf: Data(document.text.utf8))
+                try handle.close()
+            } catch {
+                try? FileManager.default.removeItem(at: target)
+                throw error
+            }
+            return target
         }
-        try Data(document.text.utf8).write(to: target, options: .withoutOverwriting)
-        // A clipboard dump is private even when the folder is shared.
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
-        return target
     }
 
     // MARK: - Scope
