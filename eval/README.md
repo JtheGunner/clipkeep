@@ -55,6 +55,19 @@ The file is imported into a throwaway database (secrets are dropped), then every
 run. Targets are found by `targetContains`. There is no baseline for your own data unless you
 name one with `--baseline`.
 
+> [!IMPORTANT]
+> The gold set and the evaluation must cut the file into entries the same way. By default
+> (`--split automatic`) a file with separator lines such as `---` is cut at those lines, and an
+> entry that contains a secret is dropped as a whole, taking every target inside it along. If
+> the gold set was built from blank-line blocks, evaluate with `--split blank-lines`:
+>
+> ```bash
+> ./scripts/eval.sh --text ~/notes.txt --gold eval/local/gold.json --split blank-lines
+> ```
+>
+> Modes: `automatic`, `separators`, `blank-lines`, `every-line`. Choose gold targets that are not
+> secrets, because those entries never reach the database.
+
 ## 🎯 Baseline
 
 | Metric | Baseline |

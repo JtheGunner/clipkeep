@@ -175,6 +175,32 @@ import Testing
         #expect(metrics.recallAt1 == 1)
         #expect(metrics.sessionPairF1 == nil)
     }
+
+    /// A secret anywhere in a block drops the whole block, so the split mode decides how many
+    /// gold targets survive the import.
+    @Test func theSplitModeDecidesWhichTargetsSurviveTheImport() throws {
+        let secret = "ghp_" + String(repeating: "aB3dE6gH9k", count: 3) + "xyz012"
+        let text = """
+            token \(secret)
+
+            first note about invoices
+
+            second note about travel plans
+            ---
+            third note about cooking
+            """
+        let gold = GoldSet(queries: [
+            GoldQuery(query: "invoices", targetContains: "first note"),
+            GoldQuery(query: "travel", targetContains: "second note"),
+            GoldQuery(query: "cooking", targetContains: "third note"),
+        ])
+        // The separator line makes `automatic` cut at "---", so the block with the secret
+        // takes the two notes after it with it.
+        let automatic = try EvalRunner.run(importing: text, gold: gold)
+        #expect(automatic.recallAt10 == 1.0 / 3)
+        let blankLines = try EvalRunner.run(importing: text, gold: gold, mode: .blankLines)
+        #expect(blankLines.recallAt10 == 1)
+    }
 }
 
 enum TestScores {
