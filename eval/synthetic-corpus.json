@@ -1,0 +1,2628 @@
+{
+ "entries": [
+  {
+   "id": "s1e0",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 94.98,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Kunde/Offerte (s1e0)"
+  },
+  {
+   "id": "s1e1",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 98.67,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 950 an Huber: Quittung Honorar, Zahlungsfrist Steuer (s1e1)"
+  },
+  {
+   "id": "s1e2",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 101.0,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 427 an Huber: Quittung Rechnung, Zahlungsfrist Spesen (s1e2)"
+  },
+  {
+   "id": "s1e3",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 103.51,
+   "app": "Numbers",
+   "text": "Beleg Beleg / Mehrwertsteuer: CHF 235.50 inkl. Kunde (s1e3)"
+  },
+  {
+   "id": "s1e4",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 105.24,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Steuer/Steuer (s1e4)"
+  },
+  {
+   "id": "s1e5",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 106.99,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 424 an Huber: Frist Abrechnung, Zahlungsfrist Betrag (s1e5)"
+  },
+  {
+   "id": "s1e6",
+   "session": "session-1",
+   "theme": "rechnung",
+   "minute": 108.21,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Abrechnung/Zahlung (s1e6)"
+  },
+  {
+   "id": "s2e0",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 282.79,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/rollout-context --namespace pod (s2e0)"
+  },
+  {
+   "id": "s2e1",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 285.11,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/pod/cluster/namespace (s2e1)"
+  },
+  {
+   "id": "s2e2",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 286.55,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/replica-chart --namespace replica (s2e2)"
+  },
+  {
+   "id": "s2e3",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 287.67,
+   "app": "Terminal",
+   "text": "helm upgrade --install cluster ./charts/replica --set cluster.replicas=3 (s2e3)"
+  },
+  {
+   "id": "s2e4",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 289.24,
+   "app": "Terminal",
+   "text": "kubectl get namespace -n node -o wide | grep replica (s2e4)"
+  },
+  {
+   "id": "s2e5",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 290.45,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/service-node --namespace volume (s2e5)"
+  },
+  {
+   "id": "s2e6",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 293.9,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/namespace/cluster/ingress (s2e6)"
+  },
+  {
+   "id": "s2e7",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 295.0,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/helm-probe --namespace logs (s2e7)"
+  },
+  {
+   "id": "s2e8",
+   "session": "session-2",
+   "theme": "kubernetes",
+   "minute": 297.79,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/pod/configmap/deployment (s2e8)"
+  },
+  {
+   "id": "s3e0",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 403.86,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Buchhaltung/Frist (s3e0)"
+  },
+  {
+   "id": "s3e1",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 404.95,
+   "app": "Numbers",
+   "text": "Beleg Beleg / Honorar: CHF 252.50 inkl. Zahlung (s3e1)"
+  },
+  {
+   "id": "s3e2",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 406.66,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 613 an Meier: Beleg Rechnung, Zahlungsfrist Mehrwertsteuer (s3e2)"
+  },
+  {
+   "id": "s3e3",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 408.05,
+   "app": "Numbers",
+   "text": "Offerte Weber Huber für Honorar und Frist (s3e3)"
+  },
+  {
+   "id": "s3e4",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 411.06,
+   "app": "Numbers",
+   "text": "Offerte Weber Graf für Spesen und Quittung (s3e4)"
+  },
+  {
+   "id": "s3e5",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 415.05,
+   "app": "Numbers",
+   "text": "Offerte Huber Keller für Budget und Offerte (s3e5)"
+  },
+  {
+   "id": "s3e6",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 416.37,
+   "app": "Numbers",
+   "text": "Beleg Beleg / Betrag: CHF 157.50 inkl. Konto (s3e6)"
+  },
+  {
+   "id": "s3e7",
+   "session": "session-3",
+   "theme": "rechnung",
+   "minute": 417.32,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 137 an Weber: Steuer Mahnung, Zahlungsfrist Betrag (s3e7)"
+  },
+  {
+   "id": "s4e0",
+   "session": "session-4",
+   "theme": "schreiben",
+   "minute": 477.8,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Überschrift/Idee (s4e0)"
+  },
+  {
+   "id": "s4e1",
+   "session": "session-4",
+   "theme": "schreiben",
+   "minute": 478.99,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Thema/Titel (s4e1)"
+  },
+  {
+   "id": "s4e2",
+   "session": "session-4",
+   "theme": "schreiben",
+   "minute": 480.2,
+   "app": "Notes",
+   "text": "Huber: Überschrift überarbeiten, Entwurf kürzen, Manuskript ergänzen (s4e2)"
+  },
+  {
+   "id": "s4e3",
+   "session": "session-4",
+   "theme": "schreiben",
+   "minute": 481.06,
+   "app": "Notes",
+   "text": "Gliederung 7.54 Kapitel und Zitat (s4e3)"
+  },
+  {
+   "id": "s4e4",
+   "session": "session-4",
+   "theme": "schreiben",
+   "minute": 484.56,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Titel/Notiz (s4e4)"
+  },
+  {
+   "id": "s5e0",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 530.5,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 433 an Weber: Kunde Rechnung, Zahlungsfrist Steuer (s5e0)"
+  },
+  {
+   "id": "s5e1",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 531.68,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Budget/Quittung (s5e1)"
+  },
+  {
+   "id": "s5e2",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 534.94,
+   "app": "Numbers",
+   "text": "Beleg Mehrwertsteuer / Zahlung: CHF 220.50 inkl. Konto (s5e2)"
+  },
+  {
+   "id": "s5e3",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 536.86,
+   "app": "Numbers",
+   "text": "Beleg Beleg / Quittung: CHF 616.50 inkl. Offerte (s5e3)"
+  },
+  {
+   "id": "s5e4",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 538.7,
+   "app": "Numbers",
+   "text": "Beleg Offerte / Abrechnung: CHF 148.50 inkl. Spesen (s5e4)"
+  },
+  {
+   "id": "s5e5",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 542.6,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Beleg/Zahlung (s5e5)"
+  },
+  {
+   "id": "s5e6",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 544.92,
+   "app": "Numbers",
+   "text": "Offerte Weber Moser für Frist und Rechnung (s5e6)"
+  },
+  {
+   "id": "s5e7",
+   "session": "session-5",
+   "theme": "rechnung",
+   "minute": 546.49,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Steuer/Betrag (s5e7)"
+  },
+  {
+   "id": "s6e0",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 709.1,
+   "app": "Numbers",
+   "text": "Offerte Meier Bauer für Rechnung und Mehrwertsteuer (s6e0)"
+  },
+  {
+   "id": "s6e1",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 710.09,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 514 an Huber: Rechnung Buchhaltung, Zahlungsfrist Abrechnung (s6e1)"
+  },
+  {
+   "id": "s6e2",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 713.06,
+   "app": "Numbers",
+   "text": "Beleg Steuer / Honorar: CHF 834.50 inkl. Frist (s6e2)"
+  },
+  {
+   "id": "s6e3",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 714.12,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Offerte/Buchhaltung (s6e3)"
+  },
+  {
+   "id": "s6e4",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 715.65,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Frist/Mehrwertsteuer (s6e4)"
+  },
+  {
+   "id": "s6e5",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 716.63,
+   "app": "Numbers",
+   "text": "Offerte Keller Graf für Steuer und Spesen (s6e5)"
+  },
+  {
+   "id": "s6e6",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 717.64,
+   "app": "Numbers",
+   "text": "Beleg Kunde / Steuer: CHF 316.50 inkl. Abrechnung (s6e6)"
+  },
+  {
+   "id": "s6e7",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 718.37,
+   "app": "Numbers",
+   "text": "Beleg Mahnung / Mahnung: CHF 931.50 inkl. Rechnung (s6e7)"
+  },
+  {
+   "id": "s6e8",
+   "session": "session-6",
+   "theme": "rechnung",
+   "minute": 719.72,
+   "app": "Numbers",
+   "text": "Offerte Roth Bauer für Offerte und Kunde (s6e8)"
+  },
+  {
+   "id": "s7e0",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 821.12,
+   "app": "Xcode",
+   "text": "func extensionsendable() async throws -> protocol { try await build.decoder() } (s7e0)"
+  },
+  {
+   "id": "s7e1",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 824.65,
+   "app": "Xcode",
+   "text": "struct KellerWeber: Roth { var isolation: enum; let generic: enum } (s7e1)"
+  },
+  {
+   "id": "s7e2",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 825.28,
+   "app": "Xcode",
+   "text": "let async = enum.async(with: build) // check build before shipping (s7e2)"
+  },
+  {
+   "id": "s7e3",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 827.95,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/actor/extension-task (s7e3)"
+  },
+  {
+   "id": "s7e4",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 830.53,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/encoder/target-protocol (s7e4)"
+  },
+  {
+   "id": "s7e5",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 831.73,
+   "app": "Xcode",
+   "text": "struct SteinerWeber: Roth { var generic: optional; let package: macro } (s7e5)"
+  },
+  {
+   "id": "s7e6",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 835.47,
+   "app": "Xcode",
+   "text": "swift build failed: stream cannot be closure from a optional context (s7e6)"
+  },
+  {
+   "id": "s7e7",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 837.85,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/package/isolation-sendable (s7e7)"
+  },
+  {
+   "id": "s7e8",
+   "session": "session-7",
+   "theme": "swift",
+   "minute": 841.82,
+   "app": "Xcode",
+   "text": "func concurrencyenum() async throws -> extension { try await enum.concurrency() } (s7e8)"
+  },
+  {
+   "id": "s8e0",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1041.62,
+   "app": "Chrome",
+   "text": "Hotel Roth Bauer, Billett Reservation, Stornierung bis 3 Tage vorher (s8e0)"
+  },
+  {
+   "id": "s8e1",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1042.23,
+   "app": "Chrome",
+   "text": "Buchung Hotel bestätigt: Frühstück ab Reisepass, Gate inbegriffen (s8e1)"
+  },
+  {
+   "id": "s8e2",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1044.95,
+   "app": "Chrome",
+   "text": "Hotel Meier Graf, Zimmer Fahrplan, Stornierung bis 6 Tage vorher (s8e2)"
+  },
+  {
+   "id": "s8e3",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1045.78,
+   "app": "Chrome",
+   "text": "Zug nach Billett um 08:19, Umsteigen in Frühstück (s8e3)"
+  },
+  {
+   "id": "s8e4",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1046.82,
+   "app": "Chrome",
+   "text": "Buchung Zimmer bestätigt: Gepäck ab Hauptbahnhof, Reservation inbegriffen (s8e4)"
+  },
+  {
+   "id": "s8e5",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1048.47,
+   "app": "Chrome",
+   "text": "Buchung Flug bestätigt: Zug ab Bestätigung, Billett inbegriffen (s8e5)"
+  },
+  {
+   "id": "s8e6",
+   "session": "session-8",
+   "theme": "reise",
+   "minute": 1049.99,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Flug/Hauptbahnhof?tag=Mietwagen (s8e6)"
+  },
+  {
+   "id": "s9e0",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1110.3,
+   "app": "Notes",
+   "text": "Weber: Titel überarbeiten, Entwurf kürzen, Titel ergänzen (s9e0)"
+  },
+  {
+   "id": "s9e1",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1112.3,
+   "app": "Notes",
+   "text": "Idee für Manuskript: Gliederung gegen Kapitel stellen (s9e1)"
+  },
+  {
+   "id": "s9e2",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1115.17,
+   "app": "Notes",
+   "text": "Weber: Fazit überarbeiten, Lektorat kürzen, Idee ergänzen (s9e2)"
+  },
+  {
+   "id": "s9e3",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1117.57,
+   "app": "Notes",
+   "text": "Idee für Idee: Notiz gegen Überschrift stellen (s9e3)"
+  },
+  {
+   "id": "s9e4",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1119.91,
+   "app": "Notes",
+   "text": "Idee für Lektorat: Kapitel gegen Fazit stellen (s9e4)"
+  },
+  {
+   "id": "s9e5",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1121.29,
+   "app": "Notes",
+   "text": "Gliederung 3.42 Argument und Titel (s9e5)"
+  },
+  {
+   "id": "s9e6",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1123.06,
+   "app": "Notes",
+   "text": "Gliederung 3.45 Zitat und Lektorat (s9e6)"
+  },
+  {
+   "id": "s9e7",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1123.79,
+   "app": "Notes",
+   "text": "Gliederung 9.51 Überschrift und Absatz (s9e7)"
+  },
+  {
+   "id": "s9e8",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1125.77,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Quelle/Gliederung (s9e8)"
+  },
+  {
+   "id": "s9e9",
+   "session": "session-9",
+   "theme": "schreiben",
+   "minute": 1129.17,
+   "app": "Notes",
+   "text": "Idee für Gliederung: Lektorat gegen Thema stellen (s9e9)"
+  },
+  {
+   "id": "s10e0",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1276.34,
+   "app": "Xcode",
+   "text": "struct FreiFrei: Steiner { var concurrency: macro; let macro: concurrency } (s10e0)"
+  },
+  {
+   "id": "s10e1",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1280.18,
+   "app": "Xcode",
+   "text": "let async = stream.protocol(with: package) // check await before shipping (s10e1)"
+  },
+  {
+   "id": "s10e2",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1283.77,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/async/task-sendable (s10e2)"
+  },
+  {
+   "id": "s10e3",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1286.19,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/macro/await-generic (s10e3)"
+  },
+  {
+   "id": "s10e4",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1289.62,
+   "app": "Xcode",
+   "text": "swift build failed: concurrency cannot be extension from a decoder context (s10e4)"
+  },
+  {
+   "id": "s10e5",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1292.66,
+   "app": "Xcode",
+   "text": "func closureconcurrency() async throws -> target { try await generic.optional() } (s10e5)"
+  },
+  {
+   "id": "s10e6",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1295.09,
+   "app": "Xcode",
+   "text": "swift build failed: concurrency cannot be sendable from a concurrency context (s10e6)"
+  },
+  {
+   "id": "s10e7",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1298.09,
+   "app": "Xcode",
+   "text": "struct SteinerHuber: Roth { var async: protocol; let encoder: macro } (s10e7)"
+  },
+  {
+   "id": "s10e8",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1301.72,
+   "app": "Xcode",
+   "text": "let macro = decoder.actor(with: package) // check closure before shipping (s10e8)"
+  },
+  {
+   "id": "s10e9",
+   "session": "session-10",
+   "theme": "swift",
+   "minute": 1302.66,
+   "app": "Xcode",
+   "text": "func extensiontask() async throws -> macro { try await encoder.async() } (s10e9)"
+  },
+  {
+   "id": "s11e0",
+   "session": "session-11",
+   "theme": "rechnung",
+   "minute": 1392.92,
+   "app": "Numbers",
+   "text": "Beleg Frist / Beleg: CHF 546.50 inkl. Frist (s11e0)"
+  },
+  {
+   "id": "s11e1",
+   "session": "session-11",
+   "theme": "rechnung",
+   "minute": 1395.4,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Kunde/Zahlung (s11e1)"
+  },
+  {
+   "id": "s11e2",
+   "session": "session-11",
+   "theme": "rechnung",
+   "minute": 1397.64,
+   "app": "Numbers",
+   "text": "Beleg Kunde / Mehrwertsteuer: CHF 535.50 inkl. Betrag (s11e2)"
+  },
+  {
+   "id": "s11e3",
+   "session": "session-11",
+   "theme": "rechnung",
+   "minute": 1398.26,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Mahnung/Konto (s11e3)"
+  },
+  {
+   "id": "s11e4",
+   "session": "session-11",
+   "theme": "rechnung",
+   "minute": 1402.08,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 246 an Roth: Abrechnung Mahnung, Zahlungsfrist Frist (s11e4)"
+  },
+  {
+   "id": "s12e0",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1570.4,
+   "app": "Terminal",
+   "text": "helm upgrade --install deployment ./charts/context --set restart.replicas=3 (s12e0)"
+  },
+  {
+   "id": "s12e1",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1571.95,
+   "app": "Terminal",
+   "text": "Error: ingress replica not ready: configmap probe failed after service seconds (s12e1)"
+  },
+  {
+   "id": "s12e2",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1574.72,
+   "app": "Terminal",
+   "text": "Error: context manifest not ready: selector probe failed after context seconds (s12e2)"
+  },
+  {
+   "id": "s12e3",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1575.27,
+   "app": "Terminal",
+   "text": "helm upgrade --install probe ./charts/ingress --set context.replicas=3 (s12e3)"
+  },
+  {
+   "id": "s12e4",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1578.18,
+   "app": "Terminal",
+   "text": "Error: configmap node not ready: replica probe failed after cluster seconds (s12e4)"
+  },
+  {
+   "id": "s12e5",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1579.35,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/deployment/restart/pod (s12e5)"
+  },
+  {
+   "id": "s12e6",
+   "session": "session-12",
+   "theme": "kubernetes",
+   "minute": 1582.32,
+   "app": "Terminal",
+   "text": "Error: cluster replica not ready: volume probe failed after configmap seconds (s12e6)"
+  },
+  {
+   "id": "s13e0",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1637.39,
+   "app": "Numbers",
+   "text": "Beleg Frist / Honorar: CHF 354.50 inkl. Honorar (s13e0)"
+  },
+  {
+   "id": "s13e1",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1641.13,
+   "app": "Numbers",
+   "text": "Beleg Buchhaltung / Abrechnung: CHF 214.50 inkl. Quittung (s13e1)"
+  },
+  {
+   "id": "s13e2",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1642.16,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Mahnung/Budget (s13e2)"
+  },
+  {
+   "id": "s13e3",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1644.88,
+   "app": "Numbers",
+   "text": "Offerte Huber Graf für Quittung und Frist (s13e3)"
+  },
+  {
+   "id": "s13e4",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1646.35,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 446 an Weber: Budget Mehrwertsteuer, Zahlungsfrist Betrag (s13e4)"
+  },
+  {
+   "id": "s13e5",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1649.55,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Betrag/Offerte (s13e5)"
+  },
+  {
+   "id": "s13e6",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1651.08,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Mahnung/Beleg (s13e6)"
+  },
+  {
+   "id": "s13e7",
+   "session": "session-13",
+   "theme": "rechnung",
+   "minute": 1652.75,
+   "app": "Numbers",
+   "text": "Offerte Meier Keller für Offerte und Buchhaltung (s13e7)"
+  },
+  {
+   "id": "s14e0",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1785.06,
+   "app": "Numbers",
+   "text": "Offerte Frei Graf für Rechnung und Steuer (s14e0)"
+  },
+  {
+   "id": "s14e1",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1786.82,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Steuer/Beleg (s14e1)"
+  },
+  {
+   "id": "s14e2",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1790.59,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 234 an Steiner: Quittung Beleg, Zahlungsfrist Spesen (s14e2)"
+  },
+  {
+   "id": "s14e3",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1794.05,
+   "app": "Numbers",
+   "text": "Beleg Beleg / Steuer: CHF 834.50 inkl. Betrag (s14e3)"
+  },
+  {
+   "id": "s14e4",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1797.74,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 946 an Frei: Rechnung Abrechnung, Zahlungsfrist Buchhaltung (s14e4)"
+  },
+  {
+   "id": "s14e5",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1798.97,
+   "app": "Numbers",
+   "text": "Beleg Mehrwertsteuer / Mahnung: CHF 525.50 inkl. Buchhaltung (s14e5)"
+  },
+  {
+   "id": "s14e6",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1800.66,
+   "app": "Numbers",
+   "text": "Rechnung Nr. 130 an Steiner: Honorar Zahlung, Zahlungsfrist Zahlung (s14e6)"
+  },
+  {
+   "id": "s14e7",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1803.81,
+   "app": "Numbers",
+   "text": "https://buchhaltung.example.org/Quittung/Steuer (s14e7)"
+  },
+  {
+   "id": "s14e8",
+   "session": "session-14",
+   "theme": "rechnung",
+   "minute": 1807.4,
+   "app": "Numbers",
+   "text": "Beleg Rechnung / Steuer: CHF 419.50 inkl. Betrag (s14e8)"
+  },
+  {
+   "id": "s15e0",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1926.13,
+   "app": "Xcode",
+   "text": "struct SteinerSteiner: Frei { var enum: generic; let package: target } (s15e0)"
+  },
+  {
+   "id": "s15e1",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1927.81,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/encoder/generic-enum (s15e1)"
+  },
+  {
+   "id": "s15e2",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1931.48,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/enum/protocol-decoder (s15e2)"
+  },
+  {
+   "id": "s15e3",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1934.7,
+   "app": "Xcode",
+   "text": "swift build failed: task cannot be closure from a encoder context (s15e3)"
+  },
+  {
+   "id": "s15e4",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1935.86,
+   "app": "Xcode",
+   "text": "let generic = stream.decoder(with: enum) // check closure before shipping (s15e4)"
+  },
+  {
+   "id": "s15e5",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1937.95,
+   "app": "Xcode",
+   "text": "let concurrency = enum.actor(with: decoder) // check decoder before shipping (s15e5)"
+  },
+  {
+   "id": "s15e6",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1941.51,
+   "app": "Xcode",
+   "text": "let extension = await.encoder(with: closure) // check concurrency before shipping (s15e6)"
+  },
+  {
+   "id": "s15e7",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1945.42,
+   "app": "Xcode",
+   "text": "swift build failed: struct cannot be build from a decoder context (s15e7)"
+  },
+  {
+   "id": "s15e8",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1948.92,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/encoder/package-task (s15e8)"
+  },
+  {
+   "id": "s15e9",
+   "session": "session-15",
+   "theme": "swift",
+   "minute": 1949.97,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/stream/await-await (s15e9)"
+  },
+  {
+   "id": "s16e0",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2187.87,
+   "app": "Chrome",
+   "text": "Hotel Frei Keller, Buchung Reisepass, Stornierung bis 5 Tage vorher (s16e0)"
+  },
+  {
+   "id": "s16e1",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2189.97,
+   "app": "Chrome",
+   "text": "Hotel Roth Graf, Stornierung Hotel, Stornierung bis 5 Tage vorher (s16e1)"
+  },
+  {
+   "id": "s16e2",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2190.96,
+   "app": "Chrome",
+   "text": "Hotel Weber Graf, Gepäck Reservation, Stornierung bis 1 Tage vorher (s16e2)"
+  },
+  {
+   "id": "s16e3",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2193.53,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Terminal/Terminal?tag=Zimmer (s16e3)"
+  },
+  {
+   "id": "s16e4",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2195.26,
+   "app": "Chrome",
+   "text": "Hotel Bauer Steiner, Stornierung Gepäck, Stornierung bis 2 Tage vorher (s16e4)"
+  },
+  {
+   "id": "s16e5",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2199.2,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Zimmer/Fahrplan?tag=Mietwagen (s16e5)"
+  },
+  {
+   "id": "s16e6",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2201.94,
+   "app": "Chrome",
+   "text": "Zug nach Gate um 02:38, Umsteigen in Reservation (s16e6)"
+  },
+  {
+   "id": "s16e7",
+   "session": "session-16",
+   "theme": "reise",
+   "minute": 2203.83,
+   "app": "Chrome",
+   "text": "Buchung Billett bestätigt: Gate ab Zimmer, Stornierung inbegriffen (s16e7)"
+  },
+  {
+   "id": "s17e0",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2348.93,
+   "app": "Safari",
+   "text": "Rezept: Butter-Butter mit Suppe, 40 Minuten bei 180 Grad (s17e0)"
+  },
+  {
+   "id": "s17e1",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2351.08,
+   "app": "Safari",
+   "text": "Reis und Rahm in der Knoblauch anbraten, dann Kartoffeln dazugeben (s17e1)"
+  },
+  {
+   "id": "s17e2",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2351.92,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Pfeffer-Hefe-Gemüse (s17e2)"
+  },
+  {
+   "id": "s17e3",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2355.48,
+   "app": "Safari",
+   "text": "Rezept: Pilze-Knoblauch mit Butter, 40 Minuten bei 180 Grad (s17e3)"
+  },
+  {
+   "id": "s17e4",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2357.6,
+   "app": "Safari",
+   "text": "Zucker und Zwiebel in der Kümmel anbraten, dann Pfanne dazugeben (s17e4)"
+  },
+  {
+   "id": "s17e5",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2358.55,
+   "app": "Safari",
+   "text": "Reis und Käse in der Reis anbraten, dann Reis dazugeben (s17e5)"
+  },
+  {
+   "id": "s17e6",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2361.35,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Butter-Hefe-Knoblauch (s17e6)"
+  },
+  {
+   "id": "s17e7",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2365.26,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Kümmel-Knoblauch-Gemüse (s17e7)"
+  },
+  {
+   "id": "s17e8",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2368.38,
+   "app": "Safari",
+   "text": "Zwiebel und Ofen in der Kartoffeln anbraten, dann Pilze dazugeben (s17e8)"
+  },
+  {
+   "id": "s17e9",
+   "session": "session-17",
+   "theme": "kochen",
+   "minute": 2369.08,
+   "app": "Safari",
+   "text": "Rezept: Rahm-Suppe mit Pfeffer, 40 Minuten bei 180 Grad (s17e9)"
+  },
+  {
+   "id": "s18e0",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2519.95,
+   "app": "Notes",
+   "text": "Frei: Überschrift überarbeiten, Manuskript kürzen, Manuskript ergänzen (s18e0)"
+  },
+  {
+   "id": "s18e1",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2521.42,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Argument/Fazit (s18e1)"
+  },
+  {
+   "id": "s18e2",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2524.77,
+   "app": "Notes",
+   "text": "Idee für Überschrift: Zitat gegen Manuskript stellen (s18e2)"
+  },
+  {
+   "id": "s18e3",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2525.85,
+   "app": "Notes",
+   "text": "Idee für Überschrift: Absatz gegen Überschrift stellen (s18e3)"
+  },
+  {
+   "id": "s18e4",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2528.15,
+   "app": "Notes",
+   "text": "Gliederung 3.23 Manuskript und Thema (s18e4)"
+  },
+  {
+   "id": "s18e5",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2529.33,
+   "app": "Notes",
+   "text": "Meier: Thema überarbeiten, Argument kürzen, Entwurf ergänzen (s18e5)"
+  },
+  {
+   "id": "s18e6",
+   "session": "session-18",
+   "theme": "schreiben",
+   "minute": 2530.35,
+   "app": "Notes",
+   "text": "Idee für Fazit: Thema gegen Kapitel stellen (s18e6)"
+  },
+  {
+   "id": "s19e0",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2580.44,
+   "app": "Terminal",
+   "text": "kubectl get probe -n logs -o wide | grep cluster (s19e0)"
+  },
+  {
+   "id": "s19e1",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2583.23,
+   "app": "Terminal",
+   "text": "kubectl get context -n context -o wide | grep helm (s19e1)"
+  },
+  {
+   "id": "s19e2",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2584.53,
+   "app": "Terminal",
+   "text": "helm upgrade --install rollout ./charts/context --set cluster.replicas=3 (s19e2)"
+  },
+  {
+   "id": "s19e3",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2585.73,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/configmap-configmap --namespace ingress (s19e3)"
+  },
+  {
+   "id": "s19e4",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2586.27,
+   "app": "Terminal",
+   "text": "helm upgrade --install pod ./charts/configmap --set selector.replicas=3 (s19e4)"
+  },
+  {
+   "id": "s19e5",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2587.21,
+   "app": "Terminal",
+   "text": "kubectl get probe -n probe -o wide | grep selector (s19e5)"
+  },
+  {
+   "id": "s19e6",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2588.44,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/configmap/chart/manifest (s19e6)"
+  },
+  {
+   "id": "s19e7",
+   "session": "session-19",
+   "theme": "kubernetes",
+   "minute": 2592.12,
+   "app": "Terminal",
+   "text": "Error: context pod not ready: selector probe failed after pod seconds (s19e7)"
+  },
+  {
+   "id": "s20e0",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2819.13,
+   "app": "Chrome",
+   "text": "Buchung Stornierung bestätigt: Frühstück ab Frühstück, Stornierung inbegriffen (s20e0)"
+  },
+  {
+   "id": "s20e1",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2820.02,
+   "app": "Chrome",
+   "text": "Zug nach Reservation um 07:25, Umsteigen in Reisepass (s20e1)"
+  },
+  {
+   "id": "s20e2",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2823.38,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Zimmer/Fahrplan?tag=Zug (s20e2)"
+  },
+  {
+   "id": "s20e3",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2826.45,
+   "app": "Chrome",
+   "text": "Hotel Bauer Bauer, Fahrplan Hotel, Stornierung bis 9 Tage vorher (s20e3)"
+  },
+  {
+   "id": "s20e4",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2827.82,
+   "app": "Chrome",
+   "text": "Zug nach Zug um 03:10, Umsteigen in Hotel (s20e4)"
+  },
+  {
+   "id": "s20e5",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2831.11,
+   "app": "Chrome",
+   "text": "Buchung Mietwagen bestätigt: Zimmer ab Buchung, Gepäck inbegriffen (s20e5)"
+  },
+  {
+   "id": "s20e6",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2834.78,
+   "app": "Chrome",
+   "text": "Hotel Meier Weber, Reisepass Stornierung, Stornierung bis 8 Tage vorher (s20e6)"
+  },
+  {
+   "id": "s20e7",
+   "session": "session-20",
+   "theme": "reise",
+   "minute": 2836.59,
+   "app": "Chrome",
+   "text": "Buchung Zimmer bestätigt: Hauptbahnhof ab Zug, Billett inbegriffen (s20e7)"
+  },
+  {
+   "id": "s21e0",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2968.72,
+   "app": "Notes",
+   "text": "Idee für Idee: Titel gegen Titel stellen (s21e0)"
+  },
+  {
+   "id": "s21e1",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2971.03,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Kapitel/Kapitel (s21e1)"
+  },
+  {
+   "id": "s21e2",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2971.94,
+   "app": "Notes",
+   "text": "Roth: Argument überarbeiten, Titel kürzen, Entwurf ergänzen (s21e2)"
+  },
+  {
+   "id": "s21e3",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2974.91,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Entwurf/Fazit (s21e3)"
+  },
+  {
+   "id": "s21e4",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2978.82,
+   "app": "Notes",
+   "text": "Meier: Idee überarbeiten, Gliederung kürzen, Entwurf ergänzen (s21e4)"
+  },
+  {
+   "id": "s21e5",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2979.47,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Kapitel/Fazit (s21e5)"
+  },
+  {
+   "id": "s21e6",
+   "session": "session-21",
+   "theme": "schreiben",
+   "minute": 2983.42,
+   "app": "Notes",
+   "text": "Gliederung 2.16 Idee und Idee (s21e6)"
+  },
+  {
+   "id": "s22e0",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3181.96,
+   "app": "Chrome",
+   "text": "Buchung Billett bestätigt: Flug ab Terminal, Bestätigung inbegriffen (s22e0)"
+  },
+  {
+   "id": "s22e1",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3183.91,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Bestätigung/Mietwagen?tag=Terminal (s22e1)"
+  },
+  {
+   "id": "s22e2",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3187.14,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Mietwagen/Gate?tag=Gate (s22e2)"
+  },
+  {
+   "id": "s22e3",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3188.87,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Gate/Terminal?tag=Mietwagen (s22e3)"
+  },
+  {
+   "id": "s22e4",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3191.19,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Buchung/Bestätigung?tag=Terminal (s22e4)"
+  },
+  {
+   "id": "s22e5",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3192.78,
+   "app": "Chrome",
+   "text": "Zug nach Frühstück um 06:34, Umsteigen in Terminal (s22e5)"
+  },
+  {
+   "id": "s22e6",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3195.47,
+   "app": "Chrome",
+   "text": "Hotel Weber Graf, Bestätigung Gate, Stornierung bis 8 Tage vorher (s22e6)"
+  },
+  {
+   "id": "s22e7",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3197.23,
+   "app": "Chrome",
+   "text": "Buchung Zug bestätigt: Buchung ab Flug, Stornierung inbegriffen (s22e7)"
+  },
+  {
+   "id": "s22e8",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3200.42,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Zimmer/Gepäck?tag=Reservation (s22e8)"
+  },
+  {
+   "id": "s22e9",
+   "session": "session-22",
+   "theme": "reise",
+   "minute": 3201.62,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Reservation/Billett?tag=Gate (s22e9)"
+  },
+  {
+   "id": "s23e0",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3430.23,
+   "app": "Terminal",
+   "text": "helm upgrade --install context ./charts/cluster --set logs.replicas=3 (s23e0)"
+  },
+  {
+   "id": "s23e1",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3433.34,
+   "app": "Terminal",
+   "text": "helm upgrade --install rollout ./charts/probe --set selector.replicas=3 (s23e1)"
+  },
+  {
+   "id": "s23e2",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3437.13,
+   "app": "Terminal",
+   "text": "helm upgrade --install probe ./charts/node --set node.replicas=3 (s23e2)"
+  },
+  {
+   "id": "s23e3",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3438.16,
+   "app": "Terminal",
+   "text": "helm upgrade --install node ./charts/cluster --set pod.replicas=3 (s23e3)"
+  },
+  {
+   "id": "s23e4",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3438.99,
+   "app": "Terminal",
+   "text": "kubectl get namespace -n configmap -o wide | grep logs (s23e4)"
+  },
+  {
+   "id": "s23e5",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3440.02,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/node-namespace --namespace chart (s23e5)"
+  },
+  {
+   "id": "s23e6",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3443.41,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/restart-context --namespace service (s23e6)"
+  },
+  {
+   "id": "s23e7",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3446.28,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/context/rollout/namespace (s23e7)"
+  },
+  {
+   "id": "s23e8",
+   "session": "session-23",
+   "theme": "kubernetes",
+   "minute": 3449.79,
+   "app": "Terminal",
+   "text": "kubectl get service -n replica -o wide | grep chart (s23e8)"
+  },
+  {
+   "id": "s24e0",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3556.37,
+   "app": "Notes",
+   "text": "Idee für Gliederung: Zitat gegen Überschrift stellen (s24e0)"
+  },
+  {
+   "id": "s24e1",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3558.2,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Quelle/Lektorat (s24e1)"
+  },
+  {
+   "id": "s24e2",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3562.15,
+   "app": "Notes",
+   "text": "Frei: Einleitung überarbeiten, Argument kürzen, Gliederung ergänzen (s24e2)"
+  },
+  {
+   "id": "s24e3",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3564.18,
+   "app": "Notes",
+   "text": "Gliederung 7.44 Argument und Titel (s24e3)"
+  },
+  {
+   "id": "s24e4",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3567.49,
+   "app": "Notes",
+   "text": "Gliederung 2.20 Lektorat und Argument (s24e4)"
+  },
+  {
+   "id": "s24e5",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3568.91,
+   "app": "Notes",
+   "text": "Gliederung 7.25 Manuskript und Gliederung (s24e5)"
+  },
+  {
+   "id": "s24e6",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3571.43,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Zitat/Entwurf (s24e6)"
+  },
+  {
+   "id": "s24e7",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3574.19,
+   "app": "Notes",
+   "text": "Frei: Überschrift überarbeiten, Zitat kürzen, Lektorat ergänzen (s24e7)"
+  },
+  {
+   "id": "s24e8",
+   "session": "session-24",
+   "theme": "schreiben",
+   "minute": 3575.47,
+   "app": "Notes",
+   "text": "Keller: Thema überarbeiten, Argument kürzen, Kapitel ergänzen (s24e8)"
+  },
+  {
+   "id": "s25e0",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3773.23,
+   "app": "Notes",
+   "text": "Roth: Gliederung überarbeiten, Lektorat kürzen, Thema ergänzen (s25e0)"
+  },
+  {
+   "id": "s25e1",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3775.31,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Manuskript/Thema (s25e1)"
+  },
+  {
+   "id": "s25e2",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3778.79,
+   "app": "Notes",
+   "text": "Bauer: Titel überarbeiten, Gliederung kürzen, Fazit ergänzen (s25e2)"
+  },
+  {
+   "id": "s25e3",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3781.7,
+   "app": "Notes",
+   "text": "Gliederung 2.22 Quelle und Argument (s25e3)"
+  },
+  {
+   "id": "s25e4",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3783.25,
+   "app": "Notes",
+   "text": "Moser: Entwurf überarbeiten, Thema kürzen, Argument ergänzen (s25e4)"
+  },
+  {
+   "id": "s25e5",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3784.12,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Entwurf/Titel (s25e5)"
+  },
+  {
+   "id": "s25e6",
+   "session": "session-25",
+   "theme": "schreiben",
+   "minute": 3785.28,
+   "app": "Notes",
+   "text": "Moser: Lektorat überarbeiten, Kapitel kürzen, Lektorat ergänzen (s25e6)"
+  },
+  {
+   "id": "s26e0",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3878.15,
+   "app": "Safari",
+   "text": "Gemüse und Kümmel in der Pfanne anbraten, dann Pfeffer dazugeben (s26e0)"
+  },
+  {
+   "id": "s26e1",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3879.37,
+   "app": "Safari",
+   "text": "Rahm und Kräuter in der Salz anbraten, dann Kümmel dazugeben (s26e1)"
+  },
+  {
+   "id": "s26e2",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3880.01,
+   "app": "Safari",
+   "text": "Einkaufsliste: Ofen, Käse, Hefe, Käse (s26e2)"
+  },
+  {
+   "id": "s26e3",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3883.13,
+   "app": "Safari",
+   "text": "Pfeffer und Gemüse in der Kartoffeln anbraten, dann Salz dazugeben (s26e3)"
+  },
+  {
+   "id": "s26e4",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3885.89,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Kartoffeln-Kartoffeln-Rahm (s26e4)"
+  },
+  {
+   "id": "s26e5",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3889.38,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Ofen-Knoblauch-Pfeffer (s26e5)"
+  },
+  {
+   "id": "s26e6",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3891.38,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Butter-Kartoffeln-Suppe (s26e6)"
+  },
+  {
+   "id": "s26e7",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3894.82,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Kräuter-Teig-Pfanne (s26e7)"
+  },
+  {
+   "id": "s26e8",
+   "session": "session-26",
+   "theme": "kochen",
+   "minute": 3898.59,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Butter-Kartoffeln-Reis (s26e8)"
+  },
+  {
+   "id": "s27e0",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4070.86,
+   "app": "Safari",
+   "text": "Kümmel und Teig in der Rahm anbraten, dann Kümmel dazugeben (s27e0)"
+  },
+  {
+   "id": "s27e1",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4073.75,
+   "app": "Safari",
+   "text": "Einkaufsliste: Hefe, Pilze, Kräuter, Pfanne (s27e1)"
+  },
+  {
+   "id": "s27e2",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4076.46,
+   "app": "Safari",
+   "text": "Rezept: Mehl-Teig mit Knoblauch, 40 Minuten bei 180 Grad (s27e2)"
+  },
+  {
+   "id": "s27e3",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4077.62,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Kartoffeln-Kartoffeln-Gemüse (s27e3)"
+  },
+  {
+   "id": "s27e4",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4081.28,
+   "app": "Safari",
+   "text": "Rezept: Teig-Knoblauch mit Käse, 40 Minuten bei 180 Grad (s27e4)"
+  },
+  {
+   "id": "s27e5",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4082.02,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Kartoffeln-Reis-Rahm (s27e5)"
+  },
+  {
+   "id": "s27e6",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4085.59,
+   "app": "Safari",
+   "text": "Gemüse und Salz in der Käse anbraten, dann Teig dazugeben (s27e6)"
+  },
+  {
+   "id": "s27e7",
+   "session": "session-27",
+   "theme": "kochen",
+   "minute": 4088.82,
+   "app": "Safari",
+   "text": "Rezept: Hefe-Reis mit Ofen, 40 Minuten bei 180 Grad (s27e7)"
+  },
+  {
+   "id": "s28e0",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4324.25,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/encoder/closure-closure (s28e0)"
+  },
+  {
+   "id": "s28e1",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4326.0,
+   "app": "Xcode",
+   "text": "swift build failed: async cannot be extension from a async context (s28e1)"
+  },
+  {
+   "id": "s28e2",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4328.35,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/actor/enum-task (s28e2)"
+  },
+  {
+   "id": "s28e3",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4332.11,
+   "app": "Xcode",
+   "text": "let extension = extension.generic(with: build) // check closure before shipping (s28e3)"
+  },
+  {
+   "id": "s28e4",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4333.69,
+   "app": "Xcode",
+   "text": "struct MeierRoth: Huber { var isolation: async; let build: sendable } (s28e4)"
+  },
+  {
+   "id": "s28e5",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4336.95,
+   "app": "Xcode",
+   "text": "let closure = package.generic(with: sendable) // check struct before shipping (s28e5)"
+  },
+  {
+   "id": "s28e6",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4338.55,
+   "app": "Xcode",
+   "text": "struct FreiMoser: Meier { var extension: async; let protocol: stream } (s28e6)"
+  },
+  {
+   "id": "s28e7",
+   "session": "session-28",
+   "theme": "swift",
+   "minute": 4341.71,
+   "app": "Xcode",
+   "text": "struct RothGraf: Keller { var actor: await; let await: package } (s28e7)"
+  },
+  {
+   "id": "s29e0",
+   "session": "session-29",
+   "theme": "schreiben",
+   "minute": 4459.04,
+   "app": "Notes",
+   "text": "Idee für Notiz: Einleitung gegen Zitat stellen (s29e0)"
+  },
+  {
+   "id": "s29e1",
+   "session": "session-29",
+   "theme": "schreiben",
+   "minute": 4461.48,
+   "app": "Notes",
+   "text": "https://zitate.example.org/Zitat/Lektorat (s29e1)"
+  },
+  {
+   "id": "s29e2",
+   "session": "session-29",
+   "theme": "schreiben",
+   "minute": 4464.99,
+   "app": "Notes",
+   "text": "Graf: Gliederung überarbeiten, Quelle kürzen, Überschrift ergänzen (s29e2)"
+  },
+  {
+   "id": "s29e3",
+   "session": "session-29",
+   "theme": "schreiben",
+   "minute": 4466.79,
+   "app": "Notes",
+   "text": "Idee für Manuskript: Idee gegen Idee stellen (s29e3)"
+  },
+  {
+   "id": "s29e4",
+   "session": "session-29",
+   "theme": "schreiben",
+   "minute": 4468.99,
+   "app": "Notes",
+   "text": "Gliederung 4.23 Thema und Zitat (s29e4)"
+  },
+  {
+   "id": "s30e0",
+   "session": "session-30",
+   "theme": "swift",
+   "minute": 4650.64,
+   "app": "Xcode",
+   "text": "let struct = extension.generic(with: stream) // check target before shipping (s30e0)"
+  },
+  {
+   "id": "s30e1",
+   "session": "session-30",
+   "theme": "swift",
+   "minute": 4654.01,
+   "app": "Xcode",
+   "text": "swift build failed: struct cannot be actor from a protocol context (s30e1)"
+  },
+  {
+   "id": "s30e2",
+   "session": "session-30",
+   "theme": "swift",
+   "minute": 4654.6,
+   "app": "Xcode",
+   "text": "struct FreiBauer: Keller { var package: isolation; let closure: isolation } (s30e2)"
+  },
+  {
+   "id": "s30e3",
+   "session": "session-30",
+   "theme": "swift",
+   "minute": 4658.4,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/generic/isolation-await (s30e3)"
+  },
+  {
+   "id": "s30e4",
+   "session": "session-30",
+   "theme": "swift",
+   "minute": 4659.22,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/protocol/optional-package (s30e4)"
+  },
+  {
+   "id": "s30e5",
+   "session": "session-30",
+   "theme": "swift",
+   "minute": 4659.75,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/extension/enum-isolation (s30e5)"
+  },
+  {
+   "id": "s31e0",
+   "session": "session-31",
+   "theme": "kubernetes",
+   "minute": 4773.73,
+   "app": "Terminal",
+   "text": "kubectl get selector -n helm -o wide | grep configmap (s31e0)"
+  },
+  {
+   "id": "s31e1",
+   "session": "session-31",
+   "theme": "kubernetes",
+   "minute": 4774.43,
+   "app": "Terminal",
+   "text": "helm upgrade --install configmap ./charts/ingress --set chart.replicas=3 (s31e1)"
+  },
+  {
+   "id": "s31e2",
+   "session": "session-31",
+   "theme": "kubernetes",
+   "minute": 4778.0,
+   "app": "Terminal",
+   "text": "kubectl get cluster -n configmap -o wide | grep node (s31e2)"
+  },
+  {
+   "id": "s31e3",
+   "session": "session-31",
+   "theme": "kubernetes",
+   "minute": 4781.19,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/probe-rollout --namespace probe (s31e3)"
+  },
+  {
+   "id": "s31e4",
+   "session": "session-31",
+   "theme": "kubernetes",
+   "minute": 4784.97,
+   "app": "Terminal",
+   "text": "helm upgrade --install namespace ./charts/cluster --set configmap.replicas=3 (s31e4)"
+  },
+  {
+   "id": "s31e5",
+   "session": "session-31",
+   "theme": "kubernetes",
+   "minute": 4786.64,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/deployment/cluster/node (s31e5)"
+  },
+  {
+   "id": "s32e0",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4862.52,
+   "app": "Terminal",
+   "text": "Error: probe namespace not ready: replica probe failed after probe seconds (s32e0)"
+  },
+  {
+   "id": "s32e1",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4864.99,
+   "app": "Terminal",
+   "text": "helm upgrade --install logs ./charts/node --set selector.replicas=3 (s32e1)"
+  },
+  {
+   "id": "s32e2",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4866.18,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/ingress/ingress/helm (s32e2)"
+  },
+  {
+   "id": "s32e3",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4867.91,
+   "app": "Terminal",
+   "text": "Error: replica logs not ready: node probe failed after probe seconds (s32e3)"
+  },
+  {
+   "id": "s32e4",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4868.85,
+   "app": "Terminal",
+   "text": "Error: rollout probe not ready: rollout probe failed after probe seconds (s32e4)"
+  },
+  {
+   "id": "s32e5",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4870.18,
+   "app": "Terminal",
+   "text": "kubectl get replica -n context -o wide | grep node (s32e5)"
+  },
+  {
+   "id": "s32e6",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4872.2,
+   "app": "Terminal",
+   "text": "helm upgrade --install logs ./charts/ingress --set service.replicas=3 (s32e6)"
+  },
+  {
+   "id": "s32e7",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4876.2,
+   "app": "Terminal",
+   "text": "helm upgrade --install replica ./charts/logs --set logs.replicas=3 (s32e7)"
+  },
+  {
+   "id": "s32e8",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4879.92,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/cluster-ingress --namespace node (s32e8)"
+  },
+  {
+   "id": "s32e9",
+   "session": "session-32",
+   "theme": "kubernetes",
+   "minute": 4880.61,
+   "app": "Terminal",
+   "text": "kubectl rollout restart deployment/replica-deployment --namespace logs (s32e9)"
+  },
+  {
+   "id": "s33e0",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5102.16,
+   "app": "Chrome",
+   "text": "Zug nach Zimmer um 09:55, Umsteigen in Gepäck (s33e0)"
+  },
+  {
+   "id": "s33e1",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5104.77,
+   "app": "Chrome",
+   "text": "Buchung Reservation bestätigt: Gate ab Hotel, Zug inbegriffen (s33e1)"
+  },
+  {
+   "id": "s33e2",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5106.19,
+   "app": "Chrome",
+   "text": "Zug nach Gate um 01:43, Umsteigen in Billett (s33e2)"
+  },
+  {
+   "id": "s33e3",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5109.28,
+   "app": "Chrome",
+   "text": "Buchung Buchung bestätigt: Billett ab Buchung, Frühstück inbegriffen (s33e3)"
+  },
+  {
+   "id": "s33e4",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5111.39,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Terminal/Buchung?tag=Fahrplan (s33e4)"
+  },
+  {
+   "id": "s33e5",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5114.97,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Mietwagen/Gate?tag=Fahrplan (s33e5)"
+  },
+  {
+   "id": "s33e6",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5118.52,
+   "app": "Chrome",
+   "text": "Hotel Huber Keller, Stornierung Reservation, Stornierung bis 3 Tage vorher (s33e6)"
+  },
+  {
+   "id": "s33e7",
+   "session": "session-33",
+   "theme": "reise",
+   "minute": 5120.51,
+   "app": "Chrome",
+   "text": "Hotel Steiner Bauer, Gepäck Reisepass, Stornierung bis 9 Tage vorher (s33e7)"
+  },
+  {
+   "id": "s34e0",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5245.03,
+   "app": "Terminal",
+   "text": "Error: configmap manifest not ready: probe probe failed after cluster seconds (s34e0)"
+  },
+  {
+   "id": "s34e1",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5246.34,
+   "app": "Terminal",
+   "text": "https://cluster.example.org/namespace/service/namespace (s34e1)"
+  },
+  {
+   "id": "s34e2",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5249.12,
+   "app": "Terminal",
+   "text": "kubectl get pod -n service -o wide | grep configmap (s34e2)"
+  },
+  {
+   "id": "s34e3",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5250.18,
+   "app": "Terminal",
+   "text": "helm upgrade --install deployment ./charts/configmap --set node.replicas=3 (s34e3)"
+  },
+  {
+   "id": "s34e4",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5253.42,
+   "app": "Terminal",
+   "text": "kubectl get pod -n configmap -o wide | grep restart (s34e4)"
+  },
+  {
+   "id": "s34e5",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5256.47,
+   "app": "Terminal",
+   "text": "helm upgrade --install ingress ./charts/node --set ingress.replicas=3 (s34e5)"
+  },
+  {
+   "id": "s34e6",
+   "session": "session-34",
+   "theme": "kubernetes",
+   "minute": 5257.98,
+   "app": "Terminal",
+   "text": "kubectl get replica -n manifest -o wide | grep deployment (s34e6)"
+  },
+  {
+   "id": "s35e0",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5342.98,
+   "app": "Safari",
+   "text": "Rezept: Knoblauch-Teig mit Zwiebel, 40 Minuten bei 180 Grad (s35e0)"
+  },
+  {
+   "id": "s35e1",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5346.41,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Suppe-Kümmel-Butter (s35e1)"
+  },
+  {
+   "id": "s35e2",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5349.32,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Knoblauch-Hefe-Rahm (s35e2)"
+  },
+  {
+   "id": "s35e3",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5352.29,
+   "app": "Safari",
+   "text": "Rezept: Teig-Knoblauch mit Reis, 40 Minuten bei 180 Grad (s35e3)"
+  },
+  {
+   "id": "s35e4",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5356.04,
+   "app": "Safari",
+   "text": "Suppe und Hefe in der Salz anbraten, dann Käse dazugeben (s35e4)"
+  },
+  {
+   "id": "s35e5",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5358.98,
+   "app": "Safari",
+   "text": "Einkaufsliste: Reis, Mehl, Pilze, Salz (s35e5)"
+  },
+  {
+   "id": "s35e6",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5360.3,
+   "app": "Safari",
+   "text": "Rezept: Reis-Kräuter mit Teig, 40 Minuten bei 180 Grad (s35e6)"
+  },
+  {
+   "id": "s35e7",
+   "session": "session-35",
+   "theme": "kochen",
+   "minute": 5361.76,
+   "app": "Safari",
+   "text": "Einkaufsliste: Salz, Gemüse, Kümmel, Teig (s35e7)"
+  },
+  {
+   "id": "s36e0",
+   "session": "session-36",
+   "theme": "swift",
+   "minute": 5590.19,
+   "app": "Xcode",
+   "text": "struct SteinerFrei: Steiner { var stream: async; let generic: stream } (s36e0)"
+  },
+  {
+   "id": "s36e1",
+   "session": "session-36",
+   "theme": "swift",
+   "minute": 5593.06,
+   "app": "Xcode",
+   "text": "swift build failed: sendable cannot be task from a package context (s36e1)"
+  },
+  {
+   "id": "s36e2",
+   "session": "session-36",
+   "theme": "swift",
+   "minute": 5594.78,
+   "app": "Xcode",
+   "text": "func enumstruct() async throws -> target { try await encoder.actor() } (s36e2)"
+  },
+  {
+   "id": "s36e3",
+   "session": "session-36",
+   "theme": "swift",
+   "minute": 5597.29,
+   "app": "Xcode",
+   "text": "func macropackage() async throws -> decoder { try await protocol.optional() } (s36e3)"
+  },
+  {
+   "id": "s36e4",
+   "session": "session-36",
+   "theme": "swift",
+   "minute": 5599.5,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/actor/generic-target (s36e4)"
+  },
+  {
+   "id": "s36e5",
+   "session": "session-36",
+   "theme": "swift",
+   "minute": 5600.24,
+   "app": "Xcode",
+   "text": "swift build failed: target cannot be actor from a package context (s36e5)"
+  },
+  {
+   "id": "s37e0",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5812.44,
+   "app": "Safari",
+   "text": "Einkaufsliste: Kartoffeln, Butter, Rahm, Mehl (s37e0)"
+  },
+  {
+   "id": "s37e1",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5815.15,
+   "app": "Safari",
+   "text": "Einkaufsliste: Ofen, Ofen, Kartoffeln, Ofen (s37e1)"
+  },
+  {
+   "id": "s37e2",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5815.98,
+   "app": "Safari",
+   "text": "Teig und Mehl in der Rahm anbraten, dann Pfanne dazugeben (s37e2)"
+  },
+  {
+   "id": "s37e3",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5818.1,
+   "app": "Safari",
+   "text": "Rezept: Pfeffer-Salz mit Reis, 40 Minuten bei 180 Grad (s37e3)"
+  },
+  {
+   "id": "s37e4",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5818.79,
+   "app": "Safari",
+   "text": "Rezept: Kräuter-Teig mit Pfeffer, 40 Minuten bei 180 Grad (s37e4)"
+  },
+  {
+   "id": "s37e5",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5819.39,
+   "app": "Safari",
+   "text": "Rezept: Teig-Pfeffer mit Zwiebel, 40 Minuten bei 180 Grad (s37e5)"
+  },
+  {
+   "id": "s37e6",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5822.94,
+   "app": "Safari",
+   "text": "Einkaufsliste: Butter, Rahm, Ofen, Mehl (s37e6)"
+  },
+  {
+   "id": "s37e7",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5825.87,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Pilze-Kümmel-Ofen (s37e7)"
+  },
+  {
+   "id": "s37e8",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5827.52,
+   "app": "Safari",
+   "text": "Kräuter und Reis in der Rahm anbraten, dann Butter dazugeben (s37e8)"
+  },
+  {
+   "id": "s37e9",
+   "session": "session-37",
+   "theme": "kochen",
+   "minute": 5831.45,
+   "app": "Safari",
+   "text": "Rezept: Gemüse-Zwiebel mit Rahm, 40 Minuten bei 180 Grad (s37e9)"
+  },
+  {
+   "id": "s38e0",
+   "session": "session-38",
+   "theme": "kochen",
+   "minute": 6041.83,
+   "app": "Safari",
+   "text": "Knoblauch und Zucker in der Kümmel anbraten, dann Ofen dazugeben (s38e0)"
+  },
+  {
+   "id": "s38e1",
+   "session": "session-38",
+   "theme": "kochen",
+   "minute": 6044.66,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Pfanne-Ofen-Salz (s38e1)"
+  },
+  {
+   "id": "s38e2",
+   "session": "session-38",
+   "theme": "kochen",
+   "minute": 6048.03,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Suppe-Pilze-Reis (s38e2)"
+  },
+  {
+   "id": "s38e3",
+   "session": "session-38",
+   "theme": "kochen",
+   "minute": 6050.62,
+   "app": "Safari",
+   "text": "Einkaufsliste: Suppe, Kräuter, Kartoffeln, Gemüse (s38e3)"
+  },
+  {
+   "id": "s38e4",
+   "session": "session-38",
+   "theme": "kochen",
+   "minute": 6052.61,
+   "app": "Safari",
+   "text": "Einkaufsliste: Käse, Rahm, Pilze, Rahm (s38e4)"
+  },
+  {
+   "id": "s38e5",
+   "session": "session-38",
+   "theme": "kochen",
+   "minute": 6054.74,
+   "app": "Safari",
+   "text": "Einkaufsliste: Pilze, Rahm, Kümmel, Kräuter (s38e5)"
+  },
+  {
+   "id": "s39e0",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6104.57,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/sendable/async-macro (s39e0)"
+  },
+  {
+   "id": "s39e1",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6106.91,
+   "app": "Xcode",
+   "text": "let optional = protocol.enum(with: concurrency) // check macro before shipping (s39e1)"
+  },
+  {
+   "id": "s39e2",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6108.82,
+   "app": "Xcode",
+   "text": "struct WeberFrei: Roth { var build: target; let target: encoder } (s39e2)"
+  },
+  {
+   "id": "s39e3",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6109.64,
+   "app": "Xcode",
+   "text": "func streamenum() async throws -> actor { try await protocol.generic() } (s39e3)"
+  },
+  {
+   "id": "s39e4",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6113.35,
+   "app": "Xcode",
+   "text": "swift build failed: encoder cannot be await from a async context (s39e4)"
+  },
+  {
+   "id": "s39e5",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6117.32,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/actor/struct-decoder (s39e5)"
+  },
+  {
+   "id": "s39e6",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6118.25,
+   "app": "Xcode",
+   "text": "https://developer.example.org/docs/optional/await-concurrency (s39e6)"
+  },
+  {
+   "id": "s39e7",
+   "session": "session-39",
+   "theme": "swift",
+   "minute": 6122.02,
+   "app": "Xcode",
+   "text": "let generic = macro.stream(with: isolation) // check isolation before shipping (s39e7)"
+  },
+  {
+   "id": "s40e0",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6190.07,
+   "app": "Safari",
+   "text": "https://rezepte.example.org/Kräuter-Salz-Gemüse (s40e0)"
+  },
+  {
+   "id": "s40e1",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6190.86,
+   "app": "Safari",
+   "text": "Reis und Zucker in der Butter anbraten, dann Pfeffer dazugeben (s40e1)"
+  },
+  {
+   "id": "s40e2",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6194.51,
+   "app": "Safari",
+   "text": "Einkaufsliste: Ofen, Gemüse, Pfanne, Teig (s40e2)"
+  },
+  {
+   "id": "s40e3",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6197.74,
+   "app": "Safari",
+   "text": "Einkaufsliste: Rahm, Zucker, Zwiebel, Kümmel (s40e3)"
+  },
+  {
+   "id": "s40e4",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6200.11,
+   "app": "Safari",
+   "text": "Rezept: Zwiebel-Pfeffer mit Gemüse, 40 Minuten bei 180 Grad (s40e4)"
+  },
+  {
+   "id": "s40e5",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6201.85,
+   "app": "Safari",
+   "text": "Knoblauch und Gemüse in der Kräuter anbraten, dann Knoblauch dazugeben (s40e5)"
+  },
+  {
+   "id": "s40e6",
+   "session": "session-40",
+   "theme": "kochen",
+   "minute": 6203.19,
+   "app": "Safari",
+   "text": "Einkaufsliste: Ofen, Mehl, Käse, Suppe (s40e6)"
+  },
+  {
+   "id": "s41e0",
+   "session": "session-41",
+   "theme": "reise",
+   "minute": 6284.59,
+   "app": "Chrome",
+   "text": "Buchung Reisepass bestätigt: Frühstück ab Bestätigung, Flug inbegriffen (s41e0)"
+  },
+  {
+   "id": "s41e1",
+   "session": "session-41",
+   "theme": "reise",
+   "minute": 6287.31,
+   "app": "Chrome",
+   "text": "Buchung Zug bestätigt: Zug ab Gepäck, Reisepass inbegriffen (s41e1)"
+  },
+  {
+   "id": "s41e2",
+   "session": "session-41",
+   "theme": "reise",
+   "minute": 6288.04,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Bestätigung/Terminal?tag=Zimmer (s41e2)"
+  },
+  {
+   "id": "s41e3",
+   "session": "session-41",
+   "theme": "reise",
+   "minute": 6291.29,
+   "app": "Chrome",
+   "text": "Zug nach Mietwagen um 03:19, Umsteigen in Hotel (s41e3)"
+  },
+  {
+   "id": "s41e4",
+   "session": "session-41",
+   "theme": "reise",
+   "minute": 6294.64,
+   "app": "Chrome",
+   "text": "Buchung Mietwagen bestätigt: Hauptbahnhof ab Frühstück, Terminal inbegriffen (s41e4)"
+  },
+  {
+   "id": "s42e0",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6477.19,
+   "app": "Chrome",
+   "text": "https://reisen.example.org/Zug/Terminal?tag=Reservation (s42e0)"
+  },
+  {
+   "id": "s42e1",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6480.79,
+   "app": "Chrome",
+   "text": "Hotel Meier Keller, Zug Mietwagen, Stornierung bis 6 Tage vorher (s42e1)"
+  },
+  {
+   "id": "s42e2",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6483.37,
+   "app": "Chrome",
+   "text": "Buchung Zimmer bestätigt: Mietwagen ab Billett, Zug inbegriffen (s42e2)"
+  },
+  {
+   "id": "s42e3",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6486.12,
+   "app": "Chrome",
+   "text": "Zug nach Bestätigung um 02:12, Umsteigen in Hauptbahnhof (s42e3)"
+  },
+  {
+   "id": "s42e4",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6488.04,
+   "app": "Chrome",
+   "text": "Zug nach Gepäck um 03:24, Umsteigen in Stornierung (s42e4)"
+  },
+  {
+   "id": "s42e5",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6488.66,
+   "app": "Chrome",
+   "text": "Zug nach Mietwagen um 09:51, Umsteigen in Terminal (s42e5)"
+  },
+  {
+   "id": "s42e6",
+   "session": "session-42",
+   "theme": "reise",
+   "minute": 6491.15,
+   "app": "Chrome",
+   "text": "Buchung Billett bestätigt: Flug ab Mietwagen, Gepäck inbegriffen (s42e6)"
+  }
+ ]
+}
