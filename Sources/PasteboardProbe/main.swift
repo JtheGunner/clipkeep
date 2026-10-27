@@ -28,7 +28,9 @@ struct Probe {
         print("macOS \(version)")
         print("Accessibility trusted: \(AXIsProcessTrusted())")
         print("Pasteboard access behavior: \(accessBehaviorDescription())")
-        print("Polling every \(Int(interval * 1000)) ms for \(Int(duration)) s. Copy something now.\n")
+        print(
+            "Polling every \(Int(interval * 1000)) ms for \(Int(duration)) s. Copy something now.\n"
+        )
 
         var lastCount = pasteboard.changeCount
         var polls = 0
@@ -49,7 +51,10 @@ struct Probe {
         let cpu = cpuSeconds() - cpuStart
         let elapsed = Date().timeIntervalSince(started)
         print("\nPolls: \(polls), changes seen: \(changes)")
-        print(String(format: "CPU time: %.3f s over %.0f s (%.3f %% of one core)", cpu, elapsed, cpu / elapsed * 100))
+        print(
+            String(
+                format: "CPU time: %.3f s over %.0f s (%.3f %% of one core)", cpu, elapsed,
+                cpu / elapsed * 100))
     }
 
     private func report(change: Int) {
@@ -66,7 +71,9 @@ struct Probe {
         print("#\(change) \(name) (\(bundle))")
         print("   types: \(types.prefix(6).joined(separator: ", "))\(types.count > 6 ? ", …" : "")")
         print("   markers: \(markers.isEmpty ? "none" : markers.joined(separator: ", "))")
-        print("   text: \(text.map { "\($0.count) chars" } ?? "none"), read took \(String(format: "%.1f", readMs)) ms")
+        print(
+            "   text: \(text.map { "\($0.count) chars" } ?? "none"), read took \(String(format: "%.1f", readMs)) ms"
+        )
         if let app, AXIsProcessTrusted() {
             print("   window title: \(windowTitle(of: app) ?? "unavailable")")
         }
@@ -106,7 +113,8 @@ struct Probe {
         var error: NSDictionary?
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         if let error {
-            return "error \(error["NSAppleScriptErrorNumber"] ?? "?") (\(error["NSAppleScriptErrorMessage"] ?? ""))"
+            return
+                "error \(error["NSAppleScriptErrorNumber"] ?? "?") (\(error["NSAppleScriptErrorMessage"] ?? ""))"
         }
         return result?.stringValue
     }
@@ -114,7 +122,9 @@ struct Probe {
     private func cpuSeconds() -> Double {
         var usage = rusage()
         getrusage(RUSAGE_SELF, &usage)
-        func seconds(_ value: timeval) -> Double { Double(value.tv_sec) + Double(value.tv_usec) / 1e6 }
+        func seconds(_ value: timeval) -> Double {
+            Double(value.tv_sec) + Double(value.tv_usec) / 1e6
+        }
         return seconds(usage.ru_utime) + seconds(usage.ru_stime)
     }
 }
