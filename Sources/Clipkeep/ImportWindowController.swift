@@ -33,6 +33,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
     private var fileName = ""
     private var fileDate = Date()
     private var previewGeneration = 0
+    private var previewCancel: CancelFlag?
     private var cancelFlag: CancelFlag?
     private var isImporting = false
 
@@ -71,17 +72,6 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
     }
 
     private func load(_ url: URL) {
-        do {
-            text = try TextImporter.read(url)
-        } catch {
-            Self.logger.error("Reading failed: \(String(describing: error), privacy: .public)")
-            let alert = NSAlert()
-            alert.messageText = "Datei konnte nicht gelesen werden"
-            alert.informativeText =
-                "Die Datei ist keine Textdatei oder zu gross (höchstens 200 MB)."
-            alert.runModal()
-            return
-        }
         fileName = url.lastPathComponent
         fileDate =
             (try? url.resourceValues(forKeys: [.contentModificationDateKey])
@@ -90,8 +80,33 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         modeMenu.selectItem(at: 0)
         progress.doubleValue = 0
         closeButton.title = "Schliessen"
+        importButton.isEnabled = false
+        summaryLabel.stringValue = "Datei wird gelesen …"
+        sampleView.string = ""
         window.makeKeyAndOrderFront(nil)
-        refreshPreview()
+        // Reading and decoding a big file takes a moment; the window stays responsive.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = Result { try TextImporter.read(url) }
+            await self?.didRead(result)
+        }
+    }
+
+    private func didRead(_ result: Result<String, Error>) {
+        switch result {
+        case .success(let loaded):
+            text = loaded
+            refreshPreview()
+        case .failure(let error):
+            Self.logger.error("Reading failed: \(String(describing: error), privacy: .public)")
+            summaryLabel.stringValue =
+                "Datei konnte nicht gelesen werden: keine Textdatei oder grösser als 200 MB."
+        }
+    }
+
+    /// The text can hold years of private notes; it is not kept longer than needed.
+    private func forgetText() {
+        text = ""
+        previewCancel?.cancel()
     }
 
     // MARK: - Building
@@ -177,8 +192,13 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         importButton.isEnabled = false
         summaryLabel.stringValue = "Vorschau wird berechnet …"
         sampleView.string = ""
+        previewCancel?.cancel()
+        let cancel = CancelFlag()
+        previewCancel = cancel
         Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result { try importer.preview(text: text, mode: mode) }
+            let result = Result {
+                try importer.preview(text: text, mode: mode, isCancelled: { cancel.isCancelled })
+            }
             await self?.showPreview(result, generation: generation)
         }
     }
@@ -186,6 +206,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
     private func showPreview(_ result: Result<ImportPreview, Error>, generation: Int) {
         // A newer preview was asked for while this one was computed.
         guard generation == previewGeneration else { return }
+        if case .failure(let error) = result, error is CancellationError { return }
         switch result {
         case .success(let preview):
             let importable =
@@ -250,6 +271,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
     private func finish(_ result: Result<ImportReport, Error>) {
         isImporting = false
         cancelFlag = nil
+        forgetText()
         modeMenu.isEnabled = true
         closeButton.title = "Schliessen"
         switch result {
@@ -276,6 +298,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         if isImporting {
             cancelFlag?.cancel()
         } else {
+            forgetText()
             window.orderOut(nil)
         }
     }
@@ -286,6 +309,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
             cancelFlag?.cancel()
             return false
         }
+        forgetText()
         return true
     }
 }

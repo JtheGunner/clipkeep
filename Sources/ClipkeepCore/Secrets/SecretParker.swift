@@ -82,6 +82,10 @@ public struct SecretParker: SecretSink {
         }
     }
 
+    public func isParked(_ text: String) -> Bool {
+        (try? parkedSecret(withFingerprint: fingerprint(of: text))) != nil
+    }
+
     /// Returns the secret if a new one was parked.
     private func park(_ text: String, context: CopyContext, copiedAt: Date) throws -> ParkedSecret?
     {

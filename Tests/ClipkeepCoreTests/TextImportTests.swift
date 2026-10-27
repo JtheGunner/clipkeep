@@ -283,16 +283,118 @@ import Testing
             "importing \(count) entries took \(Int(seconds)) s")
     }
 
-    @Test func aFileThatIsNotTextIsRefused() throws {
+    @Test func commonTextEncodingsAreRead() throws {
+        #expect(try TextImporter.decode(Data("grüsse – ok".utf8)) == "grüsse – ok")
+        #expect(try TextImporter.decode("grüsse".data(using: .utf16) ?? Data()) == "grüsse")
+        // Windows-1252: ü is 0xFC, the euro sign 0x80.
+        #expect(try TextImporter.decode(Data([0x67, 0x72, 0xFC, 0x80])) == "grü€")
+    }
+
+    @Test func binaryDataIsRefused() {
+        #expect(throws: CocoaError.self) {
+            try TextImporter.decode(Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x1A]))
+        }
+    }
+
+    @Test func aTextFileOnDiskRoundTrips() throws {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("clipkeep-import-\(UUID().uuidString).bin")
-        try Data([0xFF, 0xFE, 0x00, 0xD8, 0x00, 0x00, 0xFF]).write(to: url)
+            .appendingPathComponent("clipkeep-import-\(UUID().uuidString).txt")
+        try "hello – world".write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
-        // Whatever the decoder makes of it, it must not crash, and text files must round-trip.
-        _ = try? TextImporter.read(url)
-        let good = url.deletingPathExtension().appendingPathExtension("txt")
-        try "hello – world".write(to: good, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: good) }
-        #expect(try TextImporter.read(good) == "hello – world")
+        #expect(try TextImporter.read(url) == "hello – world")
+    }
+
+    // MARK: - Secrets across the split
+
+    private var pem: String {
+        let body = (0..<6).map { _ in String(repeating: "Zm9vYmFyYmF6", count: 5) }
+        // A base64 line may start with a slash; the detector alone would miss it.
+        let lines = ["/" + body[0]] + body.dropFirst()
+        return
+            (["-----BEGIN " + "PRIVATE KEY-----"] + lines + ["", "-----END " + "PRIVATE KEY-----"])
+            .joined(separator: "\n")
+    }
+
+    @Test(arguments: [SplitMode.automatic, .everyLine, .blankLines, .separatorLines])
+    func anArmoredBlockStaysOneEntryInEveryMode(mode: SplitMode) {
+        let text = "before\n---\n\n\(pem)\n\nafter"
+        let entries = TextSplitter.split(text, mode: mode)
+        let block = entries.filter { $0.contains("BEGIN") }
+        #expect(block.count == 1)
+        #expect(block[0].contains("END PRIVATE KEY"))
+        #expect(block[0].contains("Zm9vYmFy"))
+        #expect(!entries.filter { !$0.contains("BEGIN") }.contains { $0.contains("Zm9v") })
+    }
+
+    @Test func aKeyBlockNeverReachesTheDatabaseInPieces() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let sink = RecordingSink()
+        for mode in [SplitMode.everyLine, .blankLines] {
+            _ = try TextImporter(database: fixture.database, secretSink: sink).run(
+                text: "note one\n\n\(pem)\n\nnote two", mode: mode, source: "n.txt",
+                endingAt: end)
+        }
+        #expect(sink.secrets.count >= 1)
+        try expectNoTrace(of: "Zm9vYmFyYmF6", in: fixture.database)
+    }
+
+    @Test func aLabelStaysWithItsValue() {
+        #expect(TextSplitter.split("Passwort:\n\nhunter2 value", mode: .blankLines).count == 1)
+        #expect(TextSplitter.split("API key:\nabc", mode: .everyLine) == ["API key:\nabc"])
+        #expect(TextSplitter.split("Meeting at noon:\n\nbring notes", mode: .blankLines).count == 2)
+    }
+
+    // MARK: - Repeats and placement
+
+    private final class ParkedSink: SecretSink, @unchecked Sendable {
+        var handled = 0
+        func handle(secret text: String, context: CopyContext, copiedAt: Date) { handled += 1 }
+        func isParked(_ text: String) -> Bool { true }
+    }
+
+    @Test func aSecretThatIsAlreadyParkedIsNotParkedAgain() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let sink = ParkedSink()
+        let importer = TextImporter(database: fixture.database, secretSink: sink)
+        let report = try importer.run(
+            text: "export TOKEN=\(token)\n---\nplain note", source: "n.txt", endingAt: end)
+        #expect(sink.handled == 0)
+        #expect(report.secrets == 0)
+        #expect(report.duplicates == 1)
+        #expect(try importer.preview(text: "export TOKEN=\(token)").alreadyStoredCount == 1)
+    }
+
+    @Test func importedEntriesGoBeforeLiveHistoryWithAPause() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let live = end.addingTimeInterval(-600)
+        _ = try ContentStore(database: fixture.database).record(text: "live copy", copiedAt: live)
+        _ = try TextImporter(database: fixture.database, secretSink: nil).run(
+            text: "old one\n---\nold two", source: "n.txt", endingAt: end)
+        let sessions = try SessionService(database: fixture.database).sessions()
+        #expect(sessions.count == 2)
+        let imported = try #require(sessions.last)
+        #expect(imported.eventCount == 2)
+        #expect(imported.endedAt <= live.addingTimeInterval(-3_600))
+    }
+
+    @Test func duplicatesInsideTheFileCountAsAlreadyThereInThePreview() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: "same note\n---\nsame note\n---\nother note")
+        #expect(preview.alreadyStoredCount == 1)
+    }
+
+    @Test func aSecretInASkippedEntryIsNotShownInThePreview() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let long = "export TOKEN=\(token) " + String(repeating: "x", count: 1_100_000)
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: long)
+        #expect(preview.tooLongCount == 1)
+        #expect(!preview.samples.joined().contains(token))
     }
 }

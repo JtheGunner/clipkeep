@@ -67,10 +67,13 @@ public protocol SecretSink: Sendable {
     func handle(secret text: String, context: CopyContext, copiedAt: Date)
     /// Whether the user declared this exact text "not a secret".
     func isException(_ text: String) -> Bool
+    func isParked(_ text: String) -> Bool
 }
 
 extension SecretSink {
     public func isException(_ text: String) -> Bool { false }
+    /// Whether this exact secret is already parked, so importing it again adds nothing.
+    public func isParked(_ text: String) -> Bool { false }
 }
 
 /// The capture pipeline as single stages that can be tested one by one.

@@ -33,6 +33,7 @@ public struct ImportReport: Sendable, Equatable {
 public struct TextImporter: Sendable {
     public static let importBundleID = "li.wuermli.clipkeep.import"
     public static let maximumFileBytes = 200_000_000
+    private static let pauseBeforeLive: TimeInterval = 3_600
 
     private let database: Database
     private let store: ContentStore
@@ -55,33 +56,54 @@ public struct TextImporter: Sendable {
         sessions = SessionService(database: database)
     }
 
-    /// Reads a text file; refuses anything that is not text or is too big.
+    /// Reads a text file: UTF-8, UTF-16 with a byte order mark, else Windows-1252. Binary files
+    /// (NUL bytes) and files over the size limit are refused.
     public static func read(_ url: URL) throws -> String {
-        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size <= maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
-        var encoding = String.Encoding.utf8
-        return try String(contentsOf: url, usedEncoding: &encoding)
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        guard data.count <= maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
+        return try decode(data)
     }
 
-    public func preview(text: String, mode: SplitMode = .automatic) throws -> ImportPreview {
+    static func decode(_ data: Data) throws -> String {
+        let hasUTF16Mark = data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF])
+        if hasUTF16Mark, let text = String(data: data, encoding: .utf16) { return text }
+        guard !data.prefix(8_192).contains(0) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        if let text = String(data: data, encoding: .utf8) { return text }
+        if let text = String(data: data, encoding: .windowsCP1252) { return text }
+        guard let text = String(data: data, encoding: .isoLatin1) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        return text
+    }
+
+    public func preview(
+        text: String, mode: SplitMode = .automatic, isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> ImportPreview {
         let entries = TextSplitter.split(text, mode: mode)
         var secrets = 0
         var stored = 0
         var tooShort = 0
         var tooLong = 0
-        var samples: [String] = []
+        var seen = Set<String>()
         for entry in entries {
+            if isCancelled() { throw CancellationError() }
             let skip = CaptureStages.lengthSkip(of: entry, configuration: configuration)
             if skip == .tooShort { tooShort += 1 }
             if skip == .tooLong { tooLong += 1 }
-            let isSecret =
-                skip == nil && detector.containsSecret(in: entry) && !isException(entry)
-            if isSecret { secrets += 1 }
-            if skip == nil, !isSecret, try isStored(entry) { stored += 1 }
-            if samples.count < ImportPreview.sampleSize {
-                samples.append(
-                    isSecret ? "(Secret – wird gesichert, nicht importiert)" : Self.sample(entry))
+            guard skip == nil else { continue }
+            if isSecret(entry) {
+                if secretSink?.isParked(entry) == true { stored += 1 } else { secrets += 1 }
+            } else if try !seen.insert(ContentHashing.exactHash(entry)).inserted || isStored(entry)
+            {
+                stored += 1
             }
+        }
+        // Samples never show text that looks like a secret, whatever happened to the entry.
+        let samples = entries.prefix(ImportPreview.sampleSize).map { entry in
+            detector.containsSecret(in: entry)
+                ? "(Secret – wird nicht angezeigt)" : Self.sample(entry)
         }
         return ImportPreview(
             mode: TextSplitter.resolve(mode, text: text), entryCount: entries.count,
@@ -103,7 +125,19 @@ public struct TextImporter: Sendable {
         let context = CopyContext(
             appBundleID: Self.importBundleID, appName: "Import", windowTitle: source)
         var report = ImportReport()
-        let start = endingAt.addingTimeInterval(-Double(entries.count))
+        // The old entries go before everything captured live, with a pause to the first of those,
+        // so they never merge into a real session.
+        let oldest = try database.read { connection in
+            try connection.query("SELECT min(copied_at) FROM copy_events") {
+                $0.isNull(0) ? nil : $0.double(0)
+            }.first ?? nil
+        }
+        var end = endingAt
+        if let oldest, oldest - Self.pauseBeforeLive < end.timeIntervalSince1970 {
+            end = Date(timeIntervalSince1970: oldest - Self.pauseBeforeLive)
+        }
+        let start = end.addingTimeInterval(-Double(entries.count))
+        defer { _ = try? sessions.rebuild() }
         for (index, entry) in entries.enumerated() {
             if isCancelled() {
                 report.wasCancelled = true
@@ -113,9 +147,13 @@ public struct TextImporter: Sendable {
             let time = start.addingTimeInterval(Double(index + 1))
             if CaptureStages.lengthSkip(of: entry, configuration: configuration) != nil {
                 report.skipped += 1
-            } else if detector.containsSecret(in: entry), !isException(entry) {
-                report.secrets += 1
-                secretSink?.handle(secret: entry, context: context, copiedAt: time)
+            } else if isSecret(entry) {
+                if secretSink?.isParked(entry) == true {
+                    report.duplicates += 1
+                } else {
+                    report.secrets += 1
+                    secretSink?.handle(secret: entry, context: context, copiedAt: time)
+                }
             } else if try isStored(entry) {
                 report.duplicates += 1
             } else {
@@ -123,10 +161,12 @@ public struct TextImporter: Sendable {
                 report.imported += 1
             }
         }
-        // Also after a cancel: whatever was imported needs its sessions.
-        _ = try sessions.rebuild()
         progress(entries.count, entries.count)
         return report
+    }
+
+    private func isSecret(_ text: String) -> Bool {
+        detector.containsSecret(in: text) && !isException(text)
     }
 
     private func isException(_ text: String) -> Bool {
