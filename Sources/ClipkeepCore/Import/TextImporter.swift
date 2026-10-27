@@ -59,7 +59,21 @@ public struct TextImporter: Sendable {
     /// Reads a text file: UTF-8, UTF-16 with a byte order mark, else Windows-1252. Binary files
     /// (NUL bytes) and files over the size limit are refused.
     public static func read(_ url: URL) throws -> String {
-        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        // Open first and judge the open file, so a path swapped after a check (a FIFO, say)
+        // cannot hang the read. Symlinks to regular files are followed.
+        let descriptor = open(url.path, O_RDONLY | O_NONBLOCK)
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else {
+            throw CocoaError(.fileReadInvalidFileName)
+        }
+        guard status.st_size <= maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
+        // At most one byte past the limit, so a file that grew since the check is caught.
+        let data = try handle.read(upToCount: maximumFileBytes + 1) ?? Data()
         guard data.count <= maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
         return try decode(data)
     }

@@ -1,0 +1,228 @@
+{
+ "queries": [
+  {
+   "query": "concurrency",
+   "targetContains": "(s10e4)"
+  },
+  {
+   "query": "developer.example.org await-concurrency",
+   "targetContains": "(s39e6)"
+  },
+  {
+   "query": "wid",
+   "targetContains": "(s23e8)"
+  },
+  {
+   "query": "PACKAGE MACRO OPTIONAL",
+   "targetContains": "(s7e5)"
+  },
+  {
+   "query": "before",
+   "targetContains": "(s15e5)"
+  },
+  {
+   "query": "Einkaufsliste Ofen",
+   "targetContains": "(s37e1)"
+  },
+  {
+   "query": "gepäck?tag=reservati",
+   "targetContains": "(s22e8)"
+  },
+  {
+   "query": "RESTART CONFIGMAP WIDE",
+   "targetContains": "(s34e4)"
+  },
+  {
+   "query": "vorher",
+   "targetContains": "(s8e2)"
+  },
+  {
+   "query": "Keller Kapitel",
+   "targetContains": "(s24e8)"
+  },
+  {
+   "query": "lektor",
+   "targetContains": "(s25e6)"
+  },
+  {
+   "query": "STORNIERUNG STEINER TAGE",
+   "targetContains": "(s16e4)"
+  },
+  {
+   "query": "dann",
+   "targetContains": "(s27e0)"
+  },
+  {
+   "query": "namespace kubectl",
+   "targetContains": "(s2e2)"
+  },
+  {
+   "query": "kräut",
+   "targetContains": "(s40e5)"
+  },
+  {
+   "query": "ZITATE.EXAMPLE.ORG IDEE ÜBERSCHRIFT",
+   "targetContains": "(s4e0)"
+  },
+  {
+   "query": "ingress",
+   "targetContains": "(s2e6)"
+  },
+  {
+   "query": "Meier Idee",
+   "targetContains": "(s21e4)"
+  },
+  {
+   "query": "enu",
+   "targetContains": "(s7e1)"
+  },
+  {
+   "query": "BAUER TAGE REISEPASS",
+   "targetContains": "(s33e7)"
+  },
+  {
+   "query": "package",
+   "targetContains": "(s36e1)"
+  },
+  {
+   "query": "inbegriffen Buchung",
+   "targetContains": "(s20e5)"
+  },
+  {
+   "query": "char",
+   "targetContains": "(s34e3)"
+  },
+  {
+   "query": "GLIEDERUNG ZITAT 7.54",
+   "targetContains": "(s4e3)"
+  },
+  {
+   "query": "before",
+   "targetContains": "(s7e2)"
+  },
+  {
+   "query": "Idee überarbeiten",
+   "targetContains": "(s9e2)"
+  },
+  {
+   "query": "developer.example.o",
+   "targetContains": "(s15e2)"
+  },
+  {
+   "query": "ANBRATEN REIS KNOBLAUCH",
+   "targetContains": "(s17e1)"
+  },
+  {
+   "query": "Thema",
+   "targetContains": "(s25e0)"
+  },
+  {
+   "query": "Butter-Hefe-Knoblauch rezepte.example.org",
+   "targetContains": "(s17e6)"
+  },
+  {
+   "query": "ofe",
+   "targetContains": "(s27e7)"
+  },
+  {
+   "query": "GENERIC-TARGET DEVELOPER.EXAMPLE.ORG ACTOR",
+   "targetContains": "(s36e4)"
+  },
+  {
+   "query": "ingress",
+   "targetContains": "(s31e1)"
+  },
+  {
+   "query": "Beleg Konto",
+   "targetContains": "(s3e6)"
+  },
+  {
+   "query": "gliederu",
+   "targetContains": "(s24e4)"
+  },
+  {
+   "query": "PROBE NAMESPACE SECONDS",
+   "targetContains": "(s32e0)"
+  },
+  {
+   "query": "closure-closure",
+   "targetContains": "(s28e0)"
+  },
+  {
+   "query": "buchhaltung.example.org Steuer",
+   "targetContains": "(s1e4)"
+  },
+  {
+   "query": "nod",
+   "targetContains": "(s32e1)"
+  },
+  {
+   "query": "AWAIT-AWAIT DEVELOPER.EXAMPLE.ORG STREAM",
+   "targetContains": "(s15e9)"
+  },
+  {
+   "query": "Graf",
+   "targetContains": "(s6e5)"
+  },
+  {
+   "query": "Pfanne anbraten",
+   "targetContains": "(s37e2)"
+  },
+  {
+   "query": "servi",
+   "targetContains": "(s23e6)"
+  },
+  {
+   "query": "KARTOFFELN SALZ DAZUGEBEN",
+   "targetContains": "(s26e3)"
+  },
+  {
+   "query": "probe",
+   "targetContains": "(s12e4)"
+  },
+  {
+   "query": "Gemüse Teig",
+   "targetContains": "(s27e6)"
+  },
+  {
+   "query": "awa",
+   "targetContains": "(s39e4)"
+  },
+  {
+   "query": "BUCHHALTUNG.EXAMPLE.ORG BELEG STEUER",
+   "targetContains": "(s14e1)"
+  },
+  {
+   "query": "Honorar",
+   "targetContains": "(s13e0)"
+  },
+  {
+   "query": "Rezept Minuten",
+   "targetContains": "(s37e9)"
+  },
+  {
+   "query": "überschri",
+   "targetContains": "(s9e3)"
+  },
+  {
+   "query": "CONFIGMAP MANIFEST CHART",
+   "targetContains": "(s19e6)"
+  },
+  {
+   "query": "Reservation",
+   "targetContains": "(s33e1)"
+  },
+  {
+   "query": "helm-probe restart",
+   "targetContains": "(s2e7)"
+  },
+  {
+   "query": "zwieb",
+   "targetContains": "(s17e8)"
+  },
+  {
+   "query": "ÜBERSCHRIFT ÜBERARBEITEN HUBER",
+   "targetContains": "(s4e2)"
+  }
+ ]
+}

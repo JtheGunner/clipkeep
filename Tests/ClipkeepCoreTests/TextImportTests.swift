@@ -296,6 +296,24 @@ import Testing
         }
     }
 
+    @Test func aDirectoryIsRefused() {
+        #expect(throws: CocoaError.self) {
+            try TextImporter.read(FileManager.default.temporaryDirectory)
+        }
+    }
+
+    @Test func aSymlinkToATextFileIsFollowed() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipkeep-link-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("real.txt")
+        try "linked note".write(to: file, atomically: true, encoding: .utf8)
+        let link = directory.appendingPathComponent("link.txt")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+        #expect(try TextImporter.read(link) == "linked note")
+    }
+
     @Test func aTextFileOnDiskRoundTrips() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("clipkeep-import-\(UUID().uuidString).txt")
