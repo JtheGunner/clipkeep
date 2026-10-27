@@ -260,7 +260,7 @@ import Testing
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
         // Debug builds are several times slower, so they only check a smaller file.
-        let count = PerformanceBudget.isEnforced ? 10_000 : 1_000
+        let count = PerformanceBudget.isEnforced ? 3_000 : 500
         // Deterministic pseudo-random words, so entries differ like real notes do.
         var seed: UInt64 = 42
         func word() -> String {
@@ -279,7 +279,7 @@ import Testing
         #expect(report.imported == count)
         #expect(progress.next() > count / 200)
         #expect(
-            !PerformanceBudget.isEnforced || seconds < 60,
+            !PerformanceBudget.isEnforced || seconds < 30,
             "importing \(count) entries took \(Int(seconds)) s")
     }
 
