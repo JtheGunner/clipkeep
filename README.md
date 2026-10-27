@@ -45,6 +45,8 @@ open build/Clipkeep.app
 
 A bundle is required for "launch at login". The ad-hoc signature is enough to run locally; it is not notarised.
 
+To build a distributable zip, run `VERSION=1.0.0 ./scripts/release.sh`. With a Developer ID certificate (`CODESIGN_IDENTITY`) it signs with the hardened runtime, and with a `notarytool` keychain profile (`NOTARY_PROFILE`) it also notarises and staples the app. See the header of the script.
+
 | | Command | Purpose |
 |---|---|---|
 | 🧪 | `./scripts/test.sh` | Run the test suite (`-c release -Xswiftc -enable-testing` for release mode) |
