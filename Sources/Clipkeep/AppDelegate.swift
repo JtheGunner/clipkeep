@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         watcher?.stop()
+        MaintenanceScheduler.stop()
         lockBitwardenBeforeExit()
     }
 
@@ -89,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     })
                 let watcher = ClipboardWatcher(poller: poller)
                 watcher.start()
+                await MaintenanceScheduler.start(database: database)
                 await self?.captureStarted(
                     watcher, control: control, bitwarden: bitwarden, secrets: parker,
                     search: PaletteSearch(database: database),
