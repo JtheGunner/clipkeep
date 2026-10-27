@@ -22,6 +22,8 @@ public struct ParkedSecret: Sendable, Equatable {
     public let transferredAt: Date?
     public let deletedAt: Date?
     let vaultKey: String
+    /// The note id in the password manager, once transferred.
+    let vaultItemID: String?
 }
 
 /// A text the user declared "not a secret"; shown without the text itself.
@@ -193,12 +195,14 @@ public struct SecretParker: SecretSink {
 
     // MARK: - State changes
 
-    /// Records that the password manager confirmed it holds the secret.
-    public func markTransferred(id: Int64, at date: Date = Date()) throws {
+    /// Records that the password manager confirmed it holds the secret, and under which id.
+    public func markTransferred(id: Int64, vaultItemID: String? = nil, at date: Date = Date())
+        throws
+    {
         try database.write { connection in
             try connection.execute(
-                "UPDATE parked_secrets SET state = 'transferred', transferred_at = ? WHERE id = ? AND state = 'parked'",
-                [SQLValue(date), .int(id)])
+                "UPDATE parked_secrets SET state = 'transferred', transferred_at = ?, vault_item_id = ? WHERE id = ? AND state = 'parked'",
+                [SQLValue(date), vaultItemID.map { .text($0) } ?? .null, .int(id)])
             if connection.changedRowCount == 0 {
                 let exists = try !connection.query(
                     "SELECT 1 FROM parked_secrets WHERE id = ?", [.int(id)]
@@ -444,7 +448,7 @@ public struct SecretParker: SecretSink {
             try connection.query(
                 """
                 SELECT id, content_id, kind, label, state, parked_at, transferred_at, deleted_at,
-                    vault_key
+                    vault_key, vault_item_id
                 FROM parked_secrets WHERE \(condition) ORDER BY id \(ascending ? "ASC" : "DESC") LIMIT ?
                 """,
                 parameters + [.int(Int64(limit))]
@@ -457,7 +461,7 @@ public struct SecretParker: SecretSink {
                     parkedAt: Date(timeIntervalSince1970: row.double(5)),
                     transferredAt: row.isNull(6) ? nil : Date(timeIntervalSince1970: row.double(6)),
                     deletedAt: row.isNull(7) ? nil : Date(timeIntervalSince1970: row.double(7)),
-                    vaultKey: row.text(8))
+                    vaultKey: row.text(8), vaultItemID: row.isNull(9) ? nil : row.text(9))
             }
         }
     }

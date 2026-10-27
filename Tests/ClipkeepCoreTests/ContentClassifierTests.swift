@@ -9,6 +9,8 @@ import Testing
         ("www.example.com", .url),
         ("mailto:jeff@example.com", .url),
         ("jeff@example.com", .email),
+        ("git@github.com", .text),
+        ("root@server.example.org", .text),
         ("/Users/jeffry/Projects/clipkeep", .path),
         ("~/Library/Application Support/Clipkeep", .path),
         ("./scripts/test.sh", .path),

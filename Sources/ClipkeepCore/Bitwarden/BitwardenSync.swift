@@ -128,14 +128,16 @@ public actor BitwardenSync {
         // marker but another content is a conflict: the secret stays parked.
         let marked = existing.first { $0.clipkeepID == secret.vaultKey }
         if let marked, marked.notes != value { throw BitwardenError.unexpectedOutput }
+        var itemID = marked?.id
         if marked == nil {
             let created = try await client.createSecureNote(
                 name: secret.label, secret: value, clipkeepID: secret.vaultKey, folderID: folder,
                 session: session)
             // Only what the server confirmed counts as transferred.
             guard created.notes == value else { throw BitwardenError.unexpectedOutput }
+            itemID = created.id
         }
-        try parker.markTransferred(id: secret.id)
+        try parker.markTransferred(id: secret.id, vaultItemID: itemID)
         try parker.deleteFromVault(id: secret.id)
     }
 
@@ -162,6 +164,14 @@ public actor BitwardenSync {
         guard let key = session else { throw BitwardenError.locked }
         scheduleIdleLock()
         do {
+            // Direct by id; a note that was moved, renamed or never got an id is found by its
+            // marker instead.
+            if let itemID = secret.vaultItemID,
+                let note = try? await client.note(id: itemID, session: key),
+                note.clipkeepID == secret.vaultKey, let value = note.notes
+            {
+                return value
+            }
             let folder = try await client.folderID(named: Self.folderName, session: key)
             let notes = try await client.notes(inFolder: folder, session: key)
             guard let value = notes.first(where: { $0.clipkeepID == secret.vaultKey })?.notes else {

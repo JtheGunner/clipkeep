@@ -81,7 +81,9 @@ public enum EntityExtractor {
             in: sample, range: NSRange(sample.startIndex..., in: sample), withTemplate: " ")
 
         for (address, domain) in captures(emailPattern, in: withoutURLs) {
-            found.append(Entity(kind: .email, value: address.lowercased()))
+            if !MailAddress.isShellLogin(address) {
+                found.append(Entity(kind: .email, value: address.lowercased()))
+            }
             found.append(Entity(kind: .domain, value: domain.lowercased()))
         }
         for (ticket, prefix, number) in ticketCandidates(in: sample)

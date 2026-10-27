@@ -91,6 +91,19 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         try check(session: session)
         return lock.withLock { stored }
     }
+
+    private(set) var lookupsByID = 0
+
+    func note(id: String, session: String) async throws -> BitwardenNote {
+        try check(session: session)
+        return try lock.withLock {
+            lookupsByID += 1
+            guard let found = stored.first(where: { $0.id == id }) else {
+                throw BitwardenError.commandFailed
+            }
+            return found
+        }
+    }
 }
 
 @Suite struct BitwardenSyncTests {
@@ -332,6 +345,28 @@ private final class FakeBitwarden: BitwardenClient, @unchecked Sendable {
         _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
         #expect(fixture.vault.parkedValues.isEmpty)
         #expect(try await fixture.sync.retrieve(secretID: all[1].id) == secret(1))
+    }
+
+    @Test func theNoteIdIsStoredAndUsedToFetchTheSecretBack() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 1)
+        let id = try #require(try fixture.parker.pending().first).id
+        _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        let stored = try #require(try fixture.parker.secret(id: id))
+        #expect(stored.vaultItemID == fixture.bitwarden.notes.first?.id)
+        #expect(try await fixture.sync.retrieve(secretID: id) == secret(0))
+        #expect(fixture.bitwarden.lookupsByID == 1)
+    }
+
+    @Test func aMissingNoteIdFallsBackToTheMarkerSearch() async throws {
+        let fixture = try Fixture()
+        park(fixture, count: 1)
+        let id = try #require(try fixture.parker.pending().first).id
+        _ = try await fixture.sync.unlock(masterPassword: FakeBitwarden.goodPassword)
+        try fixture.database.write {
+            try $0.execute("UPDATE parked_secrets SET vault_item_id = 'gone'")
+        }
+        #expect(try await fixture.sync.retrieve(secretID: id) == secret(0))
     }
 
     @Test func aSecretAlreadyInBitwardenCanStillBeTakenBackAsNormal() async throws {

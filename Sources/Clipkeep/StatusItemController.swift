@@ -491,7 +491,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     nonisolated static let readsSafariKey = "readsSafariContext"
-    nonisolated static var readsSafari: Bool { UserDefaults.standard.bool(forKey: readsSafariKey) }
+    /// On unless the user turned it off. Safari's private windows cannot be told apart from
+    /// normal ones, so the menu offers the switch.
+    nonisolated static var readsSafari: Bool {
+        UserDefaults.standard.object(forKey: readsSafariKey) as? Bool ?? true
+    }
 
     private static func automationTitle(_ states: [String: AutomationState]) -> String {
         if states.isEmpty { return "Browser-Adressen: Automation erlauben …" }
