@@ -296,6 +296,12 @@ import Testing
         }
     }
 
+    @Test func aDirectoryIsRefused() {
+        #expect(throws: CocoaError.self) {
+            try TextImporter.read(FileManager.default.temporaryDirectory)
+        }
+    }
+
     @Test func aTextFileOnDiskRoundTrips() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("clipkeep-import-\(UUID().uuidString).txt")
