@@ -1,9 +1,9 @@
 import ClipkeepCore
 import Dispatch
 
-/// Polls the pasteboard twice a second on a private queue, so the main thread stays free.
+/// Polls the pasteboard four times a second on a private queue, so the main thread stays free.
 final class ClipboardWatcher: @unchecked Sendable {
-    private static let interval: DispatchTimeInterval = .milliseconds(500)
+    private static let interval: DispatchTimeInterval = .milliseconds(250)
 
     private let queue = DispatchQueue(label: "li.wuermli.clipkeep.watcher", qos: .utility)
     private let poller: ClipboardPoller
@@ -19,7 +19,7 @@ final class ClipboardWatcher: @unchecked Sendable {
             let timer = DispatchSource.makeTimerSource(queue: queue)
             timer.schedule(
                 deadline: .now() + Self.interval, repeating: Self.interval,
-                leeway: .milliseconds(100))
+                leeway: .milliseconds(50))
             timer.setEventHandler { [poller] in poller.poll() }
             timer.resume()
             self.timer = timer
