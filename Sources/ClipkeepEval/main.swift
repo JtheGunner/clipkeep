@@ -7,6 +7,12 @@ import Foundation
 //   clipkeep-eval --write-baseline             store the current values as the baseline
 //   clipkeep-eval --text notes.txt --gold g.json   an imported text file and your own gold set
 //   options: --corpus FILE  --gold FILE  --baseline FILE  --report FILE
+//            --split automatic|separators|blank-lines|every-line   how --text is cut into entries
+
+let splitModes: [String: SplitMode] = [
+    "automatic": .automatic, "separators": .separatorLines, "blank-lines": .blankLines,
+    "every-line": .everyLine,
+]
 
 struct Options {
     var corpus = "eval/synthetic-corpus.json"
@@ -15,6 +21,7 @@ struct Options {
     var usesText = false
     var text: String?
     var report: String?
+    var splitMode = SplitMode.automatic
     var writeBaseline = false
 }
 
@@ -38,6 +45,13 @@ func parse(_ arguments: [String]) -> Options {
         case "--text":
             options.text = value()
             options.usesText = true
+        case "--split":
+            let name = value()
+            guard let mode = splitModes[name] else {
+                let known = splitModes.keys.sorted().joined(separator: ", ")
+                fail("Unknown split mode \(name); use \(known)")
+            }
+            options.splitMode = mode
         case "--report": options.report = value()
         case "--write-baseline": options.writeBaseline = true
         default: fail("Unknown option \(argument)")
@@ -63,7 +77,7 @@ let title: String
 do {
     if let textPath = options.text {
         let text = try TextImporter.read(URL(fileURLWithPath: textPath))
-        metrics = try EvalRunner.run(importing: text, gold: gold)
+        metrics = try EvalRunner.run(importing: text, gold: gold, mode: options.splitMode)
         title = "Evaluation of \(URL(fileURLWithPath: textPath).lastPathComponent)"
     } else {
         metrics = try EvalRunner.run(corpus: load(EvalCorpus.self, options.corpus), gold: gold)
