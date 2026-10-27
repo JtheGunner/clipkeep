@@ -106,12 +106,16 @@ public enum CaptureStages {
 
     /// Unifies line endings to `\n` and trims surrounding whitespace.
     public static func normalize(_ text: String) -> String {
+        normalizeLineBreaks(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// All line break variants become `\n`.
+    public static func normalizeLineBreaks(_ text: String) -> String {
         text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .replacingOccurrences(of: "\u{2028}", with: "\n")
             .replacingOccurrences(of: "\u{2029}", with: "\n")
             .replacingOccurrences(of: "\u{85}", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Length checks on normalized text.

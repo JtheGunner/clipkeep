@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bitwarden: BitwardenSync?
     private var palette: PaletteController?
     private var history: HistoryWindowController?
+    private var importer: ImportWindowController?
     private var paletteHotKey: GlobalHotKey?
     private let systemContext = SystemContext()
     private let secretNotifier = SecretNotifier()
@@ -95,7 +96,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         browser: HistoryBrowser(database: database),
                         search: SearchService(database: database),
                         actions: ItemActions(database: database),
-                        exporter: MarkdownExporter(database: database)))
+                        exporter: MarkdownExporter(database: database)),
+                    importer: ImportWindowController(
+                        importer: TextImporter(
+                            database: database,
+                            // Its own parker: an import of many secrets must not raise one
+                            // notification per secret.
+                            secretSink: SecretParker(
+                                database: database,
+                                store: ContentStore(database: database, sessions: nil),
+                                vault: KeychainSecretVault(),
+                                onError: { error in
+                                    Self.logger.error(
+                                        "Parking an imported secret failed: \(String(describing: error), privacy: .public)"
+                                    )
+                                }))))
             } catch {
                 Self.logger.error(
                     "Capture disabled: \(String(describing: error), privacy: .public)")
@@ -118,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureStarted(
         _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync,
         secrets: SecretParker, search: PaletteSearch,
-        history: HistoryWindowController
+        history: HistoryWindowController, importer: ImportWindowController
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
@@ -127,6 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemController?.attach(secrets: secrets)
         self.history = history
         statusItemController?.attach(history: history)
+        self.importer = importer
+        statusItemController?.attach(importer: importer)
         let palette = PaletteController(search: search)
         self.palette = palette
         // Control + Option + V.
