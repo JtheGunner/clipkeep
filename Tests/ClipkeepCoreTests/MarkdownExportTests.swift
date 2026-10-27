@@ -138,6 +138,53 @@ import Testing
         #expect(!document.text.contains("drop me"))
     }
 
+    @Test func aTokenInTheWindowTitleWithholdsTheEntry() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let token = "gh" + "p_" + String(repeating: "aB3dE6gH9j", count: 4)
+        _ = try fixture.store.record(
+            text: "harmless note", copiedAt: base,
+            context: CopyContext(windowTitle: "settings \(token)"))
+        let document = try #require(try exporter(fixture).export(.day(base)))
+        #expect(document.withheldSecrets == 1)
+        #expect(!document.text.contains(token))
+        #expect(!document.text.contains("harmless note"))
+    }
+
+    @Test func parkedAndDetectedSecretsAreBothCounted() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let token = "gh" + "p_" + String(repeating: "aB3dE6gH9j", count: 4)
+        _ = try fixture.store.record(text: "label only", copiedAt: base, kind: .secret)
+        _ = try fixture.store.record(
+            text: "TOKEN=\(token)", copiedAt: base.addingTimeInterval(60))
+        let document = try #require(try exporter(fixture).export(.day(base)))
+        #expect(document.withheldSecrets == 2)
+        #expect(document.entryCount == 2)
+    }
+
+    @Test func aTopicLabelWithANewlineCannotAddHeadings() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.record(text: "swift actor isolation notes", copiedAt: base)
+        let topics = TopicService(database: fixture.database)
+        try topics.cluster(now: base.addingTimeInterval(30 * 86_400))
+        let topic = try #require(try topics.topics().first)
+        try topics.rename(topic: topic.id, to: "first\n## injected")
+        let document = try #require(try exporter(fixture).export(.topic(topic.id)))
+        #expect(document.text.hasPrefix("# Thema: first ## injected\n"))
+        #expect(!document.text.contains("\n## injected"))
+    }
+
+    @Test func jsonGetsItsFenceLanguage() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.record(
+            text: "{\"name\": \"value\", \"list\": [1, 2]}", copiedAt: base)
+        let document = try #require(try exporter(fixture).export(.day(base)))
+        #expect(document.text.contains("```json\n"))
+    }
+
     // MARK: - Format
 
     @Test func contentWithBackticksGetsALongerFence() throws {
@@ -172,5 +219,11 @@ import Testing
         #expect(first.lastPathComponent == "clipkeep-2027-01-15.md")
         #expect(second.lastPathComponent == "clipkeep-2027-01-15-2.md")
         #expect(try String(contentsOf: first, encoding: .utf8) == "# one")
+        let permissions =
+            try FileManager.default.attributesOfItem(atPath: first.path)[
+                .posixPermissions] as? Int
+        #expect(permissions == 0o600)
+        let bad = MarkdownDocument(fileName: "x.txt", text: "", entryCount: 0, withheldSecrets: 0)
+        #expect(throws: CocoaError.self) { try MarkdownExporter.write(bad, to: directory) }
     }
 }

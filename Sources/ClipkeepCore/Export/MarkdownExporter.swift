@@ -59,7 +59,13 @@ public struct MarkdownExporter: Sendable {
             for block in blocks {
                 count += 1
                 let isSecret = block.kind == ContentKind.secret.rawValue
-                let leaked = !isSecret && detector.containsSecret(in: block.text)
+                // Texts and sources are scanned again here: older rows or newer detector rules
+                // may catch what the capture did not.
+                let source = [block.window, block.url].compactMap { $0 }.joined(separator: " ")
+                let leaked =
+                    !isSecret
+                    && (detector.containsSecret(in: block.text)
+                        || detector.containsSecret(in: source))
                 if isSecret || leaked { withheld += 1 }
                 lines += render(block, withhold: isSecret || leaked)
             }
@@ -73,6 +79,9 @@ public struct MarkdownExporter: Sendable {
     /// Saves into `directory` without replacing a file that is already there.
     @discardableResult
     public static func write(_ document: MarkdownDocument, to directory: URL) throws -> URL {
+        guard document.fileName.hasSuffix(".md") else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
         let base = String(document.fileName.dropLast(3))
         var target = directory.appendingPathComponent(document.fileName)
         var number = 2
@@ -81,6 +90,8 @@ public struct MarkdownExporter: Sendable {
             number += 1
         }
         try Data(document.text.utf8).write(to: target, options: .withoutOverwriting)
+        // A clipboard dump is private even when the folder is shared.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
         return target
     }
 
@@ -119,7 +130,7 @@ public struct MarkdownExporter: Sendable {
             guard let label else { return ("", "", []) }
             let ids = try TopicService(database: database).sessionIDs(inTopic: id)
             return (
-                "Thema: \(label)", "clipkeep-thema-\(Self.slug(label))",
+                "Thema: \(Self.oneLine(label))", "clipkeep-thema-\(Self.slug(label))",
                 try service.sessions(ids: ids)
             )
         }
@@ -159,7 +170,7 @@ public struct MarkdownExporter: Sendable {
         let format = HistoryFormat(calendar: calendar)
         var heading = "\(format.dateTime(session.startedAt)) – \(format.time(session.endedAt))"
         let sources = format.sessionSubtitle(session)
-        if !sources.isEmpty { heading += " · \(sources)" }
+        if !sources.isEmpty { heading += " · \(Self.oneLine(sources))" }
         return heading
     }
 

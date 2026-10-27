@@ -94,6 +94,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var lastDeletedID: Int64?
     private var baseHeader = ""
     private var exportNote = ""
+    private var searchNote = ""
     private var isLoading = false
 
     init(
@@ -570,6 +571,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         entryCursor = nil
         entriesExhausted = true
         var note = ""
+        defer { searchNote = note }
         do {
             if query.isEmpty, case .session(let id) = scope {
                 let page = try browser.entries(inSession: id, limit: Self.entryPageSize)
@@ -776,7 +778,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     private func reloadHeader() {
-        headerLabel.stringValue = [baseHeader, exportNote].filter { !$0.isEmpty }
+        headerLabel.stringValue = [baseHeader, exportNote, searchNote].filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
 
