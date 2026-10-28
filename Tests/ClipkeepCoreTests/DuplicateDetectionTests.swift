@@ -35,6 +35,19 @@ import Testing
         #expect(far >= 16)
     }
 
+    @Test func chineseJapaneseAndKoreanTextHasAFingerprintPerCharacter() throws {
+        let chinese = "今天我们讨论了剪贴板历史工具的搜索功能以及如何把密码安全地保存在钥匙串里"
+        let edited = chinese.replacingOccurrences(of: "搜索", with: "排序")
+        let unrelated = "季度收入增长了百分之十二因为订阅续费抵消了硬件销售在欧洲各地区的下降趋势明显"
+        let original = try #require(SimHash.fingerprint(of: chinese))
+        let near = SimHash.distance(original, try #require(SimHash.fingerprint(of: edited)))
+        let far = SimHash.distance(original, try #require(SimHash.fingerprint(of: unrelated)))
+        #expect(near < far)
+        #expect(near <= DuplicateConfiguration.maximumDistanceLimit)
+        #expect(SimHash.fingerprint(of: "これは短い文") == nil)
+        #expect(SimHash.fingerprint(of: "한국어로 쓴 짧은 문장입니다 정말로") != nil)
+    }
+
     @Test func hugeTextIsBounded() {
         let huge = String(repeating: "alpha beta gamma delta ", count: 200_000)
         #expect(SimHash.fingerprint(of: huge) != nil)
@@ -220,6 +233,20 @@ import Testing
         #expect(
             try store.duplicateLinks(of: edited.contentID).map(\.relatedID).contains(
                 target.contentID))
+    }
+
+    @Test func manyNearIdenticalTextsDoNotSlowDownEachOther() throws {
+        let (store, temp) = try makeStore()
+        defer { temp.remove() }
+        let started = Date()
+        var last: RecordedCopy?
+        for number in 0..<1_500 {
+            last = try store.record(text: article + " revision \(number)")
+        }
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(15))
+        let links = try store.duplicateLinks(of: try #require(last).contentID)
+        #expect(!links.isEmpty)
+        #expect(links.count <= DuplicateConfiguration.default.maximumLinks)
     }
 
     @Test func bandsAreIndexedEvenWhileLinkingIsOff() throws {
