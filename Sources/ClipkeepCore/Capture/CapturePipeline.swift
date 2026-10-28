@@ -65,12 +65,19 @@ public enum CaptureOutcome: Sendable, Equatable {
 /// a sink may park the value somewhere safe (see the Keychain parking task).
 public protocol SecretSink: Sendable {
     func handle(secret text: String, context: CopyContext, copiedAt: Date)
+    /// Like `handle`, but says whether the secret is now safe (parked, or already parked).
+    /// False means it could not be stored anywhere.
+    func park(secret text: String, context: CopyContext, copiedAt: Date) -> Bool
     /// Whether the user declared this exact text "not a secret".
     func isException(_ text: String) -> Bool
     func isParked(_ text: String) -> Bool
 }
 
 extension SecretSink {
+    public func park(secret text: String, context: CopyContext, copiedAt: Date) -> Bool {
+        handle(secret: text, context: context, copiedAt: copiedAt)
+        return true
+    }
     public func isException(_ text: String) -> Bool { false }
     /// Whether this exact secret is already parked, so importing it again adds nothing.
     public func isParked(_ text: String) -> Bool { false }

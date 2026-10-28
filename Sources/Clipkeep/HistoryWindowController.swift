@@ -94,6 +94,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var lastDeletedID: Int64?
     private var baseHeader = ""
     private var exportNote = ""
+    private var isExporting = false
     private var searchNote = ""
     private var isLoading = false
 
@@ -756,21 +757,38 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         }
     }
 
+    /// Builds and writes the document off the main thread; large exports would freeze the window.
     private func export(_ exportScope: ExportScope, to directory: URL) {
-        do {
-            guard let document = try exporter.export(exportScope) else {
-                exportNote = "Nichts zu exportieren."
-                reloadHeader()
-                return
+        guard !isExporting else { return }
+        isExporting = true
+        exportButton.isEnabled = false
+        exportNote = "Export läuft …"
+        reloadHeader()
+        let exporter = exporter
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = Result<(MarkdownDocument, URL)?, Error> {
+                guard let document = try exporter.export(exportScope) else { return nil }
+                return (document, try MarkdownExporter.write(document, to: directory))
             }
-            let url = try MarkdownExporter.write(document, to: directory)
+            await self?.finishExport(result)
+        }
+    }
+
+    private func finishExport(_ result: Result<(MarkdownDocument, URL)?, Error>) {
+        isExporting = false
+        exportButton.isEnabled = exportScope != nil
+        switch result {
+        case .success(nil):
+            exportNote = "Nichts zu exportieren."
+            reloadHeader()
+        case .success(let (document, url)?):
             exportNote =
                 "Exportiert: \(url.lastPathComponent) (\(document.entryCount) Einträge"
                 + (document.withheldSecrets > 0
                     ? ", \(document.withheldSecrets) Secrets nicht exportiert" : "") + ")"
             reloadHeader()
             NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch {
+        case .failure(let error):
             Self.logger.error("Export failed: \(String(describing: error), privacy: .public)")
             exportNote = "Export fehlgeschlagen: \(error.localizedDescription)"
             reloadHeader()
