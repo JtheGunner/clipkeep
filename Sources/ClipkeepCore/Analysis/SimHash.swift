@@ -2,7 +2,9 @@ import Foundation
 
 /// 64-bit similarity fingerprint over word shingles. Texts that share most of their wording
 /// get fingerprints that differ in only a few bits, so near-duplicates can be found by
-/// Hamming distance. Texts that share their first `maximumWords` words are indistinguishable. Pure and deterministic: the same text always yields the same value.
+/// Hamming distance. Texts that share their first `maximumWords` words are indistinguishable.
+/// Chinese, Japanese and Korean text has no spaces between words, so every such character counts
+/// as a word of its own. Pure and deterministic: the same text always yields the same value.
 public enum SimHash {
     /// Texts with fewer words are too short for a meaningful fingerprint.
     public static let minimumWords = 8
@@ -48,19 +50,41 @@ public enum SimHash {
         var wordStart: String.Index?
         var index = folded.startIndex
         while index < folded.endIndex, result.count < maximumWords {
-            let isWordCharacter = folded[index].isLetter || folded[index].isNumber
-            if isWordCharacter, wordStart == nil {
-                wordStart = index
-            } else if !isWordCharacter, let start = wordStart {
-                result.append(folded[start..<index])
-                wordStart = nil
+            let character = folded[index]
+            let next = folded.index(after: index)
+            if isUnspaced(character) {
+                if let start = wordStart {
+                    result.append(folded[start..<index])
+                    wordStart = nil
+                }
+                result.append(folded[index..<next])
+            } else {
+                let isWordCharacter = character.isLetter || character.isNumber
+                if isWordCharacter, wordStart == nil {
+                    wordStart = index
+                } else if !isWordCharacter, let start = wordStart {
+                    result.append(folded[start..<index])
+                    wordStart = nil
+                }
             }
-            index = folded.index(after: index)
+            index = next
         }
         if let start = wordStart, result.count < maximumWords {
             result.append(folded[start..<folded.endIndex])
         }
         return result
+    }
+
+    /// Characters of scripts written without spaces: Han, Hiragana, Katakana and Hangul.
+    private static func isUnspaced(_ character: Character) -> Bool {
+        guard let value = character.unicodeScalars.first?.value else { return false }
+        switch value {
+        case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF,
+            0xF900...0xFAFF, 0x20000...0x2FA1F:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func fnv1a64(_ word: Substring, seed: UInt64 = 0xcbf2_9ce4_8422_2325) -> UInt64 {
