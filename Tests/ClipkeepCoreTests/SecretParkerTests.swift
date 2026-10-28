@@ -185,6 +185,16 @@ private final class ErrorBox: @unchecked Sendable {
         #expect(try allStoredText(fixture.database).allSatisfy { !$0.contains(secret) })
     }
 
+    @Test func parkingReportsWhetherTheSecretIsSafe() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        #expect(fixture.parker.park(secret: secret, context: browser, copiedAt: base))
+        // Parking it again only adds a copy to the placeholder.
+        #expect(fixture.parker.park(secret: secret, context: browser, copiedAt: base))
+        fixture.vault.failStore = true
+        #expect(!fixture.parker.park(secret: secret + "x", context: browser, copiedAt: base))
+    }
+
     @Test func aFailingDatabaseLeavesNoKeychainItemOrPlaceholder() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }

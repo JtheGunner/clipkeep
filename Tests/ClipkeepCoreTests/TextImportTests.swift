@@ -415,6 +415,22 @@ import Testing
         func isParked(_ text: String) -> Bool { true }
     }
 
+    private final class FailingSink: SecretSink, @unchecked Sendable {
+        func handle(secret text: String, context: CopyContext, copiedAt: Date) {}
+        func park(secret text: String, context: CopyContext, copiedAt: Date) -> Bool { false }
+    }
+
+    @Test func aSecretThatCannotBeParkedIsNotCountedAsSecured() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let importer = TextImporter(database: fixture.database, secretSink: FailingSink())
+        let report = try importer.run(
+            text: "export TOKEN=\(token)\n---\nplain note", source: "n.txt", endingAt: end)
+        #expect(report.secrets == 0)
+        #expect(report.secretsFailed == 1)
+        #expect(report.imported == 1)
+    }
+
     @Test func aSecretThatIsAlreadyParkedIsNotParkedAgain() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }

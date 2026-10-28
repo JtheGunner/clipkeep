@@ -290,6 +290,11 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
             if report.secrets > 0 {
                 lines.append("\(report.secrets) Secrets gesichert, nicht importiert")
             }
+            if report.secretsFailed > 0 {
+                lines.append(
+                    "⚠︎ \(report.secretsFailed) Secrets konnten nicht gesichert werden und wurden verworfen"
+                )
+            }
             if report.skipped > 0 { lines.append("\(report.skipped) übersprungen") }
             summaryLabel.stringValue = lines.joined(separator: "\n")
             sampleView.string = ""

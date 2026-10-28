@@ -38,6 +38,8 @@ public struct ImportReport: Sendable, Equatable {
     public var duplicates = 0
     /// Detected secrets that went to the vault (or were dropped when there is no vault).
     public var secrets = 0
+    /// Detected secrets that could not be stored in the vault; they are in neither place.
+    public var secretsFailed = 0
     public var skipped = 0
     public var wasCancelled = false
 }
@@ -192,8 +194,8 @@ public struct TextImporter: Sendable {
                 if secretSink?.isParked(entry) == true {
                     report.duplicates += 1
                 } else {
-                    report.secrets += 1
-                    secretSink?.handle(secret: entry, context: context, copiedAt: time)
+                    let stored = secretSink?.park(secret: entry, context: context, copiedAt: time)
+                    if stored == false { report.secretsFailed += 1 } else { report.secrets += 1 }
                 }
             } else if try isStored(entry) {
                 report.duplicates += 1
