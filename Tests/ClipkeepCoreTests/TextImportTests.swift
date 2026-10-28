@@ -217,6 +217,50 @@ import Testing
         #expect(stored == 1)
     }
 
+    @Test func thePreviewWarnsWhenASecretTakesALargeBlockWithIt() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let big = String(repeating: "note about the project plan\n", count: 40)
+        let text = "short note here\n---\n\(big)export TOKEN=\(token)\n---\nanother short note"
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: text)
+        #expect(preview.secretCount == 1)
+        #expect(preview.secretShare > ImportPreview.largeSecretShare)
+        #expect(preview.warnsAboutSecretBlocks)
+    }
+
+    @Test func thePreviewDoesNotWarnForASmallSecretEntry() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let notes = (1...20).map { "a perfectly normal note number \($0)" }.joined(
+            separator: "\n---\n")
+        let text = notes + "\n---\nexport TOKEN=\(token)"
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: text)
+        #expect(preview.secretCount == 1)
+        #expect(preview.secretShare < ImportPreview.largeSecretShare)
+        #expect(!preview.warnsAboutSecretBlocks)
+    }
+
+    @Test func thePreviewDoesNotWarnWithoutSecrets() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: "first note here\n---\nsecond note here")
+        #expect(preview.secretShare == 0)
+        #expect(!preview.warnsAboutSecretBlocks)
+    }
+
+    @Test func parkedSecretsDoNotCountTowardsTheWarning() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let sink = ParkedSink()
+        let preview = try TextImporter(database: fixture.database, secretSink: sink)
+            .preview(text: "export TOKEN=\(token)\n---\nsome other note")
+        #expect(preview.secretCount == 0)
+        #expect(!preview.warnsAboutSecretBlocks)
+    }
+
     @Test func thePreviewShowsOnlyAFewEntriesAndLines() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
