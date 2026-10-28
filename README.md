@@ -103,4 +103,22 @@ The code is split into a testable library and thin app targets:
 
 ---
 
+## 🤝 Contributing
+
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to report problems, propose changes and run the project locally.
+
+---
+
+## 📝 Changelog
+
+Notable changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
+
+---
+
 <div align="center"><sub>Built for people who copy a lot and want to keep it to themselves.</sub></div>
