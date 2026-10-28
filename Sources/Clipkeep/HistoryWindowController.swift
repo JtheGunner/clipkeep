@@ -812,8 +812,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         guard let parked = parkedSecret, !isWorkingOnSecret else { return }
         runSecretAction(working: "Secret wird abgerufen …") { [bitwarden, copyWriter] in
             let value = try await bitwarden.retrieve(secretID: parked.id)
-            copyWriter.copy(value)
-            return "Secret in die Zwischenablage kopiert."
+            copyWriter.copySecret(value)
+            return "Secret in die Zwischenablage kopiert (wird nach 60 Sekunden entfernt)."
         }
     }
 
