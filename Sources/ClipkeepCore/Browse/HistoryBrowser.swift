@@ -50,6 +50,28 @@ public struct HistoryBrowser: Sendable {
     private let topics: TopicService
     private let ranking: RankingService
 
+    /// A cheap fingerprint of what the history shows. It changes when a copy is recorded, an entry
+    /// is deleted or restored, or a parked secret is restored, so an open window can tell it is out of date
+    /// without loading the lists. It reads index-backed counts only, never entry text.
+    public func changeToken() throws -> String {
+        try database.read { connection in
+            try connection.query(
+                """
+                SELECT
+                    (SELECT count(*) FROM contents),
+                    (SELECT count(*) FROM contents WHERE deleted_at IS NOT NULL),
+                    (SELECT coalesce(max(id), 0) FROM contents),
+                    (SELECT count(*) FROM copy_events),
+                    (SELECT coalesce(max(id), 0) FROM copy_events),
+                    (SELECT count(*) FROM parked_secrets),
+                    (SELECT coalesce(sum(id), 0) FROM parked_secrets),
+                    (SELECT count(*) FROM parked_secrets WHERE state = 'parked')
+                """
+            ) { row in (0..<8).map { String(row.int(Int32($0))) }.joined(separator: ":") }
+            .first ?? ""
+        }
+    }
+
     public init(
         database: Database, ranking: RankingConfiguration = .default,
         sessions: SessionConfiguration = .default

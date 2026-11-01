@@ -33,6 +33,35 @@ import Testing
         }
     }
 
+    // MARK: - Change token
+
+    @Test func theChangeTokenStaysTheSameWithoutChanges() throws {
+        let fixture = try Fixture()
+        try copy(fixture, ["one", "two"], start: base)
+        #expect(try fixture.browser.changeToken() == fixture.browser.changeToken())
+    }
+
+    @Test func theChangeTokenChangesWhenACopyIsRecorded() throws {
+        let fixture = try Fixture()
+        try copy(fixture, ["one"], start: base)
+        let before = try fixture.browser.changeToken()
+        try copy(fixture, ["two"], start: base.addingTimeInterval(600))
+        let afterNew = try fixture.browser.changeToken()
+        #expect(afterNew != before)
+        // A repeated text adds a copy event but no new content.
+        try copy(fixture, ["two"], start: base.addingTimeInterval(1_200))
+        #expect(try fixture.browser.changeToken() != afterNew)
+    }
+
+    @Test func theChangeTokenChangesWhenAnEntryIsDeleted() throws {
+        let fixture = try Fixture()
+        let copies = try copy(fixture, ["one", "two"], start: base)
+        let before = try fixture.browser.changeToken()
+        _ = try ItemActions(database: fixture.database).delete(
+            contentID: copies[0].contentID, now: base)
+        #expect(try fixture.browser.changeToken() != before)
+    }
+
     // MARK: - Day timeline
 
     private var zurich: Calendar {
