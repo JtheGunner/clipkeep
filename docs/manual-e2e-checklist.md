@@ -12,20 +12,24 @@ Menu and dialog labels are quoted as they appear in the app (German).
 3. For permission checks, reset the app's grants first: `tccutil reset All li.wuermli.clipkeep`.
 4. Tick each box; write down any deviation as its own issue and link it here.
 
+A bundle signed ad hoc (the default of `bundle-app.sh`) gets a new signature with every build.
+macOS then treats each build as a different app: the Keychain approval and the Accessibility and
+Automation grants have to be given again after a rebuild.
+
 Record the macOS version, the app version and the date next to each run.
 
 ## 1. First launch and permissions
 
 - [ ] The menu bar icon appears and the app has no Dock icon.
-- [ ] The first launch asks for Keychain access once; "Always allow" stops further prompts.
+- [ ] The first launch of a fresh install shows no Keychain prompt, because the app created the key itself. After a rebuild with a different signature the prompt appears once; "Always allow" stops it for that build.
 - [ ] "Beim Anmelden starten" toggles and shows a check mark; after a re-login the app starts.
 - [ ] "Fenstertitel: Bedienungshilfen erlauben …" shows the system prompt on the first click and opens Settings on later clicks. Afterwards the entry reads "Fenstertitel: erlaubt".
-- [ ] "Browser-Adressen: Automation erlauben …" asks for each installed browser; "nicht erlaubt – öffnen …" opens the Automation pane after a denial.
+- [ ] "Browser-Adressen: Automation erlauben …" asks for each running browser; "nicht erlaubt – öffnen …" opens the Automation pane after a denial.
 - [ ] Denying every optional permission still records copies (without window title or address).
 
 ## 2. Clipboard access (macOS 15.4 and later)
 
-Settings → Privacy & Security → Paste from Other Apps → Clipkeep.
+Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only macOS versions that offer this setting can run this section; if it is missing, note the macOS version and skip the section.
 
 - [ ] "Allow": copies are recorded, no hint in the menu.
 - [ ] "Ask": the menu shows the hint about the per-read question; copying still works or the hint explains why not.
@@ -58,6 +62,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep.
 ## 6. History window
 
 - [ ] "Verlauf öffnen …" lists days, sessions and topics; the detail view shows the entry with its context.
+- [ ] Selecting a session fills the entry list with its entries and their text; selecting an entry shows its text and the importance breakdown. The list and the detail text keep a visible height when the window is resized.
 - [ ] Copy, pin, star and delete work; the undo restores a deleted entry.
 - [ ] Search inside the window finds entries by substring.
 - [ ] Right-click a topic: "Thema umbenennen …" renames it (an empty name restores the automatic label) and "Mit anderem Thema zusammenführen …" moves all its sessions into the chosen topic.
