@@ -33,6 +33,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let exceptionsItem = NSMenuItem()
     private var secrets: SecretParker?
     private var control: CaptureControl?
+    /// Whether the accessibility dialog was shown since this launch; kept in memory only, so a
+    /// reset of the permission is handled by the next launch.
+    private var hasAskedForAccessibility = false
     private var bitwarden: BitwardenSync?
     private var fatalProblem: String?
 
@@ -532,14 +535,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openAccessibilitySettings() {
-        // The first click shows the system prompt, later ones open the settings pane.
-        let key = "accessibilityPromptShown"
-        if UserDefaults.standard.bool(forKey: key) {
-            openSettings("Privacy_Accessibility")
-        } else {
-            UserDefaults.standard.set(true, forKey: key)
-            SystemContext.requestAccessibility()
-        }
+        // Asking lists the app under Accessibility, which a reset of the permission removes. The
+        // system dialog comes first; clicks after it open the settings pane as well.
+        SystemContext.requestAccessibility()
+        if hasAskedForAccessibility { openSettings("Privacy_Accessibility") }
+        hasAskedForAccessibility = true
     }
 
     @objc private func openAutomationSettings() {
