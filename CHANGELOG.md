@@ -40,3 +40,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Imported text files are dated by their structure: entries under a date heading (`2024-03-05`, `5.3.2024`, `5. März 2024`, `March 5, 2024`) get that day, and a file without headings gets one session per block. The preview says which applies.
 - The history window can rename, merge and move topics, fetch a parked secret from Bitwarden (copied as concealed and cleared after 60 s) and undo "not a secret".
 - An open history window now picks up new copies and changed entries (for example after "Kein Secret" in a notification) and keeps selection and scroll position.
+- The "Ignorieren" menu lists ignored apps by name instead of bundle identifier; an app that is not installed still shows its identifier.

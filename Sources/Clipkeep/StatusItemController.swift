@@ -478,13 +478,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// Names installed apps the way Finder shows them, without the `.app` suffix.
+    private static let appNames = AppNameResolver { bundleID in
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID).map {
+            FileManager.default.displayName(atPath: $0.path)
+                .replacingOccurrences(of: ".app", with: "", options: [.anchored, .backwards])
+        }
+    }
+
     private func refreshIgnoredApps() {
         let rules = control?.rules ?? IgnoreRules()
         let submenu = NSMenu()
         submenu.autoenablesItems = false
         for bundleID in rules.apps.sorted() {
             let item = NSMenuItem(
-                title: "\(bundleID) – entfernen", action: #selector(removeIgnoredApp(_:)),
+                title: "\(Self.appNames.name(for: bundleID)) – entfernen",
+                action: #selector(removeIgnoredApp(_:)),
                 keyEquivalent: "")
             item.target = self
             item.representedObject = bundleID
