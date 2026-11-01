@@ -169,22 +169,23 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         split.addArrangedSubview(buildRight())
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
 
-        let content = NSStackView(views: [bar, split])
-        content.orientation = .vertical
-        content.spacing = 10
-        content.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        content.alignment = .leading
-        content.distribution = .fill
-        split.setContentHuggingPriority(.defaultLow, for: .vertical)
-        split.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        // Explicit edges: the bar sits at the top and the split takes all the space below it.
+        let content = NSView()
+        content.addSubview(bar)
+        content.addSubview(split)
         bar.translatesAutoresizingMaskIntoConstraints = false
         split.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = content
         NSLayoutConstraint.activate([
+            // A fixed height: a bar without one stretches and squeezes the split to its minimum.
+            bar.heightAnchor.constraint(equalToConstant: 26),
+            bar.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
             bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             bar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            split.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 10),
             split.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             split.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            split.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
         ])
     }
 
@@ -234,6 +235,11 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         list.orientation = .vertical
         list.alignment = .leading
         list.spacing = 6
+        // The table takes the height the header leaves; without this it keeps a height of 0.
+        list.distribution = .fill
+        tableScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        headerLabel.setContentHuggingPriority(.required, for: .vertical)
+        tableScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
         tableScroll.translatesAutoresizingMaskIntoConstraints = false
         headerLabel.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
@@ -274,6 +280,11 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         stack.alignment = .leading
         stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
+        // The content takes the height the buttons and the info box leave.
+        stack.distribution = .fill
+        contentScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        buttons.setContentHuggingPriority(.required, for: .vertical)
+        contentScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
         for scroll in [contentScroll, infoScroll] {
             scroll.translatesAutoresizingMaskIntoConstraints = false
             scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
