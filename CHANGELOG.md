@@ -28,3 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Safari tab addresses are read by default; SSH targets are kept out of e-mail detection.
 - The clipboard is polled every 250 ms.
+
+### Fixed
+
+- Near-duplicate detection no longer slows down quadratically on many almost identical texts, and CJK text gets a usable fingerprint.
+- The menu shows a hint when macOS restricts clipboard reading.
+- The import preview warns when secrets take large blocks of text with them.
