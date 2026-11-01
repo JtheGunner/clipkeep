@@ -20,4 +20,24 @@ public struct OwnCopyWriter: @unchecked Sendable {
         pasteboard.setData(Data(), forType: marker)
         return pasteboard.setString(text, forType: .string)
     }
+
+    /// Puts a secret on the pasteboard: marked as concealed and transient so clipboard managers
+    /// skip it, kept off Universal Clipboard, and removed again after `clearAfter` seconds unless
+    /// something else was copied in the meantime.
+    @discardableResult
+    public func copySecret(_ text: String, clearAfter: TimeInterval = 60) -> Bool {
+        let marker = NSPasteboard.PasteboardType(Self.markerType)
+        let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+        let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+        pasteboard.prepareForNewContents(with: .currentHostOnly)
+        // The text goes last, so a poll between the steps never sees it without its markers.
+        for type in [marker, concealed, transient] { pasteboard.setData(Data(), forType: type) }
+        guard pasteboard.setString(text, forType: .string) else { return false }
+        let count = pasteboard.changeCount
+        let pasteboard = pasteboard
+        DispatchQueue.main.asyncAfter(deadline: .now() + clearAfter) {
+            if pasteboard.changeCount == count { pasteboard.clearContents() }
+        }
+        return true
+    }
 }

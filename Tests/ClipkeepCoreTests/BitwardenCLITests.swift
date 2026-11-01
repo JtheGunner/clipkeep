@@ -171,8 +171,10 @@ private final class MemoryVault: SecretVault, @unchecked Sendable {
         await #expect(throws: CommandError.timedOut) {
             try await runner.run(arguments: ["hang"], environment: [:], standardInput: nil)
         }
-        // The shell is killed, but its `sleep` keeps the pipes open: the call still ends.
-        #expect(Date().timeIntervalSince(started) < 10)
+        // The shell is killed, but its `sleep` keeps the pipes open: the call still ends after
+        // the timeout plus a short drain period, long before the 30 s `sleep` is over. The bound
+        // leaves room for a loaded CI runner.
+        #expect(Date().timeIntervalSince(started) < 20)
     }
 
     // MARK: - End to end

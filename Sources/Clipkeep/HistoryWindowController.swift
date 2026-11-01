@@ -38,7 +38,8 @@ private final class SessionNode: NSObject {
 /// whatever is selected, or everywhere when nothing is.
 @MainActor
 final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDataSource,
-    NSOutlineViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate
+    NSOutlineViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate,
+    NSMenuDelegate
 {
     private enum Mode: Int {
         case days
@@ -58,6 +59,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let exporter: MarkdownExporter
     private let actions: ItemActions
     private let copyWriter: OwnCopyWriter
+    private let topics: TopicService
+    private let secrets: SecretParker
+    private let bitwarden: BitwardenSync
 
     private let window: NSWindow
     private let modeControl = NSSegmentedControl(
@@ -77,6 +81,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let deleteButton = NSButton(title: "Löschen", target: nil, action: nil)
     private let exportButton = NSButton(title: "Exportieren …", target: nil, action: nil)
     private let undoButton = NSButton(title: "Löschen rückgängig", target: nil, action: nil)
+    private let fetchButton = NSButton(title: "Aus Bitwarden abrufen", target: nil, action: nil)
+    private let notSecretButton = NSButton(title: "Kein Secret", target: nil, action: nil)
 
     private var mode = Mode.days
     private var entityChoices: [EntityChoice] = []
@@ -94,14 +100,22 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var lastDeletedID: Int64?
     private var baseHeader = ""
     private var exportNote = ""
+    private var isExporting = false
     private var searchNote = ""
+    private var secretNote = ""
+    private var parkedSecret: ParkedSecret?
+    private var isWorkingOnSecret = false
     private var isLoading = false
 
     init(
         browser: HistoryBrowser, search: SearchService, actions: ItemActions,
-        exporter: MarkdownExporter,
+        exporter: MarkdownExporter, topics: TopicService, secrets: SecretParker,
+        bitwarden: BitwardenSync,
         copyWriter: OwnCopyWriter = OwnCopyWriter()
     ) {
+        self.topics = topics
+        self.secrets = secrets
+        self.bitwarden = bitwarden
         self.browser = browser
         self.search = search
         self.exporter = exporter
@@ -183,6 +197,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         outline.dataSource = self
         outline.delegate = self
         outline.indentationPerLevel = 12
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        outline.menu = contextMenu
         outline.style = .sourceList
         outlineScroll.documentView = outline
         outlineScroll.hasVerticalScroller = true
@@ -235,6 +252,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             (copyButton, #selector(copyClicked)), (pinButton, #selector(pinClicked)),
             (starButton, #selector(starClicked)), (deleteButton, #selector(deleteClicked)),
             (undoButton, #selector(undoClicked)), (exportButton, #selector(exportClicked)),
+            (fetchButton, #selector(fetchClicked)), (notSecretButton, #selector(notSecretClicked)),
         ] {
             button.target = self
             button.action = selector
@@ -242,6 +260,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         }
         let buttons = NSStackView(views: [
             copyButton, pinButton, starButton, deleteButton, undoButton, exportButton,
+            fetchButton, notSecretButton,
         ])
         buttons.orientation = .horizontal
         buttons.spacing = 8
@@ -523,10 +542,14 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         switch outline.item(atRow: outline.selectedRow) {
         case let day as DayNode:
             let count = day.sessions.count
+            // The last day may continue on pages that are not loaded yet.
+            let isIncomplete = day === dayNodes.last && !daysExhausted
+            let sessionCount =
+                count == 1 && !isIncomplete
+                ? "1 Session" : "\(count)\(isIncomplete ? "+" : "") Sessions"
             selectScope(
                 .day(day.section.day),
-                header: "\(format.dayTitle(day.section.day)) · "
-                    + (count == 1 ? "1 Session" : "\(count) Sessions"))
+                header: "\(format.dayTitle(day.section.day)) · \(sessionCount)")
         case let session as SessionNode:
             selectScope(.session(session.summary.id), header: sessionHeader(session.summary))
         case let topic as TopicNode:
@@ -537,6 +560,132 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
                     + (words.isEmpty ? "" : "\nBegriffe: \(words)"))
         default: selectScope(.all, header: "")
         }
+    }
+
+    // MARK: - Topic management
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard menu === outline.menu else { return }
+        switch outline.item(atRow: outline.clickedRow) {
+        case let topic as TopicNode:
+            addMenuItem("Thema umbenennen …", #selector(renameTopic(_:)), topic, to: menu)
+            addMenuItem(
+                "Mit anderem Thema zusammenführen …", #selector(mergeTopic(_:)), topic, to: menu)
+        case let session as SessionNode:
+            addMenuItem(
+                "In anderes Thema verschieben …", #selector(moveSession(_:)), session, to: menu)
+            addMenuItem(
+                "Eigenes Thema daraus machen", #selector(splitSession(_:)), session, to: menu)
+        default: break
+        }
+    }
+
+    private func addMenuItem(_ title: String, _ action: Selector, _ node: NSObject, to menu: NSMenu)
+    {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = node
+        menu.addItem(item)
+    }
+
+    @objc private func renameTopic(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? TopicNode else { return }
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = node.summary.labelIsManual ? node.summary.label : ""
+        field.placeholderString = node.summary.label
+        guard
+            confirm(
+                "Thema umbenennen",
+                "Ein leerer Name stellt die automatische Bezeichnung wieder her. Die Sessions des Themas bleiben danach zusammen.",
+                accessory: field, button: "Umbenennen")
+        else { return }
+        applyTopicChange { try topics.rename(topic: node.summary.id, to: field.stringValue) }
+    }
+
+    @objc private func mergeTopic(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? TopicNode,
+            let target = chooseTopic(
+                "Thema zusammenführen",
+                "Alle Sessions von „\(node.summary.label)“ wandern in das gewählte Thema, das alte verschwindet.",
+                excluding: [node.summary.id], button: "Zusammenführen")
+        else { return }
+        applyTopicChange { try topics.merge(topic: node.summary.id, into: target) }
+    }
+
+    @objc private func moveSession(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SessionNode else { return }
+        let current = try? topics.topic(ofSession: node.summary.id)?.topicID
+        guard
+            let target = chooseTopic(
+                "Session verschieben", "Die Session bleibt danach in diesem Thema.",
+                excluding: current.map { [$0] } ?? [], button: "Verschieben")
+        else { return }
+        applyTopicChange { try topics.assign(sessionID: node.summary.id, toTopic: target) }
+    }
+
+    @objc private func splitSession(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SessionNode else { return }
+        applyTopicChange { try topics.splitOff(sessionID: node.summary.id) != nil }
+    }
+
+    /// Runs a topic change and refreshes the outline; says so when nothing changed.
+    private func applyTopicChange(_ change: () throws -> Bool) {
+        do {
+            let changed = try change()
+            exportNote = changed ? "" : "Das Thema gibt es nicht mehr."
+            reloadLeftKeepingSelection()
+        } catch {
+            Self.logger.error("Topic change failed: \(String(describing: error), privacy: .public)")
+            exportNote = "Änderung konnte nicht gespeichert werden."
+            reloadHeader()
+        }
+    }
+
+    private func reloadLeftKeepingSelection() {
+        let session = selectedSessionID
+        reloadLeft()
+        restoreSelection(sessionID: session)
+        reloadHeader()
+    }
+
+    private func confirm(
+        _ title: String, _ text: String, accessory: NSView?, button: String
+    ) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        alert.accessoryView = accessory
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Abbrechen")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Asks which topic to use; nil if cancelled or there is none to choose.
+    private func chooseTopic(
+        _ title: String, _ text: String, excluding: [Int64], button: String
+    ) -> Int64? {
+        let choices: [TopicSummary]
+        do {
+            choices = try topics.topics(limit: 200).filter { !excluding.contains($0.id) }
+        } catch {
+            exportNote = "Themen konnten nicht geladen werden."
+            reloadHeader()
+            return nil
+        }
+        guard !choices.isEmpty else {
+            exportNote = "Es gibt kein anderes Thema."
+            reloadHeader()
+            return nil
+        }
+        let format = HistoryFormat()
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
+        popup.addItems(
+            withTitles: choices.map { "\($0.label) – \(format.topicSubtitle($0))" })
+        guard confirm(title, text, accessory: popup, button: button),
+            choices.indices.contains(popup.indexOfSelectedItem)
+        else { return nil }
+        return choices[popup.indexOfSelectedItem].id
     }
 
     private func sessionHeader(_ session: SessionSummary) -> String {
@@ -668,6 +817,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private func showNoDetail() {
         detail = nil
+        parkedSecret = nil
         contentView.string = rows.isEmpty ? "Keine Einträge." : "Eintrag auswählen."
         infoView.string = ""
         updateButtons()
@@ -675,12 +825,17 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private func showDetail(contentID: Int64) {
         lastDeletedID = nil
+        secretNote = ""
+        reloadHeader()
         do {
             guard let loaded = try browser.detail(contentID: contentID) else {
                 showNoDetail()
                 return
             }
             detail = loaded
+            parkedSecret =
+                loaded.kind == ContentKind.secret.rawValue
+                ? try secrets.secret(forContentID: contentID) : nil
             contentView.string = loaded.text
             infoView.string = info(for: loaded).joined(separator: "\n")
         } catch {
@@ -729,6 +884,11 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         pinButton.title = detail?.isPinned == true ? "Lösen" : "Anheften"
         starButton.title = detail?.isStarred == true ? "Markierung entfernen" : "Markieren"
         undoButton.isHidden = lastDeletedID == nil
+        let hasSecret = parkedSecret != nil && parkedSecret?.state != .lost
+        fetchButton.isHidden = !hasSecret
+        notSecretButton.isHidden = !hasSecret
+        fetchButton.isEnabled = hasSecret && !isWorkingOnSecret
+        notSecretButton.isEnabled = hasSecret && !isWorkingOnSecret
         exportButton.isEnabled = exportScope != nil
     }
 
@@ -756,21 +916,38 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         }
     }
 
+    /// Builds and writes the document off the main thread; large exports would freeze the window.
     private func export(_ exportScope: ExportScope, to directory: URL) {
-        do {
-            guard let document = try exporter.export(exportScope) else {
-                exportNote = "Nichts zu exportieren."
-                reloadHeader()
-                return
+        guard !isExporting else { return }
+        isExporting = true
+        exportButton.isEnabled = false
+        exportNote = "Export läuft …"
+        reloadHeader()
+        let exporter = exporter
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = Result<(MarkdownDocument, URL)?, Error> {
+                guard let document = try exporter.export(exportScope) else { return nil }
+                return (document, try MarkdownExporter.write(document, to: directory))
             }
-            let url = try MarkdownExporter.write(document, to: directory)
+            await self?.finishExport(result)
+        }
+    }
+
+    private func finishExport(_ result: Result<(MarkdownDocument, URL)?, Error>) {
+        isExporting = false
+        exportButton.isEnabled = exportScope != nil
+        switch result {
+        case .success(nil):
+            exportNote = "Nichts zu exportieren."
+            reloadHeader()
+        case .success(let (document, url)?):
             exportNote =
                 "Exportiert: \(url.lastPathComponent) (\(document.entryCount) Einträge"
                 + (document.withheldSecrets > 0
                     ? ", \(document.withheldSecrets) Secrets nicht exportiert" : "") + ")"
             reloadHeader()
             NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch {
+        case .failure(let error):
             Self.logger.error("Export failed: \(String(describing: error), privacy: .public)")
             exportNote = "Export fehlgeschlagen: \(error.localizedDescription)"
             reloadHeader()
@@ -778,8 +955,84 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     private func reloadHeader() {
-        headerLabel.stringValue = [baseHeader, exportNote, searchNote].filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        headerLabel.stringValue = [baseHeader, exportNote, secretNote, searchNote].filter {
+            !$0.isEmpty
+        }
+        .joined(separator: "\n")
+    }
+
+    /// Copies the secret behind the selected placeholder to the clipboard, fetching it from
+    /// Bitwarden if it no longer sits in the Keychain.
+    @objc private func fetchClicked() {
+        guard let parked = parkedSecret, !isWorkingOnSecret else { return }
+        runSecretAction(working: "Secret wird abgerufen …") { [bitwarden, copyWriter] in
+            let value = try await bitwarden.retrieve(secretID: parked.id)
+            copyWriter.copySecret(value)
+            return "Secret in die Zwischenablage kopiert (wird nach 60 Sekunden entfernt)."
+        }
+    }
+
+    /// Turns the placeholder back into a normal entry after the user confirms.
+    @objc private func notSecretClicked() {
+        guard let parked = parkedSecret, !isWorkingOnSecret else { return }
+        let alert = NSAlert()
+        alert.messageText = "Als „Kein Secret“ markieren?"
+        alert.informativeText =
+            "Der Text wird als normaler Eintrag im Verlauf gespeichert, auch im Suchindex, und künftig nicht mehr gesichert."
+        alert.addButton(withTitle: "Markieren")
+        alert.addButton(withTitle: "Abbrechen")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let contentID = detail?.contentID
+        runSecretAction(working: "Wird zurückgestellt …") { [bitwarden] in
+            try await bitwarden.markNotSecret(id: parked.id)
+            return "Als normaler Eintrag gespeichert."
+        } then: { [weak self] in
+            // The placeholder text changed; reload what is shown.
+            self?.reloadRows()
+            if let contentID { self?.showDetail(contentID: contentID) }
+        }
+    }
+
+    private func runSecretAction(
+        working: String, _ action: @escaping @Sendable () async throws -> String,
+        then reload: (@MainActor () -> Void)? = nil
+    ) {
+        isWorkingOnSecret = true
+        secretNote = working
+        reloadHeader()
+        updateButtons()
+        Task { [weak self] in
+            let message: String
+            do {
+                message = try await action()
+            } catch {
+                Self.logger.error(
+                    "Secret action failed: \(String(describing: error), privacy: .public)")
+                message = Self.secretFailureText(error)
+            }
+            self?.isWorkingOnSecret = false
+            reload?()
+            self?.secretNote = message
+            self?.reloadHeader()
+            self?.updateButtons()
+        }
+    }
+
+    private static func secretFailureText(_ error: Error) -> String {
+        if let error = error as? BitwardenError {
+            switch error {
+            case .locked, .loggedOut:
+                return "Bitwarden ist gesperrt: im Menü unter „Bitwarden“ entsperren."
+            case .notInstalled: return "Bitwarden-CLI („bw“) ist nicht installiert."
+            case .offline: return "Keine Verbindung zu Bitwarden."
+            case .busy: return "Eine Übertragung läuft gerade, bitte gleich nochmal versuchen."
+            default: return "Bitwarden hat nicht geantwortet."
+            }
+        }
+        if error as? ParkingError != nil {
+            return "Das Secret ist nicht mehr auffindbar."
+        }
+        return "Aktion fehlgeschlagen."
     }
 
     @objc private func copyClicked() {

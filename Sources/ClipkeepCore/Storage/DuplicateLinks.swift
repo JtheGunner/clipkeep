@@ -27,6 +27,11 @@ public struct DuplicateConfiguration: Sendable, Equatable {
     public let maximumDistance: Int
     /// Upper bound of links stored per new content, closest first.
     public let maximumLinks: Int
+    /// Most candidates compared per band for a new content. Many near-identical texts fill one
+    /// band bucket, and comparing against all of them makes importing quadratic. Identical
+    /// fingerprints are looked at first, then the newest, so the cap only matters in such
+    /// crowded buckets.
+    public static let candidateBudget = 2_000
 
     public init(maximumDistance: Int = 8, maximumLinks: Int = 5) {
         self.maximumDistance = min(max(maximumDistance, 0), Self.maximumDistanceLimit)
