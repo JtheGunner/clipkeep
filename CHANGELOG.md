@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `bundle-app.sh` signs with a local self-signed certificate when one exists (`./scripts/create-signing-identity.sh`), so rebuilds keep the Keychain approval and the privacy grants. Without it the bundle stays ad-hoc signed.
+
 - Safari tab addresses are read by default; SSH targets are kept out of e-mail detection.
 - The clipboard is polled every 250 ms.
 
