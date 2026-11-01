@@ -27,7 +27,7 @@ Everything stays on your Mac. There is no cloud, no account and no AI at runtime
 | 🗓️ | History window | Days, sessions and topics, entry detail, copy / pin / star / delete with undo |
 | 🔐 | Secret handling | Detected secrets are moved to the Keychain; the history keeps only a placeholder |
 | ⏸️ | Control | Pause capture, ignore apps, add content rules |
-| 📥 | Import | Split a text file into entries («Textdatei importieren …») |
+| 📥 | Import | Split a text file into entries, dated by its date headings («Textdatei importieren …») |
 | 📤 | Export | A session, a topic or a day as Markdown |
 | 🧹 | Upkeep | Sessions, topics and ranking are maintained in the background |
 
