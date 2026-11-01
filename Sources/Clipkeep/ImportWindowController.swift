@@ -213,6 +213,10 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
                 preview.entryCount - preview.secretCount - preview.alreadyStoredCount
                 - preview.tooShortCount - preview.tooLongCount
             var lines = ["\(preview.entryCount) Einträge erkannt, davon neu: \(max(importable, 0))"]
+            lines.append(
+                preview.headingCount > 0
+                    ? "\(preview.headingCount) Datumsüberschriften erkannt: Einträge erhalten das jeweilige Datum"
+                    : "Keine Datumsüberschriften: jeder Block wird eine eigene Session")
             if preview.alreadyStoredCount > 0 {
                 lines.append("\(preview.alreadyStoredCount) schon vorhanden (werden übersprungen)")
             }

@@ -17,6 +17,8 @@ public struct ImportPreview: Sendable, Equatable {
     public let secretBytes: Int
     /// UTF-8 size of all entries.
     public let totalBytes: Int
+    /// Date headings found in the text; 0 means every block becomes a session of its own.
+    public let headingCount: Int
 
     /// From this share of the text on, entries dropped because of a secret deserve a warning.
     public static let largeSecretShare = 0.2
@@ -42,6 +44,8 @@ public struct ImportReport: Sendable, Equatable {
     public var secretsFailed = 0
     public var skipped = 0
     public var wasCancelled = false
+    /// Date headings the entries were dated with; 0 means every block became its own session.
+    public var headingCount = 0
 }
 
 /// Imports a collected text document (for example years of notes in one file) into the history.
@@ -50,10 +54,17 @@ public struct ImportReport: Sendable, Equatable {
 /// (secrets go to the `SecretSink`, or are dropped when there is none, never into the database),
 /// exact duplicate detection and the classifier. Entries get the source "Import" and no live
 /// context. Running the same import again adds nothing.
+///
+/// A text file has no timestamps, so the entries are dated by its structure: entries under a date
+/// heading get that day (see `DateHeading`). A file without such headings gets one session per
+/// block, `blockSpacing` apart, ending at the file date.
 public struct TextImporter: Sendable {
     public static let importBundleID = "li.wuermli.clipkeep.import"
     public static let maximumFileBytes = 200_000_000
     private static let pauseBeforeLive: TimeInterval = 3_600
+    /// Distance between blocks of a file without date headings: just over the pause that ends a
+    /// session, so every block is a session of its own.
+    static let blockSpacing = SessionConfiguration.default.gap + 300
 
     private let database: Database
     private let store: ContentStore
@@ -115,7 +126,8 @@ public struct TextImporter: Sendable {
     public func preview(
         text: String, mode: SplitMode = .automatic, isCancelled: @Sendable () -> Bool = { false }
     ) throws -> ImportPreview {
-        let entries = TextSplitter.split(text, mode: mode)
+        let dated = TextSplitter.splitDated(text, mode: mode)
+        let entries = dated.entries.map(\.text)
         var secrets = 0
         var stored = 0
         var tooShort = 0
@@ -151,12 +163,13 @@ public struct TextImporter: Sendable {
             mode: TextSplitter.resolve(mode, text: text), entryCount: entries.count,
             samples: samples, secretCount: secrets, alreadyStoredCount: stored,
             tooShortCount: tooShort, tooLongCount: tooLong,
-            secretBytes: secretBytes, totalBytes: totalBytes)
+            secretBytes: secretBytes, totalBytes: totalBytes, headingCount: dated.headingCount)
     }
 
     /// - Parameters:
-    ///   - endingAt: time of the last entry; earlier entries follow one second apart in file
-    ///     order, which keeps the order of the document.
+    ///   - endingAt: the latest time an entry may get. Without date headings the last entry
+    ///     ends there and earlier blocks lie `blockSpacing` before each other; with headings no
+    ///     entry lies after it.
     ///   - progress: called with (done, total) every few entries.
     ///   - isCancelled: checked between entries.
     public func run(
@@ -164,10 +177,12 @@ public struct TextImporter: Sendable {
         progress: @Sendable (Int, Int) -> Void = { _, _ in },
         isCancelled: @Sendable () -> Bool = { false }
     ) throws -> ImportReport {
-        let entries = TextSplitter.split(text, mode: mode)
+        let dated = TextSplitter.splitDated(text, mode: mode)
+        let entries = dated.entries.map(\.text)
         let context = CopyContext(
             appBundleID: Self.importBundleID, appName: "Import", windowTitle: source)
         var report = ImportReport()
+        report.headingCount = dated.headingCount
         // The old entries go before everything captured live, with a pause to the first of those,
         // so they never merge into a real session.
         let oldest = try database.read { connection in
@@ -179,7 +194,7 @@ public struct TextImporter: Sendable {
         if let oldest, oldest - Self.pauseBeforeLive < end.timeIntervalSince1970 {
             end = Date(timeIntervalSince1970: oldest - Self.pauseBeforeLive)
         }
-        let start = end.addingTimeInterval(-Double(entries.count))
+        let times = Self.times(for: dated.entries, endingAt: end)
         defer { _ = try? sessions.rebuild() }
         for (index, entry) in entries.enumerated() {
             if isCancelled() {
@@ -187,7 +202,7 @@ public struct TextImporter: Sendable {
                 break
             }
             if index % 200 == 0 { progress(index, entries.count) }
-            let time = start.addingTimeInterval(Double(index + 1))
+            let time = times[index]
             if CaptureStages.lengthSkip(of: entry, configuration: configuration) != nil {
                 report.skipped += 1
             } else if isSecret(entry) {
@@ -206,6 +221,26 @@ public struct TextImporter: Sendable {
         }
         progress(entries.count, entries.count)
         return report
+    }
+
+    /// One time per entry, in file order. Under a heading the entries follow one second apart from
+    /// the heading's moment; without headings each block gets its own session.
+    static func times(for entries: [TextSplitter.DatedEntry], endingAt end: Date) -> [Date] {
+        guard entries.first?.heading != nil else {
+            return entries.indices.map { index in
+                end.addingTimeInterval(-Double(entries.count - 1 - index) * blockSpacing)
+            }
+        }
+        var times: [Date] = []
+        var previous: DateHeading?
+        var offset = 0.0
+        for entry in entries {
+            offset = entry.heading == previous ? offset + 1 : 0
+            previous = entry.heading
+            let moment = entry.heading?.date ?? end
+            times.append(min(moment.addingTimeInterval(offset), end))
+        }
+        return times
     }
 
     private func isSecret(_ text: String) -> Bool {

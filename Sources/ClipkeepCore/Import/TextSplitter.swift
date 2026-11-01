@@ -26,6 +26,44 @@ public enum TextSplitter {
         return joinLabels(entries)
     }
 
+    /// One entry together with the date heading it stands under.
+    struct DatedEntry: Equatable {
+        let text: String
+        /// Nil when the document has no date heading at all.
+        let heading: DateHeading?
+    }
+
+    /// Like `split`, but date headings are taken out of the text and dated onto the entries below
+    /// them. Entries before the first heading belong to that heading. Headings inside an armored
+    /// block are text, not headings.
+    static func splitDated(
+        _ text: String, mode: SplitMode = .automatic
+    ) -> (entries: [DatedEntry], headingCount: Int) {
+        let lines = Self.lines(of: text)
+        let armored = armoredLines(lines)
+        let headings: [(index: Int, heading: DateHeading)] = lines.indices.compactMap { index in
+            guard !armored[index], let heading = DateHeading.parse(lines[index]) else {
+                return nil
+            }
+            return (index, heading)
+        }
+        guard let first = headings.first else {
+            return (split(text, mode: mode).map { DatedEntry(text: $0, heading: nil) }, 0)
+        }
+        // Cut every section the way the whole document would be cut.
+        let resolved = resolve(mode, lines: lines)
+        func entries(_ range: Range<Int>, under heading: DateHeading) -> [DatedEntry] {
+            let section = lines[range].joined(separator: "\n")
+            return split(section, mode: resolved).map { DatedEntry(text: $0, heading: heading) }
+        }
+        var result = entries(0..<first.index, under: first.heading)
+        for (position, current) in headings.enumerated() {
+            let end = position + 1 < headings.count ? headings[position + 1].index : lines.count
+            result += entries((current.index + 1)..<end, under: current.heading)
+        }
+        return (result, headings.count)
+    }
+
     /// Lines inside `-----BEGIN …-----` / `-----END …-----` blocks (keys, certificates). They are
     /// never cut apart, whatever the mode: a key split into pieces would leak the pieces the
     /// secret detector cannot recognise on their own. An unclosed block is not protected.

@@ -74,6 +74,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep.
 - [ ] The preview shows counts, samples and the split mode; changing the mode updates it.
 - [ ] A file in which a long block holds one secret shows the warning about the share of text that is dropped.
 - [ ] Importing creates entries labelled "Import" before the live history; running it again adds nothing.
+- [ ] The preview names the time distribution: with date headings in the file the entries sit on those days, without them every block is a session of its own.
 - [ ] Cancelling mid-import keeps the entries imported so far.
 - [ ] Imported secrets are parked, and the result reports any that could not be parked.
 

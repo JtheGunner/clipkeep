@@ -35,4 +35,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The menu shows a hint when macOS restricts clipboard reading.
 - The import preview warns when secrets take large blocks of text with them.
 - The Markdown export runs in the background, and the import reports secrets that could not be parked instead of counting them as saved.
+- Imported text files are dated by their structure: entries under a date heading (`2024-03-05`, `5.3.2024`, `5. März 2024`, `March 5, 2024`) get that day, and a file without headings gets one session per block. The preview says which applies.
 - The history window can rename, merge and move topics, fetch a parked secret from Bitwarden (copied as concealed and cleared after 60 s) and undo "not a secret".
