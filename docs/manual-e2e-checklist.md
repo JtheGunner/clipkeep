@@ -48,7 +48,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 
 - [ ] The first secret copy asks for notification permission.
 - [ ] Copying a token or private key shows "Secret gesichert" and the history shows only a placeholder.
-- [ ] The "Kein Secret" action works from the notification (asks for authentication) and the text is then stored normally.
+- [ ] The "Kein Secret" action works from the notification without a prompt, as long as the Mac is unlocked, and the text is then stored normally. Reopen the history window afterwards to see it (the window does not refresh by itself yet).
 - [ ] After the undo window has passed, "Rückgängig nicht mehr möglich" appears.
 - [ ] "Secret-Ausnahmen" lists the exception; removing it parks the next copy again.
 - [ ] With notifications denied, secrets are still parked and nothing breaks.
