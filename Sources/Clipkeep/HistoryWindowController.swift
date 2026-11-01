@@ -106,6 +106,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var parkedSecret: ParkedSecret?
     private var isWorkingOnSecret = false
     private var isLoading = false
+    private var refreshTimer: Timer?
+    private var shownChangeToken: String?
 
     init(
         browser: HistoryBrowser, search: SearchService, actions: ItemActions,
@@ -136,9 +138,81 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         lastDeletedID = nil
         reloadEntityMenu()
         reloadLeft()
+        startWatchingForChanges()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(searchField)
+    }
+
+    // MARK: - Keeping up with changes
+
+    private static let refreshInterval: TimeInterval = 2
+
+    /// Copies, the "Kein Secret" notification action and other writers change the database while
+    /// the window is open; a cheap fingerprint tells when the lists are out of date.
+    private func startWatchingForChanges() {
+        shownChangeToken = try? browser.changeToken()
+        guard refreshTimer == nil else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: Self.refreshInterval, repeats: true) {
+            [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshIfChanged() }
+        }
+    }
+
+    private func stopWatchingForChanges() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        stopWatchingForChanges()
+    }
+
+    private func refreshIfChanged() {
+        guard window.isVisible else { return }
+        guard let token = try? browser.changeToken(), token != shownChangeToken else { return }
+        // Wait while the user is mid-action; the next tick looks again.
+        guard !isLoading, !isWorkingOnSecret, !isExporting, query.isEmpty else { return }
+        shownChangeToken = token
+        refreshKeepingView()
+    }
+
+    /// Reloads the lists and puts selection and scroll positions back.
+    private func refreshKeepingView() {
+        let outlineOrigin = outlineScroll.contentView.bounds.origin
+        let tableOrigin = tableScroll.contentView.bounds.origin
+        let keptScope = scope
+        let keptContentID =
+            rows.indices.contains(table.selectedRow)
+            ? rows[table.selectedRow].contentID : nil
+
+        reloadLeft()
+        restoreSelection(scope: keptScope)
+        reloadHeader()
+        outlineScroll.contentView.scroll(to: outlineOrigin)
+        outlineScroll.reflectScrolledClipView(outlineScroll.contentView)
+
+        if let keptContentID, let row = rows.firstIndex(where: { $0.contentID == keptContentID }) {
+            table.selectRowIndexes([row], byExtendingSelection: false)
+        }
+        tableScroll.contentView.scroll(to: tableOrigin)
+        tableScroll.reflectScrolledClipView(tableScroll.contentView)
+    }
+
+    private func restoreSelection(scope kept: HistoryScope) {
+        for row in 0..<outline.numberOfRows {
+            let matches =
+                switch (outline.item(atRow: row), kept) {
+                case (let node as SessionNode, .session(let id)): node.summary.id == id
+                case (let node as DayNode, .day(let day)): node.section.day == day
+                case (let node as TopicNode, .topic(let id)): node.summary.id == id
+                default: false
+                }
+            if matches {
+                outline.selectRowIndexes([row], byExtendingSelection: false)
+                return
+            }
+        }
     }
 
     // MARK: - Building

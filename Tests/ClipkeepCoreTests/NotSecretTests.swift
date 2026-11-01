@@ -76,6 +76,18 @@ private final class ParkedLog: @unchecked Sendable {
         }
     }
 
+    @Test func takingASecretBackChangesTheHistoryChangeToken() async throws {
+        let fixture = try Fixture()
+        let history = HistoryBrowser(database: fixture.database)
+        _ = try fixture.copy(secret, at: base, context: self.browser)
+        let parked = try #require(try fixture.parker.pending().first)
+        let before = try history.changeToken()
+
+        try fixture.parker.markNotSecret(id: parked.id)
+
+        #expect(try history.changeToken() != before)
+    }
+
     @Test func undoingRestoresTheEntryWithAllItsCopies() async throws {
         let fixture = try Fixture()
         _ = try fixture.copy(secret, at: base, context: browser)
