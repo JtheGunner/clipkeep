@@ -18,5 +18,6 @@ jobs:
         run: swift build
       - name: Test (debug)
         run: ./scripts/test.sh
+      # Serial, so a heavy import test cannot slow down a test that asserts a latency budget.
       - name: Test (release, enforces timing budgets)
-        run: ./scripts/test.sh -c release -Xswiftc -enable-testing
+        run: ./scripts/test.sh -c release -Xswiftc -enable-testing --no-parallel
