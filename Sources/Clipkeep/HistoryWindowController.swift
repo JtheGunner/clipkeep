@@ -60,6 +60,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let actions: ItemActions
     private let copyWriter: OwnCopyWriter
     private let topics: TopicService
+    private let secrets: SecretParker
+    private let bitwarden: BitwardenSync
 
     private let window: NSWindow
     private let modeControl = NSSegmentedControl(
@@ -79,6 +81,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let deleteButton = NSButton(title: "Löschen", target: nil, action: nil)
     private let exportButton = NSButton(title: "Exportieren …", target: nil, action: nil)
     private let undoButton = NSButton(title: "Löschen rückgängig", target: nil, action: nil)
+    private let fetchButton = NSButton(title: "Aus Bitwarden abrufen", target: nil, action: nil)
+    private let notSecretButton = NSButton(title: "Kein Secret", target: nil, action: nil)
 
     private var mode = Mode.days
     private var entityChoices: [EntityChoice] = []
@@ -98,14 +102,20 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var exportNote = ""
     private var isExporting = false
     private var searchNote = ""
+    private var secretNote = ""
+    private var parkedSecret: ParkedSecret?
+    private var isWorkingOnSecret = false
     private var isLoading = false
 
     init(
         browser: HistoryBrowser, search: SearchService, actions: ItemActions,
-        exporter: MarkdownExporter, topics: TopicService,
+        exporter: MarkdownExporter, topics: TopicService, secrets: SecretParker,
+        bitwarden: BitwardenSync,
         copyWriter: OwnCopyWriter = OwnCopyWriter()
     ) {
         self.topics = topics
+        self.secrets = secrets
+        self.bitwarden = bitwarden
         self.browser = browser
         self.search = search
         self.exporter = exporter
@@ -242,6 +252,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             (copyButton, #selector(copyClicked)), (pinButton, #selector(pinClicked)),
             (starButton, #selector(starClicked)), (deleteButton, #selector(deleteClicked)),
             (undoButton, #selector(undoClicked)), (exportButton, #selector(exportClicked)),
+            (fetchButton, #selector(fetchClicked)), (notSecretButton, #selector(notSecretClicked)),
         ] {
             button.target = self
             button.action = selector
@@ -249,6 +260,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         }
         let buttons = NSStackView(views: [
             copyButton, pinButton, starButton, deleteButton, undoButton, exportButton,
+            fetchButton, notSecretButton,
         ])
         buttons.orientation = .horizontal
         buttons.spacing = 8
@@ -805,6 +817,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private func showNoDetail() {
         detail = nil
+        parkedSecret = nil
         contentView.string = rows.isEmpty ? "Keine Einträge." : "Eintrag auswählen."
         infoView.string = ""
         updateButtons()
@@ -812,12 +825,17 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private func showDetail(contentID: Int64) {
         lastDeletedID = nil
+        secretNote = ""
+        reloadHeader()
         do {
             guard let loaded = try browser.detail(contentID: contentID) else {
                 showNoDetail()
                 return
             }
             detail = loaded
+            parkedSecret =
+                loaded.kind == ContentKind.secret.rawValue
+                ? try secrets.secret(forContentID: contentID) : nil
             contentView.string = loaded.text
             infoView.string = info(for: loaded).joined(separator: "\n")
         } catch {
@@ -866,6 +884,11 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         pinButton.title = detail?.isPinned == true ? "Lösen" : "Anheften"
         starButton.title = detail?.isStarred == true ? "Markierung entfernen" : "Markieren"
         undoButton.isHidden = lastDeletedID == nil
+        let hasSecret = parkedSecret != nil && parkedSecret?.state != .lost
+        fetchButton.isHidden = !hasSecret
+        notSecretButton.isHidden = !hasSecret
+        fetchButton.isEnabled = hasSecret && !isWorkingOnSecret
+        notSecretButton.isEnabled = hasSecret && !isWorkingOnSecret
         exportButton.isEnabled = exportScope != nil
     }
 
@@ -932,8 +955,84 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     private func reloadHeader() {
-        headerLabel.stringValue = [baseHeader, exportNote, searchNote].filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        headerLabel.stringValue = [baseHeader, exportNote, secretNote, searchNote].filter {
+            !$0.isEmpty
+        }
+        .joined(separator: "\n")
+    }
+
+    /// Copies the secret behind the selected placeholder to the clipboard, fetching it from
+    /// Bitwarden if it no longer sits in the Keychain.
+    @objc private func fetchClicked() {
+        guard let parked = parkedSecret, !isWorkingOnSecret else { return }
+        runSecretAction(working: "Secret wird abgerufen …") { [bitwarden, copyWriter] in
+            let value = try await bitwarden.retrieve(secretID: parked.id)
+            copyWriter.copySecret(value)
+            return "Secret in die Zwischenablage kopiert (wird nach 60 Sekunden entfernt)."
+        }
+    }
+
+    /// Turns the placeholder back into a normal entry after the user confirms.
+    @objc private func notSecretClicked() {
+        guard let parked = parkedSecret, !isWorkingOnSecret else { return }
+        let alert = NSAlert()
+        alert.messageText = "Als „Kein Secret“ markieren?"
+        alert.informativeText =
+            "Der Text wird als normaler Eintrag im Verlauf gespeichert, auch im Suchindex, und künftig nicht mehr gesichert."
+        alert.addButton(withTitle: "Markieren")
+        alert.addButton(withTitle: "Abbrechen")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let contentID = detail?.contentID
+        runSecretAction(working: "Wird zurückgestellt …") { [bitwarden] in
+            try await bitwarden.markNotSecret(id: parked.id)
+            return "Als normaler Eintrag gespeichert."
+        } then: { [weak self] in
+            // The placeholder text changed; reload what is shown.
+            self?.reloadRows()
+            if let contentID { self?.showDetail(contentID: contentID) }
+        }
+    }
+
+    private func runSecretAction(
+        working: String, _ action: @escaping @Sendable () async throws -> String,
+        then reload: (@MainActor () -> Void)? = nil
+    ) {
+        isWorkingOnSecret = true
+        secretNote = working
+        reloadHeader()
+        updateButtons()
+        Task { [weak self] in
+            let message: String
+            do {
+                message = try await action()
+            } catch {
+                Self.logger.error(
+                    "Secret action failed: \(String(describing: error), privacy: .public)")
+                message = Self.secretFailureText(error)
+            }
+            self?.isWorkingOnSecret = false
+            reload?()
+            self?.secretNote = message
+            self?.reloadHeader()
+            self?.updateButtons()
+        }
+    }
+
+    private static func secretFailureText(_ error: Error) -> String {
+        if let error = error as? BitwardenError {
+            switch error {
+            case .locked, .loggedOut:
+                return "Bitwarden ist gesperrt: im Menü unter „Bitwarden“ entsperren."
+            case .notInstalled: return "Bitwarden-CLI („bw“) ist nicht installiert."
+            case .offline: return "Keine Verbindung zu Bitwarden."
+            case .busy: return "Eine Übertragung läuft gerade, bitte gleich nochmal versuchen."
+            default: return "Bitwarden hat nicht geantwortet."
+            }
+        }
+        if error as? ParkingError != nil {
+            return "Das Secret ist nicht mehr auffindbar."
+        }
+        return "Aktion fehlgeschlagen."
     }
 
     @objc private func copyClicked() {

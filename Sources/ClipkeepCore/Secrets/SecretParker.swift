@@ -187,6 +187,11 @@ public struct SecretParker: SecretSink {
         try secrets(where: "id = ?", [.int(id)], limit: 1).first
     }
 
+    /// The secret behind a placeholder entry of the history, if there is one.
+    public func secret(forContentID contentID: Int64) throws -> ParkedSecret? {
+        try secrets(where: "content_id = ?", [.int(contentID)], limit: 1).first
+    }
+
     /// The parked value, for the transfer to the password manager.
     public func reveal(id: Int64) throws -> String {
         guard let secret = try secret(id: id) else { throw ParkingError.notFound }

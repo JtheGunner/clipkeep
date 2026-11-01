@@ -102,6 +102,16 @@ private final class ParkedLog: @unchecked Sendable {
         #expect(context.first?.1 == "https://console.example.com/keys")
     }
 
+    @Test func aPlaceholderEntryLeadsBackToItsParkedSecret() async throws {
+        let fixture = try Fixture()
+        _ = try fixture.copy(secret, at: base, context: browser)
+        let parked = try #require(try fixture.parker.pending().first)
+        let contentID = try #require(parked.contentID)
+
+        #expect(try fixture.parker.secret(forContentID: contentID)?.id == parked.id)
+        #expect(try fixture.parker.secret(forContentID: contentID + 1_000) == nil)
+    }
+
     @Test func theTextIsNotParkedAgainAfterwards() async throws {
         let fixture = try Fixture()
         _ = try fixture.copy(secret, at: base, context: browser)

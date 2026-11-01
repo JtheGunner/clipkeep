@@ -99,7 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         search: SearchService(database: database),
                         actions: ItemActions(database: database),
                         exporter: MarkdownExporter(database: database),
-                        topics: TopicService(database: database)),
+                        topics: TopicService(database: database), secrets: parker,
+                        bitwarden: bitwarden),
                     importer: ImportWindowController(
                         importer: TextImporter(
                             database: database,
