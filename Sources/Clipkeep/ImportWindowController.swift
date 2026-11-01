@@ -220,6 +220,12 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
                 lines.append(
                     "\(preview.secretCount) mögliche Secrets: werden gesichert, nicht importiert")
             }
+            if preview.warnsAboutSecretBlocks {
+                let percent = Int((preview.secretShare * 100).rounded())
+                lines.append(
+                    "⚠︎ Die \(preview.secretCount) Secret-Einträge machen \(percent) % des Textes aus und fallen komplett weg. Ein anderer Trennmodus (z. B. Leerzeilen) schneidet kleinere Blöcke."
+                )
+            }
             let skipped = preview.tooShortCount + preview.tooLongCount
             if skipped > 0 { lines.append("\(skipped) zu kurz oder zu lang (werden übersprungen)") }
             summaryLabel.stringValue = lines.joined(separator: "\n")
@@ -283,6 +289,11 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
             ]
             if report.secrets > 0 {
                 lines.append("\(report.secrets) Secrets gesichert, nicht importiert")
+            }
+            if report.secretsFailed > 0 {
+                lines.append(
+                    "⚠︎ \(report.secretsFailed) Secrets konnten nicht gesichert werden und wurden verworfen"
+                )
             }
             if report.skipped > 0 { lines.append("\(report.skipped) übersprungen") }
             summaryLabel.stringValue = lines.joined(separator: "\n")

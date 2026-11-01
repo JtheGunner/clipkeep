@@ -74,13 +74,19 @@ public struct SecretParker: SecretSink {
     // MARK: - SecretSink
 
     public func handle(secret text: String, context: CopyContext, copiedAt: Date) {
+        _ = park(secret: text, context: context, copiedAt: copiedAt)
+    }
+
+    public func park(secret text: String, context: CopyContext, copiedAt: Date) -> Bool {
         do {
             if let parked = try park(text, context: context, copiedAt: copiedAt) {
                 onParked(parked)
             }
+            return true
         } catch {
             // The secret stays out of the history even when parking fails.
             onError(error)
+            return false
         }
     }
 

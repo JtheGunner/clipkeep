@@ -9,6 +9,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let launchAtLoginItem = NSMenuItem()
     private let errorItem = NSMenuItem()
     private let captureItem = NSMenuItem()
+    private let pasteboardAccess: any PasteboardAccessProvider
+    private let pasteboardItem = NSMenuItem()
     private let systemContext: SystemContext
     private let accessibilityItem = NSMenuItem()
     private let automationItem = NSMenuItem()
@@ -34,9 +36,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var bitwarden: BitwardenSync?
     private var fatalProblem: String?
 
-    init(launchAtLogin: LaunchAtLoginController, systemContext: SystemContext) {
+    init(
+        launchAtLogin: LaunchAtLoginController, systemContext: SystemContext,
+        pasteboardAccess: any PasteboardAccessProvider = SystemPasteboardAccessProvider()
+    ) {
         self.launchAtLogin = launchAtLogin
         self.systemContext = systemContext
+        self.pasteboardAccess = pasteboardAccess
         super.init()
         statusItem.button?.image = NSImage(
             systemSymbolName: "doc.on.clipboard", accessibilityDescription: AppInfo.name)
@@ -91,6 +97,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         captureItem.isEnabled = false
         captureItem.isHidden = true
         menu.addItem(captureItem)
+
+        pasteboardItem.target = self
+        pasteboardItem.action = #selector(openPasteboardSettings)
+        pasteboardItem.isHidden = true
+        menu.addItem(pasteboardItem)
 
         menu.addItem(.separator())
         accessibilityItem.target = self
@@ -157,6 +168,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ignoreAppItem.isEnabled = control != nil && front != nil
         captureItem.title = fatalProblem ?? ""
         captureItem.isHidden = fatalProblem == nil
+        refreshPasteboardAccess()
         refreshIgnoredApps()
         updateIcon()
         let status = systemContext.permissionStatus
@@ -169,6 +181,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         safariItem.state = Self.readsSafari ? .on : .off
         errorItem.title = launchAtLogin.errorMessage ?? ""
         errorItem.isHidden = launchAtLogin.errorMessage == nil
+    }
+
+    /// Warns when macOS asks before each clipboard read or forbids it, since capture then sees nothing.
+    private func refreshPasteboardAccess() {
+        let hint = pasteboardAccess.current().hint
+        pasteboardItem.title = hint ?? ""
+        pasteboardItem.isHidden = hint == nil
+    }
+
+    @objc private func openPasteboardSettings() {
+        openSettings("Privacy_Pasteboard")
     }
 
     /// Enables the pause and ignore items once the database is open.

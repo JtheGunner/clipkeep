@@ -13,6 +13,24 @@ public struct ImportPreview: Sendable, Equatable {
     public let alreadyStoredCount: Int
     public let tooShortCount: Int
     public let tooLongCount: Int
+    /// UTF-8 size of the entries counted in `secretCount`.
+    public let secretBytes: Int
+    /// UTF-8 size of all entries.
+    public let totalBytes: Int
+
+    /// From this share of the text on, entries dropped because of a secret deserve a warning.
+    public static let largeSecretShare = 0.2
+
+    /// Share of the text that goes away together with the entries that contain a secret.
+    public var secretShare: Double {
+        totalBytes > 0 ? Double(secretBytes) / Double(totalBytes) : 0
+    }
+
+    /// True when secrets take a large part of the text with them, as happens when a long block
+    /// holds a single secret.
+    public var warnsAboutSecretBlocks: Bool {
+        secretCount > 0 && secretShare >= Self.largeSecretShare
+    }
 }
 
 public struct ImportReport: Sendable, Equatable {
@@ -20,6 +38,8 @@ public struct ImportReport: Sendable, Equatable {
     public var duplicates = 0
     /// Detected secrets that went to the vault (or were dropped when there is no vault).
     public var secrets = 0
+    /// Detected secrets that could not be stored in the vault; they are in neither place.
+    public var secretsFailed = 0
     public var skipped = 0
     public var wasCancelled = false
 }
@@ -100,15 +120,23 @@ public struct TextImporter: Sendable {
         var stored = 0
         var tooShort = 0
         var tooLong = 0
+        var secretBytes = 0
+        var totalBytes = 0
         var seen = Set<String>()
         for entry in entries {
             if isCancelled() { throw CancellationError() }
+            totalBytes += entry.utf8.count
             let skip = CaptureStages.lengthSkip(of: entry, configuration: configuration)
             if skip == .tooShort { tooShort += 1 }
             if skip == .tooLong { tooLong += 1 }
             guard skip == nil else { continue }
             if isSecret(entry) {
-                if secretSink?.isParked(entry) == true { stored += 1 } else { secrets += 1 }
+                if secretSink?.isParked(entry) == true {
+                    stored += 1
+                } else {
+                    secrets += 1
+                    secretBytes += entry.utf8.count
+                }
             } else if try !seen.insert(ContentHashing.exactHash(entry)).inserted || isStored(entry)
             {
                 stored += 1
@@ -122,7 +150,8 @@ public struct TextImporter: Sendable {
         return ImportPreview(
             mode: TextSplitter.resolve(mode, text: text), entryCount: entries.count,
             samples: samples, secretCount: secrets, alreadyStoredCount: stored,
-            tooShortCount: tooShort, tooLongCount: tooLong)
+            tooShortCount: tooShort, tooLongCount: tooLong,
+            secretBytes: secretBytes, totalBytes: totalBytes)
     }
 
     /// - Parameters:
@@ -165,8 +194,8 @@ public struct TextImporter: Sendable {
                 if secretSink?.isParked(entry) == true {
                     report.duplicates += 1
                 } else {
-                    report.secrets += 1
-                    secretSink?.handle(secret: entry, context: context, copiedAt: time)
+                    let stored = secretSink?.park(secret: entry, context: context, copiedAt: time)
+                    if stored == false { report.secretsFailed += 1 } else { report.secrets += 1 }
                 }
             } else if try isStored(entry) {
                 report.duplicates += 1

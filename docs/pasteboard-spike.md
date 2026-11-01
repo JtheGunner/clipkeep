@@ -36,7 +36,7 @@ the types, the markers, the text length, the front window title and the browser 
    loses fewer copies, because only the latest content of a burst can be read.
 2. **Prompts.** With the access setting on "allow" there is no prompt. The setting can be
    queried (`accessBehavior`, macOS 15.4 and later), so the app can tell the user when it is
-   not "allow" instead of silently seeing nothing. This is tracked as follow-up work.
+   not "allow" instead of silently seeing nothing. The menu shows a hint for "ask" and "deny".
 3. **Optional permissions stay optional.** Accessibility (window titles) and Automation
    (browser addresses) improve grouping but are not required for capture.
 4. **Secrets.** Do not rely on pasteboard markers; the content detector decides.

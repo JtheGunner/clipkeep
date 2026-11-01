@@ -217,6 +217,50 @@ import Testing
         #expect(stored == 1)
     }
 
+    @Test func thePreviewWarnsWhenASecretTakesALargeBlockWithIt() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let big = String(repeating: "note about the project plan\n", count: 40)
+        let text = "short note here\n---\n\(big)export TOKEN=\(token)\n---\nanother short note"
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: text)
+        #expect(preview.secretCount == 1)
+        #expect(preview.secretShare > ImportPreview.largeSecretShare)
+        #expect(preview.warnsAboutSecretBlocks)
+    }
+
+    @Test func thePreviewDoesNotWarnForASmallSecretEntry() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let notes = (1...20).map { "a perfectly normal note number \($0)" }.joined(
+            separator: "\n---\n")
+        let text = notes + "\n---\nexport TOKEN=\(token)"
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: text)
+        #expect(preview.secretCount == 1)
+        #expect(preview.secretShare < ImportPreview.largeSecretShare)
+        #expect(!preview.warnsAboutSecretBlocks)
+    }
+
+    @Test func thePreviewDoesNotWarnWithoutSecrets() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let preview = try TextImporter(database: fixture.database, secretSink: nil)
+            .preview(text: "first note here\n---\nsecond note here")
+        #expect(preview.secretShare == 0)
+        #expect(!preview.warnsAboutSecretBlocks)
+    }
+
+    @Test func parkedSecretsDoNotCountTowardsTheWarning() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let sink = ParkedSink()
+        let preview = try TextImporter(database: fixture.database, secretSink: sink)
+            .preview(text: "export TOKEN=\(token)\n---\nsome other note")
+        #expect(preview.secretCount == 0)
+        #expect(!preview.warnsAboutSecretBlocks)
+    }
+
     @Test func thePreviewShowsOnlyAFewEntriesAndLines() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
@@ -369,6 +413,22 @@ import Testing
         var handled = 0
         func handle(secret text: String, context: CopyContext, copiedAt: Date) { handled += 1 }
         func isParked(_ text: String) -> Bool { true }
+    }
+
+    private final class FailingSink: SecretSink, @unchecked Sendable {
+        func handle(secret text: String, context: CopyContext, copiedAt: Date) {}
+        func park(secret text: String, context: CopyContext, copiedAt: Date) -> Bool { false }
+    }
+
+    @Test func aSecretThatCannotBeParkedIsNotCountedAsSecured() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let importer = TextImporter(database: fixture.database, secretSink: FailingSink())
+        let report = try importer.run(
+            text: "export TOKEN=\(token)\n---\nplain note", source: "n.txt", endingAt: end)
+        #expect(report.secrets == 0)
+        #expect(report.secretsFailed == 1)
+        #expect(report.imported == 1)
     }
 
     @Test func aSecretThatIsAlreadyParkedIsNotParkedAgain() throws {

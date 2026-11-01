@@ -98,7 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         browser: HistoryBrowser(database: database),
                         search: SearchService(database: database),
                         actions: ItemActions(database: database),
-                        exporter: MarkdownExporter(database: database), secrets: parker,
+                        exporter: MarkdownExporter(database: database),
+                        topics: TopicService(database: database), secrets: parker,
                         bitwarden: bitwarden),
                     importer: ImportWindowController(
                         importer: TextImporter(

@@ -219,23 +219,41 @@ public struct ContentStore: Sendable {
         if let fingerprint = analysis.fingerprint, let bands {
             var seen = Set(links.map(\.relatedID))
             var near: [DuplicateLink] = []
-            for (band, value) in bands.enumerated() {
-                let rows = try connection.query(
-                    """
-                    SELECT b.content_id, b.simhash FROM content_bands b
-                    JOIN contents c ON c.id = b.content_id AND c.deleted_at IS NULL
-                    WHERE b.band = ? AND b.value = ? AND b.content_id != ?
-                    """,
-                    [.int(Int64(band)), .int(value), .int(contentID)]
-                ) { (id: $0.int(0), hash: UInt64(bitPattern: $0.int(1))) }
-                for row in rows where seen.insert(row.id).inserted {
-                    let distance = SimHash.distance(fingerprint, row.hash)
-                    if distance <= duplicates.maximumDistance {
-                        near.append(
-                            DuplicateLink(
-                                contentID: contentID, relatedID: row.id, kind: .near,
-                                distance: distance))
+            let signed = Int64(bitPattern: fingerprint)
+            // Identical fingerprints first: they are the closest possible match, and enough of
+            // them end the search without looking at the rest of a crowded bucket.
+            for exact in [true, false] {
+                for (band, value) in bands.enumerated() {
+                    let rows = try connection.query(
+                        """
+                        SELECT b.content_id, b.simhash FROM content_bands b
+                        JOIN contents c ON c.id = b.content_id AND c.deleted_at IS NULL
+                        WHERE b.band = ? AND b.value = ? AND b.content_id != ?
+                            AND (b.simhash = ?) = ?
+                        ORDER BY b.content_id DESC LIMIT ?
+                        """,
+                        [
+                            .int(Int64(band)), .int(value), .int(contentID), .int(signed),
+                            .int(exact ? 1 : 0),
+                            .int(Int64(DuplicateConfiguration.candidateBudget)),
+                        ]
+                    ) { (id: $0.int(0), hash: UInt64(bitPattern: $0.int(1))) }
+                    for row in rows where seen.insert(row.id).inserted {
+                        let distance = SimHash.distance(fingerprint, row.hash)
+                        if distance <= duplicates.maximumDistance {
+                            near.append(
+                                DuplicateLink(
+                                    contentID: contentID, relatedID: row.id, kind: .near,
+                                    distance: distance))
+                        }
                     }
+                }
+                // Enough identical matches: nothing can beat them.
+                if exact,
+                    near.filter({ $0.distance == 0 }).count + links.count
+                        >= duplicates.maximumLinks
+                {
+                    break
                 }
             }
             near.sort { ($0.distance, $0.relatedID) < ($1.distance, $1.relatedID) }
