@@ -34,3 +34,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Near-duplicate detection no longer slows down quadratically on many almost identical texts, and CJK text gets a usable fingerprint.
 - The menu shows a hint when macOS restricts clipboard reading.
 - The import preview warns when secrets take large blocks of text with them.
+- The Markdown export runs in the background, and the import reports secrets that could not be parked instead of counting them as saved.
+- The history window can rename, merge and move topics, fetch a parked secret from Bitwarden (copied as concealed and cleared after 60 s) and undo "not a secret".

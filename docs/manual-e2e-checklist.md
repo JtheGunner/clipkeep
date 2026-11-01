@@ -60,7 +60,12 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep.
 - [ ] "Verlauf öffnen …" lists days, sessions and topics; the detail view shows the entry with its context.
 - [ ] Copy, pin, star and delete work; the undo restores a deleted entry.
 - [ ] Search inside the window finds entries by substring.
-- [ ] Topic management and the Bitwarden fetch are available once they are wired in; tick them when they ship.
+- [ ] Right-click a topic: "Thema umbenennen …" renames it (an empty name restores the automatic label) and "Mit anderem Thema zusammenführen …" moves all its sessions into the chosen topic.
+- [ ] Right-click a session: "In anderes Thema verschieben …" and "Eigenes Thema daraus machen" work; a manual change is not undone by the next rebuild of the topics.
+- [ ] While more days can still be loaded, the header of the last day reads "N+ Sessions"; after scrolling to the end it shows the exact number.
+- [ ] A parked secret shows "Aus Bitwarden abrufen": the value lands in the clipboard, is not recorded again, is skipped by a clipboard manager and is cleared after 60 seconds unless something else was copied.
+- [ ] With Bitwarden locked, without the CLI or offline, the window header explains it instead of failing silently.
+- [ ] "Kein Secret" in the window asks for confirmation and restores the entry as a normal one.
 - [ ] "Exportieren …" writes a Markdown file for a session, a day and a topic; the window stays responsive during a large export; parked secrets are not in the file.
 
 ## 7. Import
