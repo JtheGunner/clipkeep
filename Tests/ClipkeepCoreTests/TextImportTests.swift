@@ -262,6 +262,13 @@ import Testing
         #expect(split.entries[0].text.contains("2024-03-06"))
     }
 
+    @Test func aLabelStaysWithItsValueAcrossAHeading() {
+        let split = TextSplitter.splitDated("2024-03-05\nPasswort:\n2024-03-06\nhunter2 value")
+        #expect(split.entries.count == 1)
+        #expect(split.entries[0].text.contains("Passwort:"))
+        #expect(split.entries[0].text.contains("hunter2"))
+    }
+
     @Test func aDocumentWithoutHeadingsGivesNoHeadings() {
         let split = TextSplitter.splitDated("one\n---\ntwo")
         #expect(split.headingCount == 0)

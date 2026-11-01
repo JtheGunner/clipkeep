@@ -61,7 +61,25 @@ public enum TextSplitter {
             let end = position + 1 < headings.count ? headings[position + 1].index : lines.count
             result += entries((current.index + 1)..<end, under: current.heading)
         }
-        return (result, headings.count)
+        return (joinLabels(across: result), headings.count)
+    }
+
+    /// A label at the end of one section belongs to the first entry of the next, like inside a
+    /// section; the joined entry keeps the label's heading.
+    private static func joinLabels(across entries: [DatedEntry]) -> [DatedEntry] {
+        var result: [DatedEntry] = []
+        var index = 0
+        while index < entries.count {
+            var current = entries[index]
+            while index + 1 < entries.count, endsWithLabel(current.text) {
+                index += 1
+                current = DatedEntry(
+                    text: current.text + "\n" + entries[index].text, heading: current.heading)
+            }
+            result.append(current)
+            index += 1
+        }
+        return result
     }
 
     /// Lines inside `-----BEGIN …-----` / `-----END …-----` blocks (keys, certificates). They are
