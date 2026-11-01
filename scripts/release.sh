@@ -6,7 +6,8 @@
 #
 # NOTARY_PROFILE names a keychain profile created once with
 #   xcrun notarytool store-credentials <name> --apple-id <id> --team-id <team>
-# Without CODESIGN_IDENTITY the zip is signed ad hoc and Gatekeeper will warn on other Macs.
+# Without a Developer ID the zip is signed with the local identity or ad hoc, and Gatekeeper will
+# warn on other Macs (see "Installation" in the README).
 # Without NOTARY_PROFILE the app is signed but not notarised.
 set -euo pipefail
 
@@ -21,7 +22,7 @@ zip="build/Clipkeep-$VERSION.zip"
 codesign --verify --deep --strict "$app"
 
 if [[ -n "${NOTARY_PROFILE:-}" ]]; then
-  if [[ "$identity" == "-" ]]; then
+  if [[ "$identity" != Developer\ ID\ Application:* ]]; then
     echo "Notarisation needs CODESIGN_IDENTITY (a Developer ID certificate)." >&2
     exit 1
   fi

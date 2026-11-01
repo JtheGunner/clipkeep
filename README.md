@@ -39,19 +39,34 @@ Requirements: macOS 14 or newer and the Xcode Command Line Tools (full Xcode is 
 
 ```bash
 swift build                 # debug build
-./scripts/bundle-app.sh     # release build, assembled as build/Clipkeep.app (ad-hoc signed)
+./scripts/bundle-app.sh     # release build, assembled as build/Clipkeep.app
 open build/Clipkeep.app
 ```
 
-A bundle is required for "launch at login". The ad-hoc signature is enough to run locally; it is not notarised.
+A bundle is required for "launch at login". See [Installation](#-installation) for how the app is signed and installed.
 
 To build a distributable zip, run `VERSION=1.0.0 ./scripts/release.sh`. With a Developer ID certificate (`CODESIGN_IDENTITY`) it signs with the hardened runtime, and with a `notarytool` keychain profile (`NOTARY_PROFILE`) it also notarises and staples the app. See the header of the script.
 
 | | Command | Purpose |
 |---|---|---|
+| 🔏 | `./scripts/create-signing-identity.sh` | Create the local code-signing certificate, once |
 | 🧪 | `./scripts/test.sh` | Run the test suite (`-c release -Xswiftc -enable-testing` for release mode) |
 | 🎨 | `./scripts/lint.sh` | Check formatting with swift-format (`--fix` rewrites files) |
 | 📏 | `./scripts/eval.sh` | Search-quality evaluation, see [`eval/README.md`](eval/README.md) |
+
+---
+
+## 📦 Installation
+
+Without an Apple Developer ID the app cannot be notarised, but it installs fine from source.
+
+1. **Create a signing certificate once:** `./scripts/create-signing-identity.sh`. It makes a self-signed code-signing certificate in your login keychain and asks for your login password to trust it.
+2. **Build and install:** `./scripts/bundle-app.sh`, then copy `build/Clipkeep.app` to `/Applications`. A bundle built on your own Mac has no quarantine flag, so Gatekeeper does not warn.
+3. **Rebuild freely:** `bundle-app.sh` signs with that certificate automatically. The signing identity stays the same, so the Keychain approval and the Accessibility and Automation grants survive an update.
+
+Without the certificate the bundle is signed ad hoc. That also runs, but macOS treats every build as a new app and asks for the Keychain approval and the privacy grants again.
+
+**On another Mac:** run `VERSION=1.0.0 ./scripts/release.sh` and send `build/Clipkeep-1.0.0.zip`. Gatekeeper blocks the first launch of an app from outside the App Store. Open it with a right click → "Open", or clear the quarantine flag once with `xattr -dr com.apple.quarantine Clipkeep.app`.
 
 ---
 

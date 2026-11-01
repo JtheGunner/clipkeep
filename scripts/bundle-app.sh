@@ -6,7 +6,10 @@
 #   VERSION            marketing version (default 0.1.0)
 #   BUILD_NUMBER       bundle version (default 1)
 #   CODESIGN_IDENTITY  signing identity, e.g. "Developer ID Application: Name (TEAMID)".
-#                      The default "-" signs ad hoc, which is enough to run locally.
+#                      Default: the identity "Clipkeep Local Signing" if
+#                      ./scripts/create-signing-identity.sh has created it, else "-" (ad hoc).
+#                      An ad-hoc signature changes with every build, so macOS asks for the
+#                      Keychain approval and the privacy grants again after each one.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -15,7 +18,15 @@ bin_dir="$(swift build -c release --show-bin-path)"
 app="build/Clipkeep.app"
 version="${VERSION:-0.1.0}"
 build_number="${BUILD_NUMBER:-1}"
-identity="${CODESIGN_IDENTITY:--}"
+local_identity="Clipkeep Local Signing"
+identity="${CODESIGN_IDENTITY:-}"
+if [[ -z "$identity" ]]; then
+  if security find-identity -v -p codesigning | grep -qF "\"$local_identity\""; then
+    identity="$local_identity"
+  else
+    identity="-"
+  fi
+fi
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
@@ -42,11 +53,13 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-if [[ "$identity" == "-" ]]; then
-  codesign --force --deep --sign - "$app"
-else
+if [[ "$identity" == Developer\ ID\ Application:* ]]; then
   # Hardened runtime and a secure timestamp are required for notarization.
   codesign --force --deep --options runtime --timestamp \
     --entitlements Resources/Clipkeep.entitlements --sign "$identity" "$app"
+else
+  # Ad hoc or a self-signed identity. No hardened runtime: its library validation would refuse
+  # the embedded SQLCipher framework, which has no team identifier to match.
+  codesign --force --deep --sign "$identity" "$app"
 fi
-echo "Built $app"
+echo "Built $app (signed with: $identity)"
