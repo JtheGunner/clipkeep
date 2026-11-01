@@ -236,17 +236,29 @@ import Testing
     }
 
     @Test func manyNearIdenticalTextsDoNotSlowDownEachOther() throws {
-        let (store, temp) = try makeStore()
-        defer { temp.remove() }
-        let started = Date()
-        var last: RecordedCopy?
-        for number in 0..<1_500 {
-            last = try store.record(text: article + " revision \(number)")
+        // Storing many near-identical texts is slow in itself, so a fixed wall-clock budget
+        // mostly measures the CI runner. Linking is compared with the same import without
+        // linking on the same machine instead: an unbounded candidate search made it more than
+        // twice as slow, the bounded one adds little.
+        let count = 2_000
+        func importTexts(_ configuration: DuplicateConfiguration) throws -> (
+            seconds: Double, links: [DuplicateLink]
+        ) {
+            let (store, temp) = try makeStore(configuration)
+            defer { temp.remove() }
+            let started = Date()
+            var last: RecordedCopy?
+            for number in 0..<count {
+                last = try store.record(text: article + " revision \(number)")
+            }
+            let seconds = Date().timeIntervalSince(started)
+            return (seconds, try store.duplicateLinks(of: try #require(last).contentID))
         }
-        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(15))
-        let links = try store.duplicateLinks(of: try #require(last).contentID)
-        #expect(!links.isEmpty)
-        #expect(links.count <= DuplicateConfiguration.default.maximumLinks)
+        let withoutLinking = try importTexts(DuplicateConfiguration(maximumLinks: 0))
+        let withLinking = try importTexts(.default)
+        #expect(withLinking.seconds < withoutLinking.seconds * 1.5)
+        #expect(!withLinking.links.isEmpty)
+        #expect(withLinking.links.count <= DuplicateConfiguration.default.maximumLinks)
     }
 
     @Test func bandsAreIndexedEvenWhileLinkingIsOff() throws {
