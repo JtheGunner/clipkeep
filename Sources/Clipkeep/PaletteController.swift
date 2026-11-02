@@ -71,6 +71,7 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         table.target = self
         table.action = #selector(rowClicked)
         table.selectionHighlightStyle = .regular
+        table.style = .inset
         // Keyboard focus stays in the search field, so Esc and Return always reach it.
         table.refusesFirstResponder = true
 
@@ -220,8 +221,15 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         stack.alignment = .leading
         stack.spacing = Metrics.Space.xxs
         stack.edgeInsets = NSEdgeInsets(
-            top: Metrics.Space.xs, left: Metrics.Space.s, bottom: Metrics.Space.xs,
+            top: Metrics.Space.xs, left: Metrics.Space.xs, bottom: Metrics.Space.xs,
             right: Metrics.Space.s)
-        return stack
+        let icon = Symbols.typeIcon(row.symbolName, named: row.typeName)
+        let line = NSStackView(views: [icon, stack])
+        line.orientation = .horizontal
+        line.alignment = .centerY
+        line.spacing = Metrics.Space.s
+        line.edgeInsets = NSEdgeInsets(
+            top: 0, left: Metrics.Space.s, bottom: 0, right: 0)
+        return line
     }
 }

@@ -220,14 +220,25 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         sampleView.font = Typography.monoSmall
         sampleView.textColor = .labelColor
         sampleView.drawsBackground = false
-        sampleView.textContainerInset = Metrics.textInset
+        sampleView.textContainerInset = Metrics.cardTextInset
         sampleView.isVerticallyResizable = true
         sampleView.autoresizingMask = [.width]
         sampleView.textContainer?.widthTracksTextView = true
         let scroll = NSScrollView()
         scroll.documentView = sampleView
         scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
+        scroll.borderType = .noBorder
+        scroll.drawsBackground = false
+        let sampleCard = BackgroundView(
+            color: .tertiarySystemFill, cornerRadius: Metrics.Radius.card)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        sampleCard.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: sampleCard.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: sampleCard.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: sampleCard.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: sampleCard.bottomAnchor),
+        ])
 
         progress.isIndeterminate = false
         progress.minValue = 0
@@ -243,7 +254,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         buttons.spacing = Metrics.Space.s
 
         let stack = NSStackView(views: [
-            fileLabel, modeRow, summaryLabel, scroll, progress, buttons,
+            fileLabel, modeRow, summaryLabel, sampleCard, progress, buttons,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -253,7 +264,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
             right: Metrics.Space.l)
         buttons.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = stack
-        for view in [scroll, progress, summaryLabel] {
+        for view in [sampleCard, progress, summaryLabel] {
             view.translatesAutoresizingMaskIntoConstraints = false
             view.widthAnchor.constraint(
                 equalTo: stack.widthAnchor, constant: -2 * Metrics.Space.l
@@ -262,8 +273,10 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         buttons.trailingAnchor.constraint(
             equalTo: stack.trailingAnchor, constant: -Metrics.Space.l
         ).isActive = true
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: Metrics.Pane.sampleMinHeight)
-            .isActive = true
+        sampleCard.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: Metrics.Pane.sampleMinHeight
+        )
+        .isActive = true
     }
 
     // MARK: - Preview

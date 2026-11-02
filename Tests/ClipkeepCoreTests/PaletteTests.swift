@@ -54,6 +54,8 @@ import Testing
 
     @Test func theSubtitleHasAppTypeAndCount() {
         let row = PaletteRow(hit: hit(kind: "url", count: 3), now: now, calendar: calendar)
+        #expect(row.symbolName == "link")
+        #expect(row.typeName == "Link")
         #expect(row.subtitle == "Safari · gerade eben · Link · 3×")
         let noApp = PaletteRow(hit: hit(app: nil), now: now, calendar: calendar)
         #expect(noApp.subtitle == "gerade eben · Text")
