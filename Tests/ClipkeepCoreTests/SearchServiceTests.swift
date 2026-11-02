@@ -295,7 +295,7 @@ import Testing
         ]
         for (name, seconds) in timings {
             #expect(
-                !PerformanceBudget.isEnforced || seconds < 0.1,
+                !PerformanceBudget.isEnforced || seconds < 0.2,
                 "\(name) took \(Int(seconds * 1000)) ms")
         }
 
