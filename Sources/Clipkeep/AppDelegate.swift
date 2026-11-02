@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         topics: TopicService(database: database), secrets: parker,
                         bitwarden: bitwarden),
                     importer: ImportWindowController(
+                        remover: ImportRemover(database: database),
                         importer: TextImporter(
                             database: database,
                             // Its own parker: an import of many secrets must not raise one

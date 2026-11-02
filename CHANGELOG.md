@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Import of collected text files with preview, secret handling and duplicate detection.
 - Background maintenance jobs for sessions, topics and ranking.
 - Evaluation harness with a synthetic gold set (`./scripts/eval.sh`).
+- "Import löschen …" in the menu deletes the entries of one imported file at once, keeps entries that existed before and offers an undo right after.
 - Release script with optional Developer ID signing and notarisation (`./scripts/release.sh`).
 
 ### Changed

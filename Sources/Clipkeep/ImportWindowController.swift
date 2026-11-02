@@ -20,6 +20,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         subsystem: AppInfo.bundleIdentifier, category: "import")
 
     private let importer: TextImporter
+    private let remover: ImportRemover
     private let window: NSWindow
     private let fileLabel = NSTextField(labelWithString: "")
     private let modeMenu = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -42,8 +43,9 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         (.blankLines, "Leerzeilen"), (.everyLine, "Jede Zeile"),
     ]
 
-    init(importer: TextImporter) {
+    init(remover: ImportRemover, importer: TextImporter) {
         self.importer = importer
+        self.remover = remover
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: true)
@@ -69,6 +71,91 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         load(url)
+    }
+
+    // MARK: - Removing an import
+
+    /// Lists the imported files and deletes the chosen one after a confirmation. The result
+    /// offers an undo while the dialog is still on screen.
+    func removeImports() {
+        let imports: [ImportedSource]
+        do {
+            imports = try remover.imports()
+        } catch {
+            Self.logger.error(
+                "Listing imports failed: \(String(describing: error), privacy: .public)")
+            showMessage("Importe konnten nicht geladen werden.")
+            return
+        }
+        guard !imports.isEmpty else {
+            showMessage("Es gibt keine importierten Einträge.")
+            return
+        }
+        let format = DateFormatter()
+        format.dateStyle = .medium
+        format.timeStyle = .none
+        let choice = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 360, height: 26))
+        for item in imports {
+            let count = item.entryCount == 1 ? "1 Eintrag" : "\(item.entryCount) Einträge"
+            choice.addItem(
+                withTitle: "\(item.source) – \(count), \(format.string(from: item.lastEntryAt))")
+        }
+        let alert = NSAlert()
+        alert.messageText = "Import löschen"
+        alert.informativeText =
+            "Löscht die Einträge, die nur aus diesem Import stammen. Einträge, die es schon vorher gab, bleiben."
+        alert.accessoryView = choice
+        alert.addButton(withTitle: "Löschen …")
+        alert.addButton(withTitle: "Abbrechen")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn,
+            imports.indices.contains(choice.indexOfSelectedItem)
+        else { return }
+        confirmRemoval(of: imports[choice.indexOfSelectedItem])
+    }
+
+    private func confirmRemoval(of item: ImportedSource) {
+        let count = item.entryCount == 1 ? "1 Eintrag" : "\(item.entryCount) Einträge"
+        let confirm = NSAlert()
+        confirm.messageText = "\(count) aus „\(item.source)“ löschen?"
+        confirm.informativeText = "Gelöschte Einträge werden nach 30 Tagen endgültig entfernt."
+        confirm.addButton(withTitle: "Löschen")
+        confirm.addButton(withTitle: "Abbrechen")
+        guard confirm.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            let removed = try remover.remove(source: item.source)
+            let done = NSAlert()
+            done.messageText =
+                removed.count == 1 ? "1 Eintrag gelöscht" : "\(removed.count) Einträge gelöscht"
+            done.addButton(withTitle: "OK")
+            if !removed.isEmpty { done.addButton(withTitle: "Rückgängig") }
+            if done.runModal() == .alertSecondButtonReturn { restore(removed) }
+        } catch {
+            Self.logger.error(
+                "Removing an import failed: \(String(describing: error), privacy: .public)")
+            showMessage("Import konnte nicht gelöscht werden.")
+        }
+    }
+
+    private func restore(_ ids: [Int64]) {
+        do {
+            try remover.restore(ids)
+            showMessage(
+                ids.count == 1
+                    ? "1 Eintrag wiederhergestellt" : "\(ids.count) Einträge wiederhergestellt")
+        } catch {
+            Self.logger.error(
+                "Restoring an import failed: \(String(describing: error), privacy: .public)")
+            showMessage("Einträge konnten nicht wiederhergestellt werden.")
+        }
+    }
+
+    private func showMessage(_ text: String) {
+        let alert = NSAlert()
+        alert.messageText = text
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     private func load(_ url: URL) {
