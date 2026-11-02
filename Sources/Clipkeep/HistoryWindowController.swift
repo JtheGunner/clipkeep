@@ -1128,7 +1128,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
         -> NSView?
     {
-        Self.listCell(Self.twoLines(rows[row].title, rows[row].subtitle))
+        let entry = rows[row]
+        return Self.listCell(Self.twoLines(entry.title, entry.subtitle), icon: kindIcon(of: entry))
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
@@ -1146,14 +1147,35 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         showDetail(contentID: rows[index].contentID)
     }
 
-    /// An entry row: the text inset from the card's edge and centred in the row.
-    private static func listCell(_ content: NSView) -> NSView {
+    /// The type icon of an entry row; the tooltip and the VoiceOver label name the type.
+    private func kindIcon(of entry: HistoryRow) -> NSView {
+        let icon = NSImageView(image: Symbols.image(entry.symbolName, entry.typeName) ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: Metrics.Pane.parentIconSize, weight: .regular)
+        icon.imageScaling = .scaleProportionallyDown
+        icon.toolTip = entry.typeName
+        icon.setAccessibilityLabel(entry.typeName)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: Metrics.Control.icon),
+            icon.heightAnchor.constraint(equalToConstant: Metrics.Control.icon),
+        ])
+        return icon
+    }
+
+    /// An entry row: the type icon, then the text, inset from the card's edge and centred in the row.
+    private static func listCell(_ content: NSView, icon: NSView) -> NSView {
         let cell = NSView()
         content.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(icon)
         cell.addSubview(content)
         NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(
+            icon.leadingAnchor.constraint(
                 equalTo: cell.leadingAnchor, constant: Metrics.Space.m),
+            icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            content.leadingAnchor.constraint(
+                equalTo: icon.trailingAnchor, constant: Metrics.Space.s),
             content.trailingAnchor.constraint(
                 equalTo: cell.trailingAnchor, constant: -Metrics.Space.m),
             content.centerYAnchor.constraint(equalTo: cell.centerYAnchor),

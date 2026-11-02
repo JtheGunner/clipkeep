@@ -446,6 +446,16 @@ import Testing
         #expect(fromEntry.title == "pinned note text")
         #expect(fromEntry.subtitle == "15.01.2027 09:00 · Notes · Text · angeheftet · markiert")
         #expect(fromHit.isPinned && fromHit.isStarred)
+        #expect(fromEntry.typeName == "Text")
+        #expect(fromEntry.symbolName == "text.alignleft")
+    }
+
+    @Test func everyContentKindHasItsOwnSymbol() {
+        let names = ContentKind.allCases.map { HistoryRow.symbolName(for: $0.rawValue) }
+        #expect(Set(names).count == ContentKind.allCases.count)
+        #expect(HistoryRow.symbolName(for: "url") == "link")
+        #expect(HistoryRow.symbolName(for: "secret") == "lock")
+        #expect(HistoryRow.symbolName(for: "unknown") == "text.alignleft")
     }
 
     // MARK: - Scale
