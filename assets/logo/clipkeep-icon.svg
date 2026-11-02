@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Clipkeep app icon</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16232e"/>
+      <stop offset="1" stop-color="#0a1016"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#3f8f95"/>
+      <stop offset="1" stop-color="#9cc6a0"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".09"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="knockout" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+      <rect width="200" height="200" fill="#fff"/>
+      <polyline points="90,112 102,126 138,83" fill="none" stroke="#000" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+      <polygon points="152,68 146.7,90.2 130.5,75.4" fill="#000" stroke="#000" stroke-width="18" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g transform="translate(100 100) scale(4.12)">
+    <rect width="200" height="200" rx="46" fill="url(#tile)"/>
+    <g mask="url(#knockout)">
+      <rect x="48" y="50" width="104" height="114" rx="16" fill="none" stroke="url(#stroke)" stroke-width="8"/>
+      <rect x="82" y="36" width="36" height="20" rx="7" fill="#56a3a6"/>
+    </g>
+    <polyline points="62,140 90,112 102,126 138,83" fill="none" stroke="url(#stroke)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="152,68 146.7,90.2 130.5,75.4" fill="#9cc6a0" stroke="#9cc6a0" stroke-width="5" stroke-linejoin="round"/>
+    <rect width="200" height="200" rx="46" fill="url(#gloss)"/>
+    <rect x=".75" y=".75" width="198.5" height="198.5" rx="45.5" fill="none" stroke="#fff" stroke-opacity=".1" stroke-width="1.5"/>
+  </g>
+</svg>
