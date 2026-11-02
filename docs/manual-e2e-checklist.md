@@ -88,6 +88,9 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 Needs the `bw` CLI and a test vault; never use your main vault.
 
 - [ ] Without `bw`, the status line says it is not installed and parked secrets stay in the Keychain.
+- [ ] Without `bw` but with Homebrew, "Bitwarden-CLI installieren …" is offered; cancelling the dialog installs nothing, confirming installs `bw` and the status updates without a restart, and the item disappears.
+- [ ] Without `bw` and without Homebrew, no install item is offered; only the "not installed" status shows.
+- [ ] A failing installation (e.g. offline) shows a short message without paths, and the item stays available.
 - [ ] Logged out: the status says to run `bw login` in a terminal.
 - [ ] "Entsperren und Secrets übertragen …" with a wrong master password shows "Masterpasswort falsch".
 - [ ] With the right password, parked secrets appear as secure notes in the vault and the count is reported.

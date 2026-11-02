@@ -75,7 +75,7 @@ Without the certificate the bundle is signed ad hoc. That also runs, but macOS t
 - **Local only.** Clipkeep makes no network connections and uses no AI model.
 - **Encrypted history.** The database is SQLCipher-encrypted at `~/Library/Application Support/Clipkeep/clipkeep.db`. Its key is stored in the macOS Keychain.
 - **Secrets are parked.** Passwords, tokens and keys that Clipkeep recognises are stored in the Keychain; the database only holds a placeholder and a fingerprint for duplicate detection.
-- **Optional Bitwarden transfer.** If the `bw` command-line client is installed, a parked secret can be handed to your Bitwarden vault.
+- **Optional Bitwarden transfer.** If the `bw` command-line client is installed, a parked secret can be handed to your Bitwarden vault. If it is missing and Homebrew is available, the Bitwarden menu offers to install it.
 - **Content is never logged.** Error logs contain error descriptions only.
 
 > [!NOTE]

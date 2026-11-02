@@ -24,6 +24,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenTransferItem = NSMenuItem()
     private let bitwardenLockItem = NSMenuItem()
     private let bitwardenMessageItem = NSMenuItem()
+    private let bitwardenInstallItem = NSMenuItem()
+    private let bitwardenInstaller: any BitwardenInstalling = HomebrewBitwardenInstaller()
     private let paletteItem = NSMenuItem()
     private var palette: PaletteController?
     private let historyItem = NSMenuItem()
@@ -151,6 +153,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         bitwardenMessageItem.isHidden = true
         menu.addItem(bitwardenMessageItem)
         menu.addItem(.separator())
+        bitwardenInstallItem.title = "Bitwarden-CLI installieren …"
+        bitwardenInstallItem.target = self
+        bitwardenInstallItem.action = #selector(installBitwardenCLI)
+        bitwardenInstallItem.isHidden = true
+        menu.addItem(bitwardenInstallItem)
         bitwardenUnlockItem.title = "Entsperren und Secrets übertragen …"
         bitwardenUnlockItem.target = self
         bitwardenUnlockItem.action = #selector(unlockBitwarden)
@@ -298,6 +305,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func showBitwardenStatus(_ result: Result<BitwardenStatus, BitwardenError>) {
         var unlocked = false
         var canUnlock = false
+        var canInstall = false
         switch result {
         case .success(.unlocked):
             bitwardenStatusItem.title = "Bitwarden: entsperrt"
@@ -311,7 +319,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .failure(let error):
             bitwardenStatusItem.title = "Bitwarden: " + Self.describe(error)
             canUnlock = error != .notInstalled && error != .loggedOut
+            // Only offered when Homebrew can do it; otherwise the status stays as it is.
+            canInstall = error == .notInstalled && bitwardenInstaller.isAvailable
         }
+        bitwardenInstallItem.isHidden = !canInstall
+        bitwardenInstallItem.isEnabled = canInstall
         bitwardenUnlockItem.isEnabled = canUnlock
         bitwardenTransferItem.isEnabled = unlocked
         bitwardenLockItem.isEnabled = unlocked
@@ -371,6 +383,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 self?.showBitwardenFailure(.commandFailed)
             }
         }
+    }
+
+    @objc private func installBitwardenCLI() {
+        let alert = NSAlert()
+        alert.messageText = "Bitwarden-CLI installieren"
+        alert.informativeText =
+            "Clipkeep führt „brew install bitwarden-cli“ aus. Das kann einige Minuten dauern."
+        alert.addButton(withTitle: "Installieren")
+        alert.addButton(withTitle: "Abbrechen")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        bitwardenInstallItem.isEnabled = false
+        bitwardenStatusItem.title = "Bitwarden-CLI wird installiert …"
+        let installer = bitwardenInstaller
+        Task { [weak self] in
+            do {
+                try await installer.install()
+                self?.bitwardenMessageItem.isHidden = true
+            } catch let error as BitwardenInstallError {
+                self?.showInstallFailure(error)
+            } catch {
+                self?.showInstallFailure(.failed)
+            }
+            self?.refreshBitwarden()
+        }
+    }
+
+    private func showInstallFailure(_ error: BitwardenInstallError) {
+        bitwardenMessageItem.title =
+            switch error {
+            case .failed: "Installation der Bitwarden-CLI fehlgeschlagen"
+            case .timedOut: "Installation der Bitwarden-CLI dauert zu lange"
+            }
+        bitwardenMessageItem.isHidden = false
     }
 
     @objc private func transferToBitwarden() {
