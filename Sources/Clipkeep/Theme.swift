@@ -117,7 +117,7 @@ enum Symbols {
     }
 
     /// The icon of an entry's type in a list row; the tooltip and the VoiceOver label name the type.
-    static func typeIcon(_ symbol: String, named typeName: String) -> NSView {
+    @MainActor static func typeIcon(_ symbol: String, named typeName: String) -> NSView {
         let icon = NSImageView(image: image(symbol, typeName) ?? NSImage())
         icon.contentTintColor = .secondaryLabelColor
         icon.symbolConfiguration = NSImage.SymbolConfiguration(
