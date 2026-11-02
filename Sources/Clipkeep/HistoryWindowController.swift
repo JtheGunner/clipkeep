@@ -48,31 +48,6 @@ private final class ListRowView: NSTableRowView {
     }
 }
 
-/// A view filled with a dynamic colour that follows light and dark appearance.
-private final class BackgroundView: NSView {
-    private let color: NSColor
-
-    init(color: NSColor, cornerRadius: CGFloat = 0) {
-        self.color = color
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = cornerRadius
-        layer?.masksToBounds = cornerRadius > 0
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-
-    override var wantsUpdateLayer: Bool { true }
-
-    override func updateLayer() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = color.cgColor
-        }
-    }
-}
-
 // MARK: - Outline nodes
 
 /// Outline items need object identity, so the value types are wrapped.
@@ -1129,7 +1104,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         -> NSView?
     {
         let entry = rows[row]
-        return Self.listCell(Self.twoLines(entry.title, entry.subtitle), icon: kindIcon(of: entry))
+        return Self.listCell(
+            Self.twoLines(entry.title, entry.subtitle),
+            icon: Symbols.typeIcon(entry.symbolName, named: entry.typeName))
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
@@ -1145,23 +1122,6 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             return
         }
         showDetail(contentID: rows[index].contentID)
-    }
-
-    /// The type icon of an entry row; the tooltip and the VoiceOver label name the type.
-    private func kindIcon(of entry: HistoryRow) -> NSView {
-        let icon = NSImageView(image: Symbols.image(entry.symbolName, entry.typeName) ?? NSImage())
-        icon.contentTintColor = .secondaryLabelColor
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(
-            pointSize: Metrics.Pane.parentIconSize, weight: .regular)
-        icon.imageScaling = .scaleProportionallyDown
-        icon.toolTip = entry.typeName
-        icon.setAccessibilityLabel(entry.typeName)
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            icon.widthAnchor.constraint(equalToConstant: Metrics.Control.icon),
-            icon.heightAnchor.constraint(equalToConstant: Metrics.Control.icon),
-        ])
-        return icon
     }
 
     /// An entry row: the type icon, then the text, inset from the card's edge and centred in the row.
