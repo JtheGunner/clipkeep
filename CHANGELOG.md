@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Background maintenance jobs for sessions, topics and ranking.
 - Evaluation harness with a synthetic gold set (`./scripts/eval.sh`).
 - Release script with optional Developer ID signing and notarisation (`./scripts/release.sh`).
+- One-click installation of the Bitwarden CLI through Homebrew from the Bitwarden menu, offered only when Homebrew is available.
 
 ### Changed
 
