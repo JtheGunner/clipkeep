@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A GitHub Actions workflow publishes a release when a version tag lands on `main`: it builds and signs the archive, creates the GitHub release and opens the cask pull request in the tap.
+
 ## [0.1.0] - 2026-11-02
 
 ### Added

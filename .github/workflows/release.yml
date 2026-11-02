@@ -1,0 +1,122 @@
+name: Release
+
+# Publishes a release when a version tag lands on main. See docs/releasing.md for the secrets.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      SIGNING_IDENTITY: Clipkeep Local Signing
+      # Leaf certificate hash of the signing identity. Releases signed with another certificate
+      # would make every user grant the Keychain and privacy permissions again.
+      EXPECTED_CERTIFICATE_HASH: 55189c009a4fa306b568687166a3c5fb15771493
+      TAP_REPOSITORY: JtheGunner/homebrew-tap
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $GITHUB_REF_NAME is not vX.Y.Z." >&2
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tag $GITHUB_REF_NAME is not on main." >&2
+            exit 1
+          fi
+          if ! grep -qF "## [$version]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no entry for $version." >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Import the signing certificate
+        env:
+          SIGNING_P12: ${{ secrets.SIGNING_P12 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.SIGNING_P12_PASSWORD }}
+        run: |
+          : "${SIGNING_P12:?secret SIGNING_P12 is not set}"
+          : "${SIGNING_P12_PASSWORD:?secret SIGNING_P12_PASSWORD is not set}"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+          echo "$SIGNING_P12" | base64 --decode > "$RUNNER_TEMP/identity.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/identity.p12" -k "$keychain" \
+            -P "$SIGNING_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          # A self-signed certificate is only valid for code signing once it is trusted.
+          openssl pkcs12 -in "$RUNNER_TEMP/identity.p12" -clcerts -nokeys \
+            -passin "pass:$SIGNING_P12_PASSWORD" -out "$RUNNER_TEMP/certificate.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain "$RUNNER_TEMP/certificate.pem"
+          rm -f "$RUNNER_TEMP/identity.p12"
+          security find-identity -v -p codesigning | grep -F "\"$SIGNING_IDENTITY\""
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Build the archive
+        env:
+          CODESIGN_IDENTITY: ${{ env.SIGNING_IDENTITY }}
+        run: ./scripts/release.sh
+
+      - name: Check the signature
+        run: |
+          requirement="$(codesign -d -r- build/Clipkeep.app 2>&1)"
+          echo "$requirement"
+          if ! grep -qi "certificate leaf = H\"$EXPECTED_CERTIFICATE_HASH\"" <<< "$requirement"; then
+            echo "The app is not signed with the expected certificate." >&2
+            exit 1
+          fi
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk -v header="## [$VERSION]" 'index($0, header) == 1 { found = 1; next }
+            /^## \[/ { found = 0 } found' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" \
+            "build/Clipkeep-$VERSION.zip" "build/Clipkeep-$VERSION.zip.sha256" \
+            --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+
+      - name: Open the cask pull request
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          : "${GH_TOKEN:?secret HOMEBREW_TAP_GITHUB_TOKEN is not set}"
+          checksum="$(cut -d' ' -f1 "build/Clipkeep-$VERSION.zip.sha256")"
+          git clone "https://x-access-token:$GH_TOKEN@github.com/$TAP_REPOSITORY.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          branch="release/clipkeep-$VERSION"
+          git switch -c "$branch"
+          cask_file=Casks/clipkeep.rb
+          perl -pi -e "s/^(\s*version )\".*\"/\$1\"$VERSION\"/; s/^(\s*sha256 )\".*\"/\$1\"$checksum\"/" "$cask_file"
+          git diff --exit-code "$cask_file" && { echo "The cask already is at $VERSION." >&2; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "feat: update clipkeep cask to $VERSION"
+          git push -u origin "$branch"
+          gh pr create --repo "$TAP_REPOSITORY" --base main --head "$branch" \
+            --title "Update clipkeep cask to $VERSION" \
+            --body "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME
+
+          Sets \`version\` and \`sha256\` for \`Clipkeep-$VERSION.zip\`."
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [[ -n "${KEYCHAIN:-}" && -f "$KEYCHAIN" ]]; then
+            security delete-keychain "$KEYCHAIN"
+          fi
