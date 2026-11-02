@@ -2,17 +2,7 @@
 
 Clipkeep ships as a zip attached to a GitHub release. The Homebrew cask in
 [`JtheGunner/homebrew-tap`](https://github.com/JtheGunner/homebrew-tap) downloads that zip, so the
-repository and the release asset must be public.
-
-## Before the repository goes public
-
-The repository becomes public together with the first release. Before that:
-
-1. README has the Installation, License, Changelog and Contributing sections.
-2. `LICENSE` and `CONTRIBUTING.md` exist.
-3. `CHANGELOG.md` has an entry for the first version (rename `[Unreleased]`).
-4. The version tag exists (see below).
-5. The git history is scanned for secrets (for example `gitleaks detect`). Rotate anything it finds.
+release asset must be publicly downloadable without a login.
 
 ## Publishing a version
 
