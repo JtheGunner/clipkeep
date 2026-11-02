@@ -26,7 +26,7 @@ to it, so a different identity makes every user grant them again.
    `build/Clipkeep-x.y.z.zip` and `build/Clipkeep-x.y.z.zip.sha256`.
 4. Create the release and attach both files:
    `gh release create vx.y.z build/Clipkeep-x.y.z.zip build/Clipkeep-x.y.z.zip.sha256 --title vx.y.z --notes-file <notes>`.
-5. Update `Casks/clipkeep.rb` in the tap: set `version` and `sha256` (the value printed by
+5. In the tap, create or update `Casks/clipkeep.rb`: set `version` and `sha256` (the value printed by
    `release.sh`), then run `brew audit --cask --online clipkeep` and
    `brew install --cask ./Casks/clipkeep.rb`.
 6. Commit and push the tap.
