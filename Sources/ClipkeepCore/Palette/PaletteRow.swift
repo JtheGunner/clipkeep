@@ -7,11 +7,17 @@ public struct PaletteRow: Sendable, Equatable {
     public let text: String
     public let title: String
     public let subtitle: String
+    private let kind: String
+    /// The German name of the entry's type, for tooltips and accessibility.
+    public var typeName: String { Self.typeName(kind) }
+    /// The SF Symbol that stands for the entry's type.
+    public var symbolName: String { HistoryRow.symbolName(for: kind) }
 
     public static let maximumTitleLength = 120
 
     public init(hit: SearchHit, now: Date = Date(), calendar: Calendar = .current) {
         contentID = hit.contentID
+        kind = hit.kind
         text = hit.text
         title = Self.title(of: hit.text)
         var parts: [String] = []
