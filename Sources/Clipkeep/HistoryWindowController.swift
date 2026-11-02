@@ -2,9 +2,83 @@ import AppKit
 import ClipkeepCore
 import os
 
+/// An outline whose rows draw their own chevron: a click on it opens or closes the row without
+/// selecting it.
+private final class DisclosureOutlineView: NSOutlineView {
+    /// No system triangle: the rows draw a chevron themselves. The outline keeps its expand and
+    /// collapse behaviour, including the arrow keys.
+    override func frameOfOutlineCell(atRow row: Int) -> NSRect { .zero }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        guard row >= 0, let item = item(atRow: row), isExpandable(item) else {
+            super.mouseDown(with: event)
+            return
+        }
+        let cell = frameOfCell(atColumn: 0, row: row)
+        let chevron = NSRect(
+            x: cell.minX, y: cell.minY,
+            width: Metrics.Control.disclosure + Metrics.Space.s,
+            height: cell.height)
+        guard chevron.contains(point) else {
+            super.mouseDown(with: event)
+            return
+        }
+        if isItemExpanded(item) {
+            collapseItem(item)
+        } else {
+            expandItem(item)
+        }
+    }
+}
+
+/// A list row with a hairline below it, inset from the left like the rows of the System Settings.
+private final class ListRowView: NSTableRowView {
+    var showsSeparator = true
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard showsSeparator else { return }
+        NSColor.separatorColor.setFill()
+        NSRect(
+            x: Metrics.Space.l, y: bounds.maxY - 1, width: bounds.width - Metrics.Space.l,
+            height: 1
+        ).fill()
+    }
+}
+
+/// A view filled with a dynamic colour that follows light and dark appearance.
+private final class BackgroundView: NSView {
+    private let color: NSColor
+
+    init(color: NSColor, cornerRadius: CGFloat = 0) {
+        self.color = color
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = cornerRadius
+        layer?.masksToBounds = cornerRadius > 0
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = color.cgColor
+        }
+    }
+}
+
 // MARK: - Outline nodes
 
 /// Outline items need object identity, so the value types are wrapped.
+/// The first row of the outline: no day, session or topic, so everything is searched and listed.
+private final class AllNode: NSObject {}
+
 private final class DayNode: NSObject {
     var section: DaySection
     var sessions: [SessionNode]
@@ -39,7 +113,7 @@ private final class SessionNode: NSObject {
 @MainActor
 final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDataSource,
     NSOutlineViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate,
-    NSMenuDelegate
+    NSMenuDelegate, NSToolbarDelegate, NSSplitViewDelegate
 {
     private enum Mode: Int {
         case days
@@ -68,7 +142,10 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         labels: ["Tag", "Themen"], trackingMode: .selectOne, target: nil, action: nil)
     private let entityMenu = NSPopUpButton(frame: .zero, pullsDown: false)
     private let searchField = NSSearchField()
-    private let outline = NSOutlineView()
+    private let allNode = AllNode()
+    private let rightSplit = NSSplitView()
+    private let detailSplit = NSSplitView()
+    private let outline = DisclosureOutlineView()
     private let outlineScroll = NSScrollView()
     private let headerLabel = NSTextField(wrappingLabelWithString: "")
     private let table = NSTableView()
@@ -125,8 +202,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         self.copyWriter = copyWriter
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Metrics.Window.history),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered,
-            defer: true)
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: true)
         super.init()
         buildWindow()
     }
@@ -222,49 +299,103 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         window.minSize = Metrics.Window.historyMin
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.setFrameAutosaveName("ClipkeepHistoryWindow")
 
         modeControl.selectedSegment = 0
         modeControl.target = self
         modeControl.action = #selector(modeChanged)
         entityMenu.target = self
         entityMenu.action = #selector(entityChanged)
+        // Plain text with the chevrons; the border shows only under the mouse, like a system popup.
+        entityMenu.showsBorderOnlyWhileMouseInside = true
+        modeControl.setImage(Symbols.image("calendar", "Tag"), forSegment: 0)
+        modeControl.setImage(Symbols.image("tag", "Themen"), forSegment: 1)
+        modeControl.setLabel("", forSegment: 0)
+        modeControl.setLabel("", forSegment: 1)
+        modeControl.setToolTip("Nach Tag", forSegment: 0)
+        modeControl.setToolTip("Nach Themen", forSegment: 1)
         searchField.placeholderString = "Suchen (in der Auswahl) …"
         searchField.delegate = self
-        searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let bar = NSStackView(views: [modeControl, entityMenu, searchField])
-        bar.orientation = .horizontal
-        bar.spacing = Metrics.Space.s
 
-        let split = NSSplitView()
-        split.isVertical = true
-        split.dividerStyle = .thin
-        split.addArrangedSubview(buildOutline())
-        split.addArrangedSubview(buildRight())
-        split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
+        let sidebar = NSSplitViewItem(
+            sidebarWithViewController: Self.host(buildOutline(), belowToolbar: false))
+        sidebar.minimumThickness = Metrics.Pane.outlineMinWidth
+        sidebar.maximumThickness = Metrics.Pane.outlineMaxWidth
+        sidebar.canCollapse = true
+        let main = NSSplitViewItem(viewController: Self.host(buildRight(), belowToolbar: true))
+        let splitController = NSSplitViewController()
+        splitController.addSplitViewItem(sidebar)
+        splitController.addSplitViewItem(main)
+        splitController.splitView.autosaveName = "ClipkeepHistorySplit"
+        window.contentViewController = splitController
+        window.setContentSize(Metrics.Window.history)
+        window.setFrameAutosaveName("ClipkeepHistoryWindow")
 
-        // Explicit edges: the bar sits at the top and the split takes all the space below it.
-        let content = NSView()
-        content.addSubview(bar)
-        content.addSubview(split)
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        split.translatesAutoresizingMaskIntoConstraints = false
-        window.contentView = content
+        let toolbar = NSToolbar(identifier: "ClipkeepHistoryToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
+    }
+
+    /// Wraps a view for the split view. The window content extends under the toolbar: a list scrolls
+    /// under it, other content stays below it.
+    private static func host(_ view: NSView, belowToolbar: Bool) -> NSViewController {
+        let container = NSView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(view)
         NSLayoutConstraint.activate([
-            // A fixed height: a bar without one stretches and squeezes the split to its minimum.
-            bar.heightAnchor.constraint(equalToConstant: Metrics.Control.bar),
-            bar.topAnchor.constraint(equalTo: content.topAnchor, constant: Metrics.Space.m),
-            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Metrics.Space.m),
-            bar.trailingAnchor.constraint(
-                equalTo: content.trailingAnchor, constant: -Metrics.Space.m),
-            split.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: Metrics.Space.s),
-            split.leadingAnchor.constraint(
-                equalTo: content.leadingAnchor, constant: Metrics.Space.m),
-            split.trailingAnchor.constraint(
-                equalTo: content.trailingAnchor, constant: -Metrics.Space.m),
-            split.bottomAnchor.constraint(
-                equalTo: content.bottomAnchor, constant: -Metrics.Space.m),
+            view.topAnchor.constraint(
+                equalTo: belowToolbar
+                    ? container.safeAreaLayoutGuide.topAnchor : container.topAnchor),
+            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
+        let controller = NSViewController()
+        controller.view = container
+        return controller
+    }
+
+    // MARK: - Toolbar
+
+    private static let modeItem = NSToolbarItem.Identifier("mode")
+    private static let entityItem = NSToolbarItem.Identifier("entity")
+    private static let searchItem = NSToolbarItem.Identifier("search")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [
+            .toggleSidebar, .sidebarTrackingSeparator, Self.modeItem, Self.entityItem,
+            .flexibleSpace, Self.searchItem,
+        ]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        switch itemIdentifier {
+        case Self.modeItem:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "Ansicht"
+            item.view = modeControl
+            return item
+        case Self.entityItem:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "Filter"
+            item.view = entityMenu
+            return item
+        case Self.searchItem:
+            let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
+            item.searchField = searchField
+            item.label = "Suchen"
+            return item
+        default:
+            return nil
+        }
     }
 
     private func buildOutline() -> NSView {
@@ -275,20 +406,18 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         outline.headerView = nil
         outline.dataSource = self
         outline.delegate = self
-        outline.indentationPerLevel = Metrics.Space.m
         let contextMenu = NSMenu()
         contextMenu.delegate = self
         outline.menu = contextMenu
         outline.style = .sourceList
+        outline.backgroundColor = .clear
+        outlineScroll.drawsBackground = false
         outlineScroll.documentView = outline
         outlineScroll.hasVerticalScroller = true
         outlineScroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(outlineScrolled), name: NSView.boundsDidChangeNotification,
             object: outlineScroll.contentView)
-        outlineScroll.widthAnchor.constraint(
-            greaterThanOrEqualToConstant: Metrics.Pane.outlineMinWidth
-        ).isActive = true
         return outlineScroll
     }
 
@@ -302,6 +431,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         table.addTableColumn(column)
         table.headerView = nil
         table.rowHeight = Metrics.Row.entry
+        table.style = .fullWidth
+        table.intercellSpacing = .zero
         table.dataSource = self
         table.delegate = self
         tableScroll.documentView = table
@@ -311,7 +442,26 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             self, selector: #selector(tableScrolled), name: NSView.boundsDidChangeNotification,
             object: tableScroll.contentView)
 
-        let list = NSStackView(views: [headerLabel, tableScroll])
+        let header = NSStackView(views: [headerLabel])
+        header.edgeInsets = NSEdgeInsets(
+            top: Metrics.Space.m, left: Metrics.Space.m, bottom: 0, right: Metrics.Space.m)
+        // Like the groups in the System Settings: the rows sit in a rounded card with a faint
+        // lighter fill, on the window's own background.
+        let card = Self.backed(
+            tableScroll, by: .tertiarySystemFill, cornerRadius: Metrics.Radius.card)
+        let cardHost = NSView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        cardHost.addSubview(card)
+        NSLayoutConstraint.activate([
+            card.topAnchor.constraint(equalTo: cardHost.topAnchor),
+            card.leadingAnchor.constraint(
+                equalTo: cardHost.leadingAnchor, constant: Metrics.Space.m),
+            card.trailingAnchor.constraint(
+                equalTo: cardHost.trailingAnchor, constant: -Metrics.Space.m),
+            card.bottomAnchor.constraint(
+                equalTo: cardHost.bottomAnchor, constant: -Metrics.Space.m),
+        ])
+        let list = NSStackView(views: [header, cardHost])
         list.orientation = .vertical
         list.alignment = .leading
         list.spacing = Metrics.Space.s
@@ -320,19 +470,54 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         tableScroll.heightAnchor.constraint(
             greaterThanOrEqualToConstant: Metrics.Pane.listMinHeight
         ).isActive = true
-        headerLabel.setContentHuggingPriority(.required, for: .vertical)
-        tableScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
-        headerLabel.translatesAutoresizingMaskIntoConstraints = false
-        tableScroll.translatesAutoresizingMaskIntoConstraints = false
-        headerLabel.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
-        tableScroll.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
+        header.setContentHuggingPriority(.required, for: .vertical)
+        cardHost.setContentHuggingPriority(.defaultLow, for: .vertical)
+        header.translatesAutoresizingMaskIntoConstraints = false
+        cardHost.translatesAutoresizingMaskIntoConstraints = false
+        header.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
+        cardHost.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
 
-        let split = NSSplitView()
+        table.backgroundColor = .clear
+        tableScroll.drawsBackground = false
+
+        let split = rightSplit
         split.isVertical = false
         split.dividerStyle = .thin
+        split.delegate = self
         split.addArrangedSubview(list)
         split.addArrangedSubview(buildDetail())
         return split
+    }
+
+    private static func backed(_ view: NSView, by color: NSColor, cornerRadius: CGFloat) -> NSView {
+        let container = BackgroundView(color: color, cornerRadius: cornerRadius)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: container.topAnchor),
+            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        return container
+    }
+
+    /// Dragging a divider stops while the header and a few rows, or the copied text, still fit.
+    func splitView(
+        _ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat,
+        ofSubviewAt dividerIndex: Int
+    ) -> CGFloat {
+        proposedMinimumPosition
+            + (splitView === detailSplit
+                ? Metrics.Pane.textMinHeight : Metrics.Pane.listPaneMinHeight)
+    }
+
+    func splitView(
+        _ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat,
+        ofSubviewAt dividerIndex: Int
+    ) -> CGFloat {
+        splitView === detailSplit
+            ? proposedMaximumPosition - Metrics.Pane.infoMinHeight : proposedMaximumPosition
     }
 
     private func buildDetail() -> NSView {
@@ -345,35 +530,62 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             button.target = self
             button.action = selector
             button.bezelStyle = .rounded
+            button.imagePosition = .imageLeading
         }
+        copyButton.image = Symbols.image("doc.on.doc", nil)
+        deleteButton.image = Symbols.image("trash", nil)
+        undoButton.image = Symbols.image("arrow.uturn.backward", nil)
+        exportButton.image = Symbols.image("square.and.arrow.up", nil)
+        fetchButton.image = Symbols.image("key", nil)
+        notSecretButton.image = Symbols.image("lock.open", nil)
         let buttons = NSStackView(views: [
             copyButton, pinButton, starButton, deleteButton, undoButton, exportButton,
             fetchButton, notSecretButton,
         ])
         buttons.orientation = .horizontal
         buttons.spacing = Metrics.Space.s
+        buttons.edgeInsets = NSEdgeInsets(
+            top: 0, left: Metrics.Space.m, bottom: 0, right: Metrics.Space.m)
 
         let contentScroll = Self.readOnlyScroll(contentView, monospaced: true)
         let infoScroll = Self.readOnlyScroll(infoView, monospaced: false)
+
+        // The copied text sits in a card like the list; the details below it stay on the window's
+        // own background. The divider between them can be dragged.
+        let contentCard = Self.backed(
+            contentScroll, by: .tertiarySystemFill, cornerRadius: Metrics.Radius.card)
+        let contentHost = NSView()
+        contentCard.translatesAutoresizingMaskIntoConstraints = false
+        contentHost.addSubview(contentCard)
+        NSLayoutConstraint.activate([
+            contentCard.topAnchor.constraint(equalTo: contentHost.topAnchor),
+            contentCard.leadingAnchor.constraint(
+                equalTo: contentHost.leadingAnchor, constant: Metrics.Space.m),
+            contentCard.trailingAnchor.constraint(
+                equalTo: contentHost.trailingAnchor, constant: -Metrics.Space.m),
+            contentCard.bottomAnchor.constraint(
+                equalTo: contentHost.bottomAnchor, constant: -Metrics.Space.s),
+        ])
         infoScroll.heightAnchor.constraint(equalToConstant: Metrics.Pane.infoHeight).isActive =
             true
+        detailSplit.isVertical = false
+        detailSplit.dividerStyle = .thin
+        detailSplit.delegate = self
+        detailSplit.addArrangedSubview(contentHost)
+        detailSplit.addArrangedSubview(infoScroll)
+        // Resizing the window changes the text area; the details keep their height.
+        detailSplit.setHoldingPriority(.defaultHigh, forSubviewAt: 1)
 
-        let stack = NSStackView(views: [buttons, contentScroll, infoScroll])
+        let stack = NSStackView(views: [buttons, detailSplit])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = Metrics.Space.s
         stack.edgeInsets = NSEdgeInsets(top: Metrics.Space.s, left: 0, bottom: 0, right: 0)
-        // The content takes the height the buttons and the info box leave.
         stack.distribution = .fill
-        contentScroll.heightAnchor.constraint(
-            greaterThanOrEqualToConstant: Metrics.Pane.listMinHeight
-        ).isActive = true
         buttons.setContentHuggingPriority(.required, for: .vertical)
-        contentScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
-        for scroll in [contentScroll, infoScroll] {
-            scroll.translatesAutoresizingMaskIntoConstraints = false
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        }
+        detailSplit.setContentHuggingPriority(.defaultLow, for: .vertical)
+        detailSplit.translatesAutoresizingMaskIntoConstraints = false
+        detailSplit.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         showNoDetail()
         return stack
     }
@@ -382,7 +594,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         view.isEditable = false
         view.isSelectable = true
         view.drawsBackground = false
-        view.textContainerInset = Metrics.textInset
+        view.textContainerInset = Metrics.cardTextInset
         view.font = monospaced ? Typography.mono : Typography.detail
         view.textColor = .labelColor
         view.isVerticallyResizable = true
@@ -392,7 +604,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         let scroll = NSScrollView()
         scroll.documentView = view
         scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
+        scroll.borderType = .noBorder
         scroll.drawsBackground = false
         return scroll
     }
@@ -436,7 +648,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         case .days: loadMoreDays()
         case .topics: reloadTopics()
         }
-        if outline.selectedRow < 0 { selectScope(.all, header: "") }
+        if outline.selectedRow < 0 { outline.selectRowIndexes([0], byExtendingSelection: false) }
         fillLeftIfNeeded()
     }
 
@@ -468,7 +680,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
                 let start = dayNodes.count
                 dayNodes += added
                 outline.insertItems(
-                    at: IndexSet(start..<dayNodes.count), inParent: nil, withAnimation: [])
+                    at: IndexSet((start + 1)..<(dayNodes.count + 1)), inParent: nil,
+                    withAnimation: [])
                 for node in added { outline.expandItem(node) }
             }
         } catch {
@@ -567,7 +780,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         switch item {
-        case nil: mode == .days ? dayNodes.count : topicNodes.count
+        case nil: 1 + (mode == .days ? dayNodes.count : topicNodes.count)
         case let day as DayNode: day.sessions.count
         case let topic as TopicNode: sessions(of: topic).count
         default: 0
@@ -576,7 +789,12 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         switch item {
-        case nil: mode == .days ? dayNodes[index] : topicNodes[index]
+        case nil:
+            if index == 0 {
+                allNode
+            } else {
+                mode == .days ? dayNodes[index - 1] : topicNodes[index - 1]
+            }
         case let day as DayNode: day.sessions[index]
         case let topic as TopicNode: sessions(of: topic)[index]
         default: fatalError("Session rows have no children")
@@ -601,7 +819,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        item is DayNode ? Metrics.Row.day : Metrics.Row.session
+        item is SessionNode || item is TopicNode ? Metrics.Row.session : Metrics.Row.day
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any)
@@ -609,26 +827,59 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     {
         let format = HistoryFormat()
         switch item {
+        case is AllNode:
+            let title = NSTextField(labelWithString: "Alle Einträge")
+            title.font = Typography.sectionTitle
+            return iconCell("tray.full", title, leading: Self.iconSpacer())
         case let day as DayNode:
             let title = NSTextField(labelWithString: format.dayTitle(day.section.day))
             title.font = Typography.sectionTitle
-            return title
+            return iconCell("calendar", title, leading: chevron(for: day))
         case let session as SessionNode:
-            return Self.twoLines(
-                format.sessionTitle(session.summary), format.sessionSubtitle(session.summary))
+            return iconCell(
+                "text.bubble",
+                Self.twoLines(
+                    format.sessionTitle(session.summary), format.sessionSubtitle(session.summary)))
         case let topic as TopicNode:
-            return Self.twoLines(
-                topic.summary.label, format.topicSubtitle(topic.summary), titleWeight: .semibold)
+            return iconCell(
+                "tag",
+                Self.twoLines(
+                    topic.summary.label, format.topicSubtitle(topic.summary),
+                    titleWeight: .semibold),
+                leading: chevron(for: topic))
         default: return nil
         }
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
         (notification.userInfo?["NSObject"] as? TopicNode)?.isExpanded = true
+        reloadDisclosure(of: notification)
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
         (notification.userInfo?["NSObject"] as? TopicNode)?.isExpanded = false
+        reloadDisclosure(of: notification)
+    }
+
+    /// Turns the row's chevron so it points the right way.
+    private func reloadDisclosure(of notification: Notification) {
+        guard let item = notification.userInfo?["NSObject"] else { return }
+        let row = outline.row(forItem: item)
+        guard row >= 0, let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false)
+        else { return }
+        let isExpanded = outline.isItemExpanded(item)
+        Self.chevronImage(in: cell)?.image = Symbols.image(
+            isExpanded ? "chevron.down" : "chevron.right", nil)
+    }
+
+    private static let chevronIdentifier = NSUserInterfaceItemIdentifier("chevron")
+
+    private static func chevronImage(in view: NSView) -> NSImageView? {
+        if let image = view as? NSImageView, image.identifier == chevronIdentifier { return image }
+        for subview in view.subviews {
+            if let found = chevronImage(in: subview) { return found }
+        }
+        return nil
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -877,7 +1128,13 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
         -> NSView?
     {
-        Self.twoLines(rows[row].title, rows[row].subtitle)
+        Self.listCell(Self.twoLines(rows[row].title, rows[row].subtitle))
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let rowView = ListRowView()
+        rowView.showsSeparator = row < rows.count - 1
+        return rowView
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -887,6 +1144,96 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             return
         }
         showDetail(contentID: rows[index].contentID)
+    }
+
+    /// An entry row: the text inset from the card's edge and centred in the row.
+    private static func listCell(_ content: NSView) -> NSView {
+        let cell = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(
+                equalTo: cell.leadingAnchor, constant: Metrics.Space.m),
+            content.trailingAnchor.constraint(
+                equalTo: cell.trailingAnchor, constant: -Metrics.Space.m),
+            content.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
+    }
+
+    /// A sidebar row: an optional disclosure control, an icon and the text, all centred in the row.
+    private func iconCell(_ symbol: String, _ text: NSView, leading: NSView? = nil) -> NSView {
+        let icon = NSImageView(image: Symbols.image(symbol, nil) ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
+        // A child row's icon is a little smaller than its parent's.
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: leading == nil ? Metrics.Pane.childIconSize : Metrics.Pane.parentIconSize,
+            weight: .regular)
+        icon.imageScaling = .scaleProportionallyDown
+        // The same box for every symbol, however wide its glyph is, and never squeezed by a long text.
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: Metrics.Control.icon),
+            icon.heightAnchor.constraint(equalToConstant: Metrics.Control.icon),
+        ])
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        icon.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // The icon part is a stack; the text hangs off its right edge, so it always starts at the
+        // same place and only its end gives way when it is too long.
+        let head = NSStackView(views: (leading.map { [$0] } ?? []) + [icon])
+        head.orientation = .horizontal
+        head.alignment = .centerY
+        head.spacing = Metrics.Space.s
+        head.translatesAutoresizingMaskIntoConstraints = false
+        text.translatesAutoresizingMaskIntoConstraints = false
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let cell = NSView()
+        cell.addSubview(head)
+        cell.addSubview(text)
+        NSLayoutConstraint.activate([
+            // The source list style ignores the indentation of an outline, so the rows set it: a
+            // parent starts at the left edge, a child moves in until its icon sits right of the
+            // parent's icon.
+            head.leadingAnchor.constraint(
+                equalTo: cell.leadingAnchor,
+                constant: leading == nil ? Metrics.Space.m : Metrics.Pane.parentInset),
+            head.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            text.leadingAnchor.constraint(
+                equalTo: head.trailingAnchor,
+                constant: leading == nil ? Metrics.Pane.childIconGap : Metrics.Space.s),
+            text.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
+            text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
+    }
+
+    /// Takes the place of a disclosure control, so rows without one line up with rows that have one.
+    private static func iconSpacer() -> NSView {
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            spacer.widthAnchor.constraint(equalToConstant: Metrics.Control.disclosure),
+            spacer.heightAnchor.constraint(equalToConstant: Metrics.Control.disclosure),
+        ])
+        return spacer
+    }
+
+    /// The system's disclosure triangle sits lower when a row is open, so the rows draw their own;
+    /// `DisclosureOutlineView` handles the click.
+    private func chevron(for item: NSObject) -> NSView {
+        let isExpanded = outline.isItemExpanded(item)
+        let image = NSImageView(
+            image: Symbols.image(isExpanded ? "chevron.down" : "chevron.right", nil) ?? NSImage())
+        image.identifier = Self.chevronIdentifier
+        image.contentTintColor = .tertiaryLabelColor
+        image.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        image.imageScaling = .scaleProportionallyDown
+        image.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            image.widthAnchor.constraint(equalToConstant: Metrics.Control.disclosure),
+            image.heightAnchor.constraint(equalToConstant: Metrics.Control.disclosure),
+        ])
+        return image
     }
 
     private static func twoLines(
@@ -899,6 +1246,9 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         second.font = Typography.caption
         second.textColor = .secondaryLabelColor
         second.lineBreakMode = .byTruncatingTail
+        // A long line gives way (and ends in "…") instead of pushing the whole text sideways.
+        first.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        second.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let stack = NSStackView(views: [first, second])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -977,8 +1327,12 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         pinButton.isEnabled = detail != nil
         starButton.isEnabled = detail != nil
         deleteButton.isEnabled = detail != nil
-        pinButton.title = detail?.isPinned == true ? "Lösen" : "Anheften"
-        starButton.title = detail?.isStarred == true ? "Markierung entfernen" : "Markieren"
+        let isPinned = detail?.isPinned == true
+        pinButton.title = isPinned ? "Lösen" : "Anheften"
+        pinButton.image = Symbols.image(isPinned ? "pin.slash" : "pin", nil)
+        let isStarred = detail?.isStarred == true
+        starButton.title = isStarred ? "Markierung entfernen" : "Markieren"
+        starButton.image = Symbols.image(isStarred ? "star.slash" : "star", nil)
         undoButton.isHidden = lastDeletedID == nil
         let hasSecret = parkedSecret != nil && parkedSecret?.state != .lost
         fetchButton.isHidden = !hasSecret

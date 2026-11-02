@@ -18,26 +18,40 @@ enum Metrics {
 
     enum Radius {
         static let panel: CGFloat = 12
+        static let card: CGFloat = 10
     }
 
     enum Row {
-        static let entry: CGFloat = 40
+        static let entry: CGFloat = 44
         static let session: CGFloat = 40
         static let day: CGFloat = 28
         static let palette: CGFloat = 44
     }
 
     enum Control {
-        /// Height of the bar that holds the history window's mode switch, filter and search.
-        static let bar: CGFloat = 28
+        /// Side of the box every sidebar icon sits in.
+        static let icon: CGFloat = 20
+        /// Side of the box of a row's disclosure chevron.
+        static let disclosure: CGFloat = 12
         /// Height of the palette's search field.
         static let paletteField: CGFloat = 28
     }
 
     enum Pane {
-        static let outlineMinWidth: CGFloat = 240
+        static let outlineMinWidth: CGFloat = 272
+        static let outlineMaxWidth: CGFloat = 400
+        /// Moves a parent row (day, topic, "Alle Einträge") left of the cell's edge.
+        static let parentInset: CGFloat = -4
+        /// Gap between a child row's icon and its text; a little tighter than a parent's.
+        static let childIconGap: CGFloat = 6
+        static let parentIconSize: CGFloat = 15
+        static let childIconSize: CGFloat = 13
         static let listMinHeight: CGFloat = 120
+        /// The list pane with its header, so the header never reaches the toolbar.
+        static let listPaneMinHeight: CGFloat = 200
         static let infoHeight: CGFloat = 152
+        static let infoMinHeight: CGFloat = 80
+        static let textMinHeight: CGFloat = 80
         static let sampleMinHeight: CGFloat = 180
     }
 
@@ -51,6 +65,9 @@ enum Metrics {
 
     /// Inner margin of the read-only text views.
     static let textInset = NSSize(width: Space.xs, height: Space.s)
+
+    /// Inner margin of the text in a card.
+    static let cardTextInset = NSSize(width: Space.m, height: Space.s)
 }
 
 /// The fonts of the user interface, by role.
@@ -65,5 +82,12 @@ enum Typography {
 
     static func title(weight: NSFont.Weight = .regular) -> NSFont {
         .systemFont(ofSize: 13, weight: weight)
+    }
+}
+
+/// SF Symbols used across the windows.
+enum Symbols {
+    static func image(_ name: String, _ description: String?) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: description)
     }
 }
