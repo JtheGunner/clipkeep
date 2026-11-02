@@ -28,6 +28,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var palette: PaletteController?
     private let historyItem = NSMenuItem()
     private let importItem = NSMenuItem()
+    private let removeImportItem = NSMenuItem()
     private var importer: ImportWindowController?
     private var history: HistoryWindowController?
     private let exceptionsItem = NSMenuItem()
@@ -74,6 +75,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         importItem.action = #selector(openImport)
         importItem.isEnabled = false
         menu.addItem(importItem)
+        removeImportItem.title = "Import löschen …"
+        removeImportItem.target = self
+        removeImportItem.action = #selector(openImportRemoval)
+        removeImportItem.isEnabled = false
+        menu.addItem(removeImportItem)
         pauseItem.target = self
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
@@ -220,10 +226,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func attach(importer: ImportWindowController) {
         self.importer = importer
         importItem.isEnabled = true
+        removeImportItem.isEnabled = true
     }
 
     @objc private func openImport() {
         DispatchQueue.main.async { [importer] in importer?.start() }
+    }
+
+    @objc private func openImportRemoval() {
+        DispatchQueue.main.async { [importer] in importer?.removeImports() }
     }
 
     @objc private func openHistory() {
