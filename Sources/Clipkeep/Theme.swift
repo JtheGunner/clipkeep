@@ -85,9 +85,51 @@ enum Typography {
     }
 }
 
+/// A view filled with a dynamic colour that follows light and dark appearance.
+final class BackgroundView: NSView {
+    private let color: NSColor
+
+    init(color: NSColor, cornerRadius: CGFloat = 0) {
+        self.color = color
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = cornerRadius
+        layer?.masksToBounds = cornerRadius > 0
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = color.cgColor
+        }
+    }
+}
+
 /// SF Symbols used across the windows.
 enum Symbols {
     static func image(_ name: String, _ description: String?) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: description)
+    }
+
+    /// The icon of an entry's type in a list row; the tooltip and the VoiceOver label name the type.
+    static func typeIcon(_ symbol: String, named typeName: String) -> NSView {
+        let icon = NSImageView(image: image(symbol, typeName) ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: Metrics.Pane.parentIconSize, weight: .regular)
+        icon.imageScaling = .scaleProportionallyDown
+        icon.toolTip = typeName
+        icon.setAccessibilityLabel(typeName)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: Metrics.Control.icon),
+            icon.heightAnchor.constraint(equalToConstant: Metrics.Control.icon),
+        ])
+        return icon
     }
 }
