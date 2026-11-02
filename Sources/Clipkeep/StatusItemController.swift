@@ -50,8 +50,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.systemContext = systemContext
         self.pasteboardAccess = pasteboardAccess
         super.init()
-        statusItem.button?.image = NSImage(
-            systemSymbolName: "doc.on.clipboard", accessibilityDescription: AppInfo.name)
+        updateIcon()
         statusItem.menu = makeMenu()
     }
 
@@ -448,11 +447,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         bitwardenMessageItem.isHidden = false
     }
 
+    /// Shows the logo, dimmed while capture is paused. Without the logo files (a bare executable)
+    /// it falls back to symbols.
     private func updateIcon() {
+        guard let button = statusItem.button else { return }
         let paused = control?.isPaused ?? false
-        statusItem.button?.image = NSImage(
-            systemSymbolName: paused ? "pause.circle" : "doc.on.clipboard",
-            accessibilityDescription: paused ? "\(AppInfo.name) pausiert" : AppInfo.name)
+        let description = paused ? "\(AppInfo.name) pausiert" : AppInfo.name
+        if let logo = MenuBarIcon.logo() {
+            logo.accessibilityDescription = description
+            button.image = logo
+            button.appearsDisabled = paused
+        } else {
+            button.image = NSImage(
+                systemSymbolName: paused ? "pause.circle" : "doc.on.clipboard",
+                accessibilityDescription: description)
+        }
     }
 
     @objc private func togglePause() {

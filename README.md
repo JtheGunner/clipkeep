@@ -1,6 +1,12 @@
 <div align="center">
 
-# 📋 Clipkeep
+<h1>
+    <p>
+        <img src="assets/logo/png/clipkeep-icon-512.png" width="180" alt="Clipkeep logo">
+    </p>
+</h1>
+
+# Clipkeep
 
 **A private, local clipboard history for macOS — searchable, grouped by session, secrets kept out of sight.**
 

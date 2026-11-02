@@ -43,6 +43,13 @@ vtool -set-build-version macos 14.0 "$sdk_version" -replace \
 mkdir -p "$app/Contents/Frameworks"
 cp -R "$bin_dir/SQLCipher.framework" "$app/Contents/Frameworks/"
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$app/Contents/MacOS/Clipkeep"
+
+# The app icon (Finder, Launchpad, dialogs, notifications) and the menu bar icon (a template image
+# the app loads from Contents/Resources).
+resources="$app/Contents/Resources"
+mkdir -p "$resources"
+cp assets/logo/clipkeep.icns "$resources/Clipkeep.icns"
+cp assets/logo/png/clipkeep-menubar.png assets/logo/png/clipkeep-menubar@2x.png "$resources/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,6 +58,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>li.wuermli.clipkeep</string>
   <key>CFBundleName</key><string>Clipkeep</string>
   <key>CFBundleExecutable</key><string>Clipkeep</string>
+  <key>CFBundleIconFile</key><string>Clipkeep</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$build_number</string>
@@ -69,4 +77,14 @@ else
   # the embedded SQLCipher framework, which has no team identifier to match.
   codesign --force --deep --sign "$identity" "$app"
 fi
+
+# A bundle without its icons would still run, so check for them here instead of finding out in the
+# menu bar. The signature seals them: this runs after signing and fails if a file is missing.
+for resource in Clipkeep.icns clipkeep-menubar.png clipkeep-menubar@2x.png; do
+  if [[ ! -s "$resources/$resource" ]]; then
+    echo "The bundle is missing Contents/Resources/$resource." >&2
+    exit 1
+  fi
+done
+codesign --verify --deep --strict "$app"
 echo "Built $app (signed with: $identity)"

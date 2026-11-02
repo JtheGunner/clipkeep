@@ -21,6 +21,8 @@ Record the macOS version, the app version and the date next to each run.
 ## 1. First launch and permissions
 
 - [ ] The menu bar icon appears and the app has no Dock icon.
+- [ ] The menu bar icon is the Clipkeep logo and reads well in a light and a dark menu bar (it is a template image, so macOS tints it).
+- [ ] `build/Clipkeep.app` shows the Clipkeep icon in Finder and Launchpad, and in the dialogs and notifications the app shows.
 - [ ] The first launch of a fresh install shows no Keychain prompt, because the app created the key itself. After a rebuild with a different signature the prompt appears once; "Always allow" stops it for that build.
 - [ ] The menu shows icons on its action items (palette, history, import, pause, ignore, quit) and none on status lines.
 - [ ] "Beim Anmelden starten" toggles and shows a check mark; after a re-login the app starts.
@@ -41,7 +43,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 
 - [ ] Copying text from Safari, Chrome, a terminal and an editor creates entries with the right source app.
 - [ ] Window title and address are recorded where the permissions are granted.
-- [ ] "Aufzeichnung pausieren" stops capture, the icon changes, "Aufzeichnung fortsetzen" resumes it.
+- [ ] "Aufzeichnung pausieren" stops capture, the menu bar logo is dimmed, "Aufzeichnung fortsetzen" resumes it and the logo is back to full strength.
 - [ ] "… ignorieren" for the front app stops recording from that app; removing it under "Ignorieren" resumes.
 - [ ] A content rule ("Inhaltsregel hinzufügen …") skips matching copies; an invalid pattern shows "Regel nicht übernommen".
 
