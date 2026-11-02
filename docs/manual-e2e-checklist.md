@@ -22,6 +22,7 @@ Record the macOS version, the app version and the date next to each run.
 
 - [ ] The menu bar icon appears and the app has no Dock icon.
 - [ ] The first launch of a fresh install shows no Keychain prompt, because the app created the key itself. After a rebuild with a different signature the prompt appears once; "Always allow" stops it for that build.
+- [ ] The menu shows icons on its action items (palette, history, import, pause, ignore, quit) and none on status lines.
 - [ ] "Beim Anmelden starten" toggles and shows a check mark; after a re-login the app starts.
 - [ ] "Fenstertitel: Bedienungshilfen erlauben …" shows the system prompt on the first click and opens Settings on later clicks. Afterwards the entry reads "Fenstertitel: erlaubt".
 - [ ] "Browser-Adressen: Automation erlauben …" asks for each running browser; "nicht erlaubt – öffnen …" opens the Automation pane after a denial.
@@ -56,6 +57,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 ## 5. Hotkey and palette
 
 - [ ] <kbd>⌃</kbd><kbd>⌥</kbd><kbd>V</kbd> opens the palette from any app.
+- [ ] Palette rows start with the same type icon as the history list; the selected row is a rounded highlight. Light and dark appearance both look right.
 - [ ] Typing searches the history, arrow keys and Return copy the entry, Escape closes the palette.
 - [ ] When another app owns the shortcut the menu reads "Kurzbefehl ⌃⌥V ist belegt" and "Suchpalette öffnen" still works.
 
@@ -79,7 +81,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 ## 7. Import
 
 - [ ] "Textdatei importieren …" opens the file picker; a binary file and a file over 200 MB are refused with a message.
-- [ ] The preview shows counts, samples and the split mode; changing the mode updates it.
+- [ ] The preview shows counts, samples and the split mode; changing the mode updates it. The samples sit on a rounded card without a frame.
 - [ ] A file in which a long block holds one secret shows the warning about the share of text that is dropped.
 - [ ] Importing creates entries labelled "Import" before the live history; running it again adds nothing.
 - [ ] The preview names the time distribution: with date headings in the file the entries sit on those days, without them every block is a session of its own.

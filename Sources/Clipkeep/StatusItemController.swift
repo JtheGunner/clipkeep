@@ -94,6 +94,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(ignoredAppsItem)
         menu.addItem(.separator())
 
+        paletteItem.image = Symbols.image("magnifyingglass", nil)
+        historyItem.image = Symbols.image("clock", nil)
+        importItem.image = Symbols.image("square.and.arrow.down", nil)
+        removeImportItem.image = Symbols.image("trash", nil)
+        ignoreAppItem.image = Symbols.image("nosign", nil)
+
         launchAtLoginItem.title = "Beim Anmelden starten"
         launchAtLoginItem.target = self
         launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
@@ -138,6 +144,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quit = NSMenuItem(
             title: "Clipkeep beenden", action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q")
+        quit.image = Symbols.image("xmark.circle", nil)
         menu.addItem(quit)
         return menu
     }
@@ -172,6 +179,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         launchAtLoginItem.state = launchAtLogin.isEnabled ? .on : .off
         let paused = control?.isPaused ?? false
         pauseItem.title = paused ? "Aufzeichnung fortsetzen" : "Aufzeichnung pausieren"
+        pauseItem.image = Symbols.image(paused ? "play" : "pause", nil)
         let front = Self.frontmostForeignApp()
         ignoreAppItem.title = front.map { "„\($0.name)“ ignorieren" } ?? "Frontmost-App ignorieren"
         ignoreAppItem.isEnabled = control != nil && front != nil
