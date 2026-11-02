@@ -70,7 +70,9 @@ public struct ProcessCommandRunner: CommandRunning {
         let timeout = timeout
         let searchDirectories = searchDirectories
         return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            // A dedicated thread: the shared dispatch pool can be saturated by other blocking
+            // work, which would delay the start and with it the timeout of this command.
+            let thread = Thread {
                 continuation.resume(
                     with: Result {
                         try Self.runBlocking(
@@ -80,6 +82,8 @@ public struct ProcessCommandRunner: CommandRunning {
                             standardInput: standardInput, timeout: timeout)
                     })
             }
+            thread.qualityOfService = .userInitiated
+            thread.start()
         }
     }
 

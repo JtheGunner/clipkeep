@@ -9,6 +9,7 @@
 # Without a Developer ID the zip is signed with the local identity or ad hoc, and Gatekeeper will
 # warn on other Macs (see "Installation" in the README).
 # Without NOTARY_PROFILE the app is signed but not notarised.
+# Next to the zip it writes build/Clipkeep-<version>.zip.sha256 (the checksum the Homebrew cask needs).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -16,6 +17,7 @@ export VERSION="${VERSION:?set VERSION, e.g. VERSION=1.0.0}"
 identity="${CODESIGN_IDENTITY:--}"
 app="build/Clipkeep.app"
 zip="build/Clipkeep-$VERSION.zip"
+checksum="$zip.sha256"
 
 ./scripts/test.sh -c release -Xswiftc -enable-testing
 ./scripts/bundle-app.sh
@@ -36,4 +38,6 @@ fi
 
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
+(cd build && shasum -a 256 "$(basename "$zip")") > "$checksum"
 echo "Built $zip"
+echo "SHA-256: $(cut -d' ' -f1 "$checksum")"

@@ -45,7 +45,7 @@ open build/Clipkeep.app
 
 A bundle is required for "launch at login". See [Installation](#-installation) for how the app is signed and installed.
 
-To build a distributable zip, run `VERSION=1.0.0 ./scripts/release.sh`. With a Developer ID certificate (`CODESIGN_IDENTITY`) it signs with the hardened runtime, and with a `notarytool` keychain profile (`NOTARY_PROFILE`) it also notarises and staples the app. See the header of the script.
+To build a distributable zip and its SHA-256 checksum, run `VERSION=1.0.0 ./scripts/release.sh`. With a Developer ID certificate (`CODESIGN_IDENTITY`) it signs with the hardened runtime, and with a `notarytool` keychain profile (`NOTARY_PROFILE`) it also notarises and staples the app. See the header of the script.
 
 | | Command | Purpose |
 |---|---|---|
@@ -58,15 +58,33 @@ To build a distributable zip, run `VERSION=1.0.0 ./scripts/release.sh`. With a D
 
 ## 📦 Installation
 
-Without an Apple Developer ID the app cannot be notarised, but it installs fine from source.
+Clipkeep is not notarised (there is no Apple Developer ID yet), so macOS shows a Gatekeeper warning the first time you open a downloaded copy. Two ways to install it:
+
+### Download
+
+1. Download `Clipkeep-<version>.zip` from the [latest release](https://github.com/JtheGunner/clipkeep/releases/latest) and unzip it.
+2. Move `Clipkeep.app` to `/Applications`.
+3. Right-click the app and choose **Open**, then confirm **Open** in the warning dialog. You only need to do this once. If macOS offers no **Open** button, go to System Settings → Privacy & Security and choose **Open Anyway**.
+4. Grant the permissions the app asks for (see [Permissions](#-permissions)).
+
+### Homebrew
+
+```sh
+brew install --cask JtheGunner/tap/clipkeep
+```
+
+The cask prints the same Gatekeeper note after the install. Remove the app with `brew uninstall --cask clipkeep`.
+
+> [!NOTE]
+> Releases are signed with a self-signed certificate, which macOS does not trust on other Macs. That is why the first launch needs **Open**. The Keychain approval and the Accessibility and Automation grants are bound to that certificate, so they survive updates of later releases. They have to be granted again if a release is ever signed with another identity.
+
+### From source
 
 1. **Create a signing certificate once:** `./scripts/create-signing-identity.sh`. It makes a self-signed code-signing certificate in your login keychain and asks for your login password to trust it.
 2. **Build and install:** `./scripts/bundle-app.sh`, then copy `build/Clipkeep.app` to `/Applications`. A bundle built on your own Mac has no quarantine flag, so Gatekeeper does not warn.
-3. **Rebuild freely:** `bundle-app.sh` signs with that certificate automatically. The signing identity stays the same, so the Keychain approval and the Accessibility and Automation grants survive an update.
+3. **Rebuild freely:** `bundle-app.sh` signs with that certificate automatically, so the Keychain approval and the privacy grants survive a rebuild. Without the certificate the bundle is signed ad hoc, and macOS asks again after every build.
 
-Without the certificate the bundle is signed ad hoc. That also runs, but macOS treats every build as a new app and asks for the Keychain approval and the privacy grants again.
-
-**On another Mac:** run `VERSION=1.0.0 ./scripts/release.sh` and send `build/Clipkeep-1.0.0.zip`. Gatekeeper blocks the first launch of an app from outside the App Store. Open it with a right click → "Open", or clear the quarantine flag once with `xattr -dr com.apple.quarantine Clipkeep.app`.
+Maintainers: see [`docs/releasing.md`](docs/releasing.md) for how a release is built and published.
 
 ---
 

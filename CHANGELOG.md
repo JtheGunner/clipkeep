@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - "Import löschen …" in the menu deletes the entries of one imported file at once, keeps entries that existed before and offers an undo right after.
 - Release script with optional Developer ID signing and notarisation (`./scripts/release.sh`).
 - One-click installation of the Bitwarden CLI through Homebrew from the Bitwarden menu, offered only when Homebrew is available.
+- Installation without an Apple Developer ID: download with right click → "Open", or `brew install --cask JtheGunner/tap/clipkeep`. `./scripts/release.sh` now also writes a SHA-256 checksum next to the zip.
 
 ### Changed
 
