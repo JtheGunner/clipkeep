@@ -32,16 +32,41 @@ public struct HistoryRow: Sendable, Equatable {
     }
     public let isPinned: Bool
     public let isStarred: Bool
+    private let kind: String
+    /// The German name of the entry's type, for tooltips and accessibility.
+    public var typeName: String { PaletteRow.typeName(kind) }
+    /// The SF Symbol that stands for the entry's type.
+    public var symbolName: String { Self.symbolName(for: kind) }
+
+    /// The SF Symbol for a content kind; an unknown kind reads as plain text.
+    public static func symbolName(for kind: String) -> String {
+        switch ContentKind(rawValue: kind) {
+        case .text, nil: "text.alignleft"
+        case .url: "link"
+        case .email: "envelope"
+        case .path: "folder"
+        case .command: "terminal"
+        case .json: "curlybraces"
+        case .stacktrace: "exclamationmark.triangle"
+        case .code: "chevron.left.forwardslash.chevron.right"
+        case .number: "number"
+        case .secret: "lock"
+        }
+    }
 
     /// The same row after a pin or star change.
     public func with(isPinned: Bool, isStarred: Bool) -> HistoryRow {
         HistoryRow(
-            contentID: contentID, title: title, info: info, isPinned: isPinned,
+            contentID: contentID, title: title, info: info, kind: kind, isPinned: isPinned,
             isStarred: isStarred)
     }
 
-    private init(contentID: Int64, title: String, info: String, isPinned: Bool, isStarred: Bool) {
+    private init(
+        contentID: Int64, title: String, info: String, kind: String, isPinned: Bool,
+        isStarred: Bool
+    ) {
         self.contentID = contentID
+        self.kind = kind
         self.title = title
         self.info = info
         self.isPinned = isPinned
@@ -67,6 +92,7 @@ public struct HistoryRow: Sendable, Equatable {
         isStarred: Bool
     ) {
         self.contentID = contentID
+        self.kind = kind
         title = PaletteRow.title(of: String(text.prefix(PaletteRow.maximumTitleLength * 4)))
         var parts = [time]
         if let app { parts.append(app) }
