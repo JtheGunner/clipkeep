@@ -62,6 +62,8 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 ## 6. History window
 
 - [ ] "Verlauf öffnen …" lists days, sessions and topics; the detail view shows the entry with its context.
+- [ ] The window has a toolbar with the sidebar toggle, the "Tag"/"Themen" switch, the entity filter and the search field. The sidebar collapses and expands from the toolbar, keeps its width after reopening the window, and reaches under the toolbar. Light and dark appearance both look right.
+- [ ] Both dividers on the right can be dragged: between the entry list and the detail, and between the copied text and the details of the copy. Neither pane collapses to nothing, and the list header never touches the toolbar.
 - [ ] Selecting a session fills the entry list with its entries and their text; selecting an entry shows its text and the importance breakdown. The list and the detail text keep a visible height when the window is resized.
 - [ ] Copy, pin, star and delete work; the undo restores a deleted entry.
 - [ ] Search inside the window finds entries by substring.

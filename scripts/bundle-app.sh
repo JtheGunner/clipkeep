@@ -32,6 +32,13 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 cp "$bin_dir/Clipkeep" "$app/Contents/MacOS/Clipkeep"
 
+# SwiftPM stamps the binary as linked against the deployment target's SDK (14.0). macOS then runs
+# the app in compatibility mode with the old control look. Stamp the SDK that built it instead,
+# keeping the minimum OS version.
+sdk_version="$(xcrun --show-sdk-version)"
+vtool -set-build-version macos 14.0 "$sdk_version" -replace \
+  -output "$app/Contents/MacOS/Clipkeep" "$app/Contents/MacOS/Clipkeep"
+
 # SQLCipher ships as a dynamic framework that the executable loads through @rpath.
 mkdir -p "$app/Contents/Frameworks"
 cp -R "$bin_dir/SQLCipher.framework" "$app/Contents/Frameworks/"
