@@ -124,7 +124,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         self.actions = actions
         self.copyWriter = copyWriter
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 680),
+            contentRect: NSRect(origin: .zero, size: Metrics.Window.history),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered,
             defer: true)
         super.init()
@@ -219,7 +219,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
 
     private func buildWindow() {
         window.title = "Clipkeep – Verlauf"
-        window.minSize = NSSize(width: 800, height: 480)
+        window.minSize = Metrics.Window.historyMin
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.setFrameAutosaveName("ClipkeepHistoryWindow")
@@ -234,7 +234,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let bar = NSStackView(views: [modeControl, entityMenu, searchField])
         bar.orientation = .horizontal
-        bar.spacing = 10
+        bar.spacing = Metrics.Space.s
 
         let split = NSSplitView()
         split.isVertical = true
@@ -252,14 +252,18 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         window.contentView = content
         NSLayoutConstraint.activate([
             // A fixed height: a bar without one stretches and squeezes the split to its minimum.
-            bar.heightAnchor.constraint(equalToConstant: 26),
-            bar.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            bar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            split.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 10),
-            split.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            split.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            split.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+            bar.heightAnchor.constraint(equalToConstant: Metrics.Control.bar),
+            bar.topAnchor.constraint(equalTo: content.topAnchor, constant: Metrics.Space.m),
+            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Metrics.Space.m),
+            bar.trailingAnchor.constraint(
+                equalTo: content.trailingAnchor, constant: -Metrics.Space.m),
+            split.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: Metrics.Space.s),
+            split.leadingAnchor.constraint(
+                equalTo: content.leadingAnchor, constant: Metrics.Space.m),
+            split.trailingAnchor.constraint(
+                equalTo: content.trailingAnchor, constant: -Metrics.Space.m),
+            split.bottomAnchor.constraint(
+                equalTo: content.bottomAnchor, constant: -Metrics.Space.m),
         ])
     }
 
@@ -271,7 +275,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         outline.headerView = nil
         outline.dataSource = self
         outline.delegate = self
-        outline.indentationPerLevel = 12
+        outline.indentationPerLevel = Metrics.Space.m
         let contextMenu = NSMenu()
         contextMenu.delegate = self
         outline.menu = contextMenu
@@ -282,12 +286,14 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         NotificationCenter.default.addObserver(
             self, selector: #selector(outlineScrolled), name: NSView.boundsDidChangeNotification,
             object: outlineScroll.contentView)
-        outlineScroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
+        outlineScroll.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: Metrics.Pane.outlineMinWidth
+        ).isActive = true
         return outlineScroll
     }
 
     private func buildRight() -> NSView {
-        headerLabel.font = .systemFont(ofSize: 12)
+        headerLabel.font = Typography.detail
         headerLabel.textColor = .secondaryLabelColor
         headerLabel.maximumNumberOfLines = 3
 
@@ -295,7 +301,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
         table.headerView = nil
-        table.rowHeight = 40
+        table.rowHeight = Metrics.Row.entry
         table.dataSource = self
         table.delegate = self
         tableScroll.documentView = table
@@ -308,10 +314,12 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         let list = NSStackView(views: [headerLabel, tableScroll])
         list.orientation = .vertical
         list.alignment = .leading
-        list.spacing = 6
+        list.spacing = Metrics.Space.s
         // The table takes the height the header leaves; without this it keeps a height of 0.
         list.distribution = .fill
-        tableScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        tableScroll.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: Metrics.Pane.listMinHeight
+        ).isActive = true
         headerLabel.setContentHuggingPriority(.required, for: .vertical)
         tableScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -343,20 +351,23 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             fetchButton, notSecretButton,
         ])
         buttons.orientation = .horizontal
-        buttons.spacing = 8
+        buttons.spacing = Metrics.Space.s
 
         let contentScroll = Self.readOnlyScroll(contentView, monospaced: true)
         let infoScroll = Self.readOnlyScroll(infoView, monospaced: false)
-        infoScroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
+        infoScroll.heightAnchor.constraint(equalToConstant: Metrics.Pane.infoHeight).isActive =
+            true
 
         let stack = NSStackView(views: [buttons, contentScroll, infoScroll])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
+        stack.spacing = Metrics.Space.s
+        stack.edgeInsets = NSEdgeInsets(top: Metrics.Space.s, left: 0, bottom: 0, right: 0)
         // The content takes the height the buttons and the info box leave.
         stack.distribution = .fill
-        contentScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        contentScroll.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: Metrics.Pane.listMinHeight
+        ).isActive = true
         buttons.setContentHuggingPriority(.required, for: .vertical)
         contentScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
         for scroll in [contentScroll, infoScroll] {
@@ -371,10 +382,8 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         view.isEditable = false
         view.isSelectable = true
         view.drawsBackground = false
-        view.textContainerInset = NSSize(width: 4, height: 6)
-        view.font =
-            monospaced
-            ? .monospacedSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 12)
+        view.textContainerInset = Metrics.textInset
+        view.font = monospaced ? Typography.mono : Typography.detail
         view.textColor = .labelColor
         view.isVerticallyResizable = true
         view.isHorizontallyResizable = false
@@ -592,7 +601,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        item is DayNode ? 26 : 42
+        item is DayNode ? Metrics.Row.day : Metrics.Row.session
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any)
@@ -602,7 +611,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         switch item {
         case let day as DayNode:
             let title = NSTextField(labelWithString: format.dayTitle(day.section.day))
-            title.font = .boldSystemFont(ofSize: 13)
+            title.font = Typography.sectionTitle
             return title
         case let session as SessionNode:
             return Self.twoLines(
@@ -884,17 +893,19 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         _ title: String, _ subtitle: String, titleWeight: NSFont.Weight = .regular
     ) -> NSView {
         let first = NSTextField(labelWithString: title)
-        first.font = .systemFont(ofSize: 13, weight: titleWeight)
+        first.font = Typography.title(weight: titleWeight)
         first.lineBreakMode = .byTruncatingTail
         let second = NSTextField(labelWithString: subtitle)
-        second.font = .systemFont(ofSize: 11)
+        second.font = Typography.caption
         second.textColor = .secondaryLabelColor
         second.lineBreakMode = .byTruncatingTail
         let stack = NSStackView(views: [first, second])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 1
-        stack.edgeInsets = NSEdgeInsets(top: 3, left: 4, bottom: 3, right: 4)
+        stack.spacing = Metrics.Space.xxs
+        stack.edgeInsets = NSEdgeInsets(
+            top: Metrics.Space.xs, left: Metrics.Space.xs, bottom: Metrics.Space.xs,
+            right: Metrics.Space.xs)
         return stack
     }
 

@@ -14,8 +14,8 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
 {
     private nonisolated static let logger = Logger(
         subsystem: AppInfo.bundleIdentifier, category: "palette")
-    private static let width: CGFloat = 640
-    private static let rowHeight: CGFloat = 44
+    private static let width = Metrics.Window.paletteWidth
+    private static let rowHeight = Metrics.Row.palette
     private static let visibleRows: CGFloat = 8
 
     private let search: PaletteSearch
@@ -51,17 +51,17 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         background.material = .popover
         background.state = .active
         background.wantsLayer = true
-        background.layer?.cornerRadius = 12
+        background.layer?.cornerRadius = Metrics.Radius.panel
         background.layer?.masksToBounds = true
 
         field.placeholderString = "Zwischenablage durchsuchen …"
-        field.font = .systemFont(ofSize: 18)
+        field.font = Typography.paletteInput
         field.focusRingType = .none
         field.delegate = self
         field.translatesAutoresizingMaskIntoConstraints = false
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("entry"))
-        column.width = Self.width - 20
+        column.width = Self.width - 2 * (Metrics.Space.xs + Metrics.Space.s)
         table.addTableColumn(column)
         table.headerView = nil
         table.rowHeight = Self.rowHeight
@@ -83,13 +83,18 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         background.addSubview(field)
         background.addSubview(scroll)
         NSLayoutConstraint.activate([
-            field.topAnchor.constraint(equalTo: background.topAnchor, constant: 14),
-            field.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 14),
-            field.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -14),
-            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
-            scroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 4),
-            scroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -4),
-            scroll.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -6),
+            field.topAnchor.constraint(equalTo: background.topAnchor, constant: Metrics.Space.l),
+            field.leadingAnchor.constraint(
+                equalTo: background.leadingAnchor, constant: Metrics.Space.l),
+            field.trailingAnchor.constraint(
+                equalTo: background.trailingAnchor, constant: -Metrics.Space.l),
+            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: Metrics.Space.s),
+            scroll.leadingAnchor.constraint(
+                equalTo: background.leadingAnchor, constant: Metrics.Space.xs),
+            scroll.trailingAnchor.constraint(
+                equalTo: background.trailingAnchor, constant: -Metrics.Space.xs),
+            scroll.bottomAnchor.constraint(
+                equalTo: background.bottomAnchor, constant: -Metrics.Space.s),
         ])
         panel.contentView = background
     }
@@ -126,7 +131,9 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
 
     private func resizePanel() {
         let shown = min(CGFloat(max(rows.count, 1)), Self.visibleRows)
-        let height = 14 + 28 + 10 + shown * Self.rowHeight + 6
+        let height =
+            Metrics.Space.l + Metrics.Control.paletteField + Metrics.Space.s
+            + shown * Self.rowHeight + Metrics.Space.s
         var frame = panel.frame
         frame.origin.y += frame.height - height
         frame.size = NSSize(width: Self.width, height: height)
@@ -202,17 +209,19 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
     {
         let row = rows[row]
         let title = NSTextField(labelWithString: row.title)
-        title.font = .systemFont(ofSize: 14)
+        title.font = Typography.paletteTitle
         title.lineBreakMode = .byTruncatingTail
         let subtitle = NSTextField(labelWithString: row.subtitle)
-        subtitle.font = .systemFont(ofSize: 11)
+        subtitle.font = Typography.caption
         subtitle.textColor = .secondaryLabelColor
         subtitle.lineBreakMode = .byTruncatingTail
         let stack = NSStackView(views: [title, subtitle])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 2
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+        stack.spacing = Metrics.Space.xxs
+        stack.edgeInsets = NSEdgeInsets(
+            top: Metrics.Space.xs, left: Metrics.Space.s, bottom: Metrics.Space.xs,
+            right: Metrics.Space.s)
         return stack
     }
 }

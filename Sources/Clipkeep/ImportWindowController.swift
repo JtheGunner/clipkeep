@@ -47,7 +47,7 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         self.importer = importer
         self.remover = remover
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            contentRect: NSRect(origin: .zero, size: Metrics.Window.importer),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: true)
         super.init()
         build()
@@ -202,25 +202,25 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         window.title = "Textdatei importieren"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.minSize = NSSize(width: 520, height: 400)
+        window.minSize = Metrics.Window.importerMin
 
-        fileLabel.font = .boldSystemFont(ofSize: 13)
+        fileLabel.font = Typography.sectionTitle
         for (_, title) in Self.modes { modeMenu.addItem(withTitle: title) }
         modeMenu.target = self
         modeMenu.action = #selector(modeChanged)
         let modeRow = NSStackView(views: [
             NSTextField(labelWithString: "Einträge trennen an:"), modeMenu,
         ])
-        modeRow.spacing = 8
+        modeRow.spacing = Metrics.Space.s
 
-        summaryLabel.font = .systemFont(ofSize: 12)
+        summaryLabel.font = Typography.detail
         summaryLabel.maximumNumberOfLines = 6
 
         sampleView.isEditable = false
-        sampleView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        sampleView.font = Typography.monoSmall
         sampleView.textColor = .labelColor
         sampleView.drawsBackground = false
-        sampleView.textContainerInset = NSSize(width: 4, height: 6)
+        sampleView.textContainerInset = Metrics.textInset
         sampleView.isVerticallyResizable = true
         sampleView.autoresizingMask = [.width]
         sampleView.textContainer?.widthTracksTextView = true
@@ -240,24 +240,30 @@ final class ImportWindowController: NSObject, NSWindowDelegate {
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         let buttons = NSStackView(views: [closeButton, importButton])
-        buttons.spacing = 8
+        buttons.spacing = Metrics.Space.s
 
         let stack = NSStackView(views: [
             fileLabel, modeRow, summaryLabel, scroll, progress, buttons,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stack.spacing = Metrics.Space.s
+        stack.edgeInsets = NSEdgeInsets(
+            top: Metrics.Space.l, left: Metrics.Space.l, bottom: Metrics.Space.l,
+            right: Metrics.Space.l)
         buttons.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = stack
         for view in [scroll, progress, summaryLabel] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
+            view.widthAnchor.constraint(
+                equalTo: stack.widthAnchor, constant: -2 * Metrics.Space.l
+            ).isActive = true
         }
-        buttons.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -16).isActive =
-            true
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        buttons.trailingAnchor.constraint(
+            equalTo: stack.trailingAnchor, constant: -Metrics.Space.l
+        ).isActive = true
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: Metrics.Pane.sampleMinHeight)
+            .isActive = true
     }
 
     // MARK: - Preview
