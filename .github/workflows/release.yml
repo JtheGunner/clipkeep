@@ -67,9 +67,12 @@ jobs:
           security find-identity -v -p codesigning | grep -F "\"$SIGNING_IDENTITY\""
           echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
+      # The CI workflow has tested the commit already. Its timing budgets are not reliable when the
+      # whole suite runs in parallel on a small runner, so the build does not run the tests again.
       - name: Build the archive
         env:
           CODESIGN_IDENTITY: ${{ env.SIGNING_IDENTITY }}
+          SKIP_TESTS: "1"
         run: ./scripts/release.sh
 
       - name: Check the signature

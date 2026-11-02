@@ -13,7 +13,8 @@ and signs the archive, publishes the GitHub release and opens the cask pull requ
    change to `main`.
 2. Tag the merge commit and push the tag: `git tag -a vx.y.z -m vx.y.z && git push origin vx.y.z`.
 3. Watch the workflow run. It stops early if the tag is not on `main`, the changelog has no entry
-   for the version, the tests fail, or the app is not signed with the expected certificate.
+   for the version, or the app is not signed with the expected certificate. The tests are not run
+   again: the CI workflow has tested the commit on `main`.
 4. Merge the pull request that the workflow opened in `JtheGunner/homebrew-tap`.
 5. Check the release: install it with `brew install --cask JtheGunner/tap/clipkeep` and open the
    app with right click → "Open".
@@ -49,7 +50,7 @@ restricted to this repository.
 
 If the workflow cannot run, use the Mac that holds the certificate:
 
-1. `VERSION=x.y.z ./scripts/release.sh` writes `build/Clipkeep-x.y.z.zip` and
+1. `VERSION=x.y.z ./scripts/release.sh` runs the tests and writes `build/Clipkeep-x.y.z.zip` and
    `build/Clipkeep-x.y.z.zip.sha256`.
 2. `gh release create vx.y.z build/Clipkeep-x.y.z.zip build/Clipkeep-x.y.z.zip.sha256 --title vx.y.z --notes-file <notes>`.
 3. In the tap, set `version` and `sha256` in `Casks/clipkeep.rb`, run

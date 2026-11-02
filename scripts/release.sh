@@ -9,6 +9,7 @@
 # Without a Developer ID the zip is signed with the local identity or ad hoc, and Gatekeeper will
 # warn on other Macs (see "Installation" in the README).
 # Without NOTARY_PROFILE the app is signed but not notarised.
+# SKIP_TESTS=1 skips the test run, for a caller that has tested the commit already (the release workflow).
 # Next to the zip it writes build/Clipkeep-<version>.zip.sha256 (the checksum the Homebrew cask needs).
 set -euo pipefail
 
@@ -19,7 +20,9 @@ app="build/Clipkeep.app"
 zip="build/Clipkeep-$VERSION.zip"
 checksum="$zip.sha256"
 
-./scripts/test.sh -c release -Xswiftc -enable-testing
+if [[ -z "${SKIP_TESTS:-}" ]]; then
+  ./scripts/test.sh -c release -Xswiftc -enable-testing
+fi
 ./scripts/bundle-app.sh
 codesign --verify --deep --strict "$app"
 
