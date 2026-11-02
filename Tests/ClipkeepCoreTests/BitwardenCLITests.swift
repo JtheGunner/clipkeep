@@ -172,9 +172,10 @@ private final class MemoryVault: SecretVault, @unchecked Sendable {
             try await runner.run(arguments: ["hang"], environment: [:], standardInput: nil)
         }
         // The shell is killed, but its `sleep` keeps the pipes open: the call still ends after
-        // the timeout plus a short drain period, long before the 30 s `sleep` is over. The bound
-        // leaves room for a loaded CI runner.
-        #expect(Date().timeIntervalSince(started) < 20)
+        // the timeout plus a short drain period, long before the 30 s `sleep` is over. Parallel
+        // debug runs on a shared runner can delay the test itself by more than that, so the bound
+        // is only enforced in the serial release run (see `PerformanceBudget`).
+        #expect(!PerformanceBudget.isEnforced || Date().timeIntervalSince(started) < 20)
     }
 
     // MARK: - End to end
