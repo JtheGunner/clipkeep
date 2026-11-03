@@ -25,6 +25,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenLockItem = NSMenuItem()
     private let bitwardenMessageItem = NSMenuItem()
     private let bitwardenInstallItem = NSMenuItem()
+    private var bitwardenIsUnlocked = false
+    private var bitwardenCanUnlock = false
+    private var bitwardenWork: BitwardenWork? {
+        didSet { applyBitwardenAvailability() }
+    }
     private let bitwardenInstaller: any BitwardenInstalling = HomebrewBitwardenInstaller()
     private let paletteItem = NSMenuItem()
     private var palette: PaletteController?
@@ -331,9 +336,41 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         bitwardenInstallItem.isHidden = !canInstall
         bitwardenInstallItem.isEnabled = canInstall
-        bitwardenUnlockItem.isEnabled = canUnlock
-        bitwardenTransferItem.isEnabled = unlocked
-        bitwardenLockItem.isEnabled = unlocked
+        bitwardenIsUnlocked = unlocked
+        bitwardenCanUnlock = canUnlock
+        applyBitwardenAvailability()
+    }
+
+    /// Enables the items for the current status and shows a spinner while work is running, so a
+    /// click is never met with silence.
+    private func applyBitwardenAvailability() {
+        let availability = BitwardenMenuAvailability(
+            unlocked: bitwardenIsUnlocked, canUnlock: bitwardenCanUnlock, work: bitwardenWork)
+        bitwardenUnlockItem.isEnabled = availability.unlockEnabled
+        bitwardenTransferItem.isEnabled = availability.transferEnabled
+        bitwardenLockItem.isEnabled = availability.lockEnabled
+        if let text = availability.progressText {
+            bitwardenMessageItem.view = Self.progressView(text: text)
+            bitwardenMessageItem.isHidden = false
+        } else {
+            bitwardenMessageItem.view = nil
+        }
+    }
+
+    private static func progressView(text: String) -> NSView {
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.startAnimation(nil)
+        let label = NSTextField(labelWithString: text)
+        label.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [spinner, label])
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 14, bottom: 4, right: 14)
+        stack.frame.size = stack.fittingSize
+        return stack
     }
 
     private static func describe(_ error: BitwardenError) -> String {
@@ -380,7 +417,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         let password = field.stringValue
         field.stringValue = ""
+        bitwardenWork = .unlocking
         Task { [weak self] in
+            defer { self?.finishBitwardenWork() }
             do {
                 let report = try await bitwarden.unlock(masterPassword: password)
                 self?.showTransfer(report)
@@ -428,13 +467,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func transferToBitwarden() {
         guard let bitwarden else { return }
+        bitwardenWork = .transferring
         Task { [weak self] in
+            defer { self?.finishBitwardenWork() }
             do {
                 self?.showTransfer(try await bitwarden.transferPending())
             } catch {
                 self?.showBitwardenFailure(.commandFailed)
             }
         }
+    }
+
+    /// Ends the busy state and reloads the status, so the menu is right the moment work is done.
+    private func finishBitwardenWork() {
+        bitwardenWork = nil
+        refreshBitwarden()
     }
 
     @objc private func lockBitwarden() {
