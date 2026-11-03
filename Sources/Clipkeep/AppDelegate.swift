@@ -48,8 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let database = try AppDatabase.open()
                 let control = try CaptureControl(settings: SettingsStore(database: database))
                 let store = ContentStore(database: database)
+                // One instance for every parker: it caches the Keychain item, so a second
+                // instance would overwrite what the first one stored.
+                let vault = KeychainSecretVault()
                 let parker = SecretParker(
-                    database: database, store: store, vault: KeychainSecretVault(),
+                    database: database, store: store, vault: vault,
                     onError: { error in
                         Self.logger.error(
                             "Parking a secret failed: \(String(describing: error), privacy: .public)"
@@ -110,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             secretSink: SecretParker(
                                 database: database,
                                 store: ContentStore(database: database, sessions: nil),
-                                vault: KeychainSecretVault(),
+                                vault: vault,
                                 onError: { error in
                                     Self.logger.error(
                                         "Parking an imported secret failed: \(String(describing: error), privacy: .public)"

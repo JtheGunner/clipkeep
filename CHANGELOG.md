@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The Clipkeep logo: the app icon in Finder, Launchpad, dialogs and notifications, the menu bar icon (dimmed while capture is paused) and the README header.
 
+### Fixed
+
+- Transferring parked secrets to Bitwarden no longer asks for the Keychain password every few seconds. All parked secrets now live in one Keychain item, so macOS asks at most once and "Always Allow" covers every secret. Secrets parked by earlier versions are moved over on first use, which can ask once more for items an older build created.
+- While unlocking or transferring, a small panel with a spinner appears at the top of the screen the pointer is on, the menu bar item shows the same state and the Bitwarden actions are disabled, so it is clear that something is in progress.
+
 ## [0.1.1] - 2026-11-02
 
 ### Added

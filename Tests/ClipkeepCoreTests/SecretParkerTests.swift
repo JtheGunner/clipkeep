@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import Testing
 
 @testable import ClipkeepCore
@@ -333,10 +334,51 @@ private final class ErrorBox: @unchecked Sendable {
 }
 
 @Suite struct KeychainSecretVaultTests {
+    private static func uniqueService() -> String {
+        "li.wuermli.clipkeep.tests.\(UUID().uuidString)"
+    }
+
+    /// Removes every item a test left behind, including the consolidated one.
+    private static func cleanUp(service: String) {
+        for name in [service, service + ".v2"] {
+            SecItemDelete(
+                [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: name,
+                ] as CFDictionary)
+        }
+    }
+
+    /// Writes one item the way versions before the consolidated item did.
+    private static func addLegacyItem(service: String, account: String, value: String) throws {
+        let status = SecItemAdd(
+            [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account,
+                kSecValueData as String: Data(value.utf8),
+            ] as CFDictionary, nil)
+        try #require(status == errSecSuccess)
+    }
+
+    private static func legacyItemCount(service: String) -> Int {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(
+            [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecReturnAttributes as String: true,
+                kSecMatchLimit as String: kSecMatchLimitAll,
+            ] as CFDictionary, &result)
+        guard status == errSecSuccess else { return 0 }
+        return (result as? [[String: Any]])?.count ?? 0
+    }
+
     @Test func storesReadsListsAndDeletes() throws {
-        let vault = KeychainSecretVault(service: "li.wuermli.clipkeep.tests.\(UUID().uuidString)")
+        let service = Self.uniqueService()
+        let vault = KeychainSecretVault(service: service)
         let key = UUID().uuidString
-        defer { try? vault.delete(key: key) }
+        defer { Self.cleanUp(service: service) }
         #expect(try vault.read(key: key) == nil)
         try vault.store("parked value", key: key)
         #expect(try vault.read(key: key) == "parked value")
@@ -346,5 +388,47 @@ private final class ErrorBox: @unchecked Sendable {
         try vault.delete(key: key)
         #expect(try vault.read(key: key) == nil)
         #expect(try vault.keys().isEmpty)
+    }
+
+    @Test func keepsEverySecretInOneKeychainItem() throws {
+        let service = Self.uniqueService()
+        let vault = KeychainSecretVault(service: service)
+        defer { Self.cleanUp(service: service) }
+        try vault.store("one", key: "a")
+        try vault.store("two", key: "b")
+
+        // The per-secret service stays empty: no item of its own per secret.
+        #expect(Self.legacyItemCount(service: service) == 0)
+        #expect(Self.legacyItemCount(service: service + ".v2") == 1)
+    }
+
+    @Test func aNewInstanceSeesWhatAnotherOneStored() throws {
+        let service = Self.uniqueService()
+        let writer = KeychainSecretVault(service: service)
+        defer { Self.cleanUp(service: service) }
+        try writer.store("one", key: "a")
+        try writer.store("two", key: "b")
+        try writer.delete(key: "a")
+
+        let reader = KeychainSecretVault(service: service)
+        #expect(try reader.read(key: "b") == "two")
+        #expect(try reader.keys() == ["b"])
+    }
+
+    @Test func movesPerSecretItemsIntoTheOneItemOnFirstUse() throws {
+        let service = Self.uniqueService()
+        try Self.addLegacyItem(service: service, account: "a", value: "one")
+        try Self.addLegacyItem(service: service, account: "b", value: "two")
+        let vault = KeychainSecretVault(service: service)
+        defer { Self.cleanUp(service: service) }
+
+        #expect(try vault.read(key: "a") == "one")
+        #expect(try vault.read(key: "b") == "two")
+        #expect(try vault.keys().sorted() == ["a", "b"])
+        #expect(Self.legacyItemCount(service: service) == 0)
+
+        // A second start finds everything in the one item and has nothing left to move.
+        let restarted = KeychainSecretVault(service: service)
+        #expect(try restarted.keys().sorted() == ["a", "b"])
     }
 }
