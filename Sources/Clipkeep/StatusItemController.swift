@@ -25,6 +25,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenLockItem = NSMenuItem()
     private let bitwardenMessageItem = NSMenuItem()
     private let bitwardenInstallItem = NSMenuItem()
+    private let progressHUD = ProgressHUD()
     private var bitwardenIsUnlocked = false
     private var bitwardenCanUnlock = false
     private var bitwardenWork: BitwardenWork? {
@@ -352,9 +353,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let text = availability.progressText {
             bitwardenMessageItem.view = Self.progressView(text: text)
             bitwardenMessageItem.isHidden = false
+            progressHUD.show(text)
         } else {
             bitwardenMessageItem.view = nil
+            progressHUD.hide()
         }
+        updateIcon()
     }
 
     private static func progressView(text: String) -> NSView {
@@ -509,6 +513,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 systemSymbolName: paused ? "pause.circle" : "doc.on.clipboard",
                 accessibilityDescription: description)
         }
+        // The menu is closed while Bitwarden works, so the menu bar itself says what is going on.
+        let busyText = BitwardenMenuAvailability(
+            unlocked: bitwardenIsUnlocked, canUnlock: bitwardenCanUnlock, work: bitwardenWork
+        ).menuBarText
+        button.title = busyText.map { " " + $0 } ?? ""
+        button.imagePosition = busyText == nil ? .imageOnly : .imageLeading
     }
 
     @objc private func togglePause() {

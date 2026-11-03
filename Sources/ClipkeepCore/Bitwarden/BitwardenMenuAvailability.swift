@@ -12,6 +12,8 @@ public struct BitwardenMenuAvailability: Sendable, Equatable {
     public let lockEnabled: Bool
     /// Shown next to a spinner while work is running; nil when idle.
     public let progressText: String?
+    /// Short enough for the menu bar, where the menu is closed while work is running.
+    public let menuBarText: String?
 
     public init(unlocked: Bool, canUnlock: Bool, work: BitwardenWork?) {
         unlockEnabled = work == nil && canUnlock
@@ -21,6 +23,12 @@ public struct BitwardenMenuAvailability: Sendable, Equatable {
             switch work {
             case .unlocking: "Entsperre und übertrage Secrets …"
             case .transferring: "Übertrage Secrets …"
+            case nil: nil
+            }
+        menuBarText =
+            switch work {
+            case .unlocking: "Entsperre …"
+            case .transferring: "Übertrage …"
             case nil: nil
             }
     }

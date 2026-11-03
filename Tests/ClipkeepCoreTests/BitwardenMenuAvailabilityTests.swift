@@ -9,6 +9,7 @@ import Testing
         #expect(!menu.transferEnabled)
         #expect(!menu.lockEnabled)
         #expect(menu.progressText == nil)
+        #expect(menu.menuBarText == nil)
     }
 
     @Test func idleUnlockedVaultOffersTransferAndLock() {
@@ -24,6 +25,7 @@ import Testing
         #expect(!menu.transferEnabled)
         #expect(!menu.lockEnabled)
         #expect(menu.progressText?.contains("Entsperre") == true)
+        #expect(menu.menuBarText == "Entsperre …")
     }
 
     @Test func transferringDisablesEverythingAndSaysSo() {
@@ -32,5 +34,6 @@ import Testing
         #expect(!menu.transferEnabled)
         #expect(!menu.lockEnabled)
         #expect(menu.progressText?.contains("Übertrage") == true)
+        #expect(menu.menuBarText == "Übertrage …")
     }
 }

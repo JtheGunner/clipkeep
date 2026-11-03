@@ -338,6 +338,17 @@ private final class ErrorBox: @unchecked Sendable {
         "li.wuermli.clipkeep.tests.\(UUID().uuidString)"
     }
 
+    /// Removes every item a test left behind, including the consolidated one.
+    private static func cleanUp(service: String) {
+        for name in [service, service + ".v2"] {
+            SecItemDelete(
+                [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: name,
+                ] as CFDictionary)
+        }
+    }
+
     /// Writes one item the way versions before the consolidated item did.
     private static func addLegacyItem(service: String, account: String, value: String) throws {
         let status = SecItemAdd(
@@ -364,9 +375,10 @@ private final class ErrorBox: @unchecked Sendable {
     }
 
     @Test func storesReadsListsAndDeletes() throws {
-        let vault = KeychainSecretVault(service: Self.uniqueService())
+        let service = Self.uniqueService()
+        let vault = KeychainSecretVault(service: service)
         let key = UUID().uuidString
-        defer { try? vault.delete(key: key) }
+        defer { Self.cleanUp(service: service) }
         #expect(try vault.read(key: key) == nil)
         try vault.store("parked value", key: key)
         #expect(try vault.read(key: key) == "parked value")
@@ -381,9 +393,7 @@ private final class ErrorBox: @unchecked Sendable {
     @Test func keepsEverySecretInOneKeychainItem() throws {
         let service = Self.uniqueService()
         let vault = KeychainSecretVault(service: service)
-        defer {
-            for key in (try? vault.keys()) ?? [] { try? vault.delete(key: key) }
-        }
+        defer { Self.cleanUp(service: service) }
         try vault.store("one", key: "a")
         try vault.store("two", key: "b")
 
@@ -395,9 +405,7 @@ private final class ErrorBox: @unchecked Sendable {
     @Test func aNewInstanceSeesWhatAnotherOneStored() throws {
         let service = Self.uniqueService()
         let writer = KeychainSecretVault(service: service)
-        defer {
-            for key in (try? writer.keys()) ?? [] { try? writer.delete(key: key) }
-        }
+        defer { Self.cleanUp(service: service) }
         try writer.store("one", key: "a")
         try writer.store("two", key: "b")
         try writer.delete(key: "a")
@@ -412,9 +420,7 @@ private final class ErrorBox: @unchecked Sendable {
         try Self.addLegacyItem(service: service, account: "a", value: "one")
         try Self.addLegacyItem(service: service, account: "b", value: "two")
         let vault = KeychainSecretVault(service: service)
-        defer {
-            for key in (try? vault.keys()) ?? [] { try? vault.delete(key: key) }
-        }
+        defer { Self.cleanUp(service: service) }
 
         #expect(try vault.read(key: "a") == "one")
         #expect(try vault.read(key: "b") == "two")
