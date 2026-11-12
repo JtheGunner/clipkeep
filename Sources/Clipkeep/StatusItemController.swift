@@ -82,23 +82,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         paletteItem.isEnabled = false
         menu.addItem(paletteItem)
 
+        historyItem.title = "Verlauf öffnen …"
+        historyItem.target = self
+        historyItem.action = #selector(openHistory)
+        historyItem.isEnabled = false
+        menu.addItem(historyItem)
+        // The clipboard history and the snippet collection are separate features.
+        menu.addItem(.separator())
+
         snippetPaletteItem.title = "Snippet-Suche öffnen"
         snippetPaletteItem.target = self
         snippetPaletteItem.action = #selector(openSnippetPalette)
         snippetPaletteItem.isEnabled = false
         menu.addItem(snippetPaletteItem)
 
-        historyItem.title = "Verlauf öffnen …"
-        historyItem.target = self
-        historyItem.action = #selector(openHistory)
-        historyItem.isEnabled = false
-        menu.addItem(historyItem)
-
         snippetExplorerItem.title = "Snippet-Explorer öffnen …"
         snippetExplorerItem.target = self
         snippetExplorerItem.action = #selector(openSnippetExplorer)
         snippetExplorerItem.isEnabled = false
         menu.addItem(snippetExplorerItem)
+        menu.addItem(.separator())
 
         importItem.title = "Textdatei importieren …"
         importItem.target = self
