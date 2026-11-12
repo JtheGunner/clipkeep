@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var history: HistoryWindowController?
     private var importer: ImportWindowController?
     private var paletteHotKey: GlobalHotKey?
+    private var snippetHotKey: GlobalHotKey?
     private let systemContext = SystemContext()
     private let secretNotifier = SecretNotifier()
 
@@ -86,8 +87,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             "Snippet capture disabled: \(String(describing: error), privacy: .public)"
                         )
                     })
+                let snippetStore = SnippetStore(database: database)
                 let snippetCapture = SnippetCapture(
-                    store: SnippetStore(database: database), control: snippetControl,
+                    store: snippetStore, control: snippetControl,
                     onError: { error in
                         // Never log copied content, only the error.
                         Self.logger.error(
@@ -113,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self?.captureStarted(
                     watcher, control: control, snippetControl: snippetControl,
                     bitwarden: bitwarden, secrets: parker,
-                    search: PaletteSearch(database: database),
+                    search: PaletteSearch(database: database), snippets: snippetStore,
                     history: HistoryWindowController(
                         browser: HistoryBrowser(database: database),
                         search: SearchService(database: database),
@@ -158,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureStarted(
         _ watcher: ClipboardWatcher, control: CaptureControl,
         snippetControl: SnippetCaptureControl, bitwarden: BitwardenSync,
-        secrets: SecretParker, search: PaletteSearch,
+        secrets: SecretParker, search: PaletteSearch, snippets: SnippetStore,
         history: HistoryWindowController, importer: ImportWindowController
     ) {
         self.watcher = watcher
@@ -171,12 +173,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemController?.attach(history: history)
         self.importer = importer
         statusItemController?.attach(importer: importer)
-        let palette = PaletteController(search: search)
+        let palette = PaletteController(
+            history: search, snippets: SnippetPaletteSearch(store: snippets),
+            deleteSnippet: { id in _ = try snippets.delete(id: id) })
         self.palette = palette
         // Control + Option + V.
         paletteHotKey = GlobalHotKey(
-            keyCode: kVK_ANSI_V, modifiers: controlKey | optionKey,
-            action: { [weak palette] in palette?.toggle() })
+            identifier: 1, keyCode: kVK_ANSI_V, modifiers: controlKey | optionKey,
+            action: { [weak palette] in palette?.toggle(mode: .history) })
+        // Control + Option + S. Registered on its own, so a taken shortcut leaves the first alone.
+        snippetHotKey = GlobalHotKey(
+            identifier: 2, keyCode: kVK_ANSI_S, modifiers: controlKey | optionKey,
+            action: { [weak palette] in palette?.toggle(mode: .snippets) })
+        if snippetHotKey == nil {
+            Self.logger.error("The snippet hotkey Control+Option+S could not be registered")
+        }
         statusItemController?.attach(
             palette: palette, hotKeyRegistered: paletteHotKey != nil)
     }

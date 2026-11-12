@@ -63,6 +63,12 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 - [ ] Palette rows start with the same type icon as the history list; the selected row is a rounded highlight. Light and dark appearance both look right.
 - [ ] Typing searches the history, arrow keys and Return copy the entry, Escape closes the palette.
 - [ ] When another app owns the shortcut the menu reads "Kurzbefehl ⌃⌥V ist belegt" and "Suchpalette öffnen" still works.
+- [ ] <kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd> opens the palette from any app directly in snippet mode, with the placeholder "Snippets durchsuchen …". Pressing it again closes the palette; pressing <kbd>⌃</kbd><kbd>⌥</kbd><kbd>V</kbd> instead switches to the history.
+- [ ] With the palette open, <kbd>Tab</kbd> switches between history and snippets and keeps the typed query.
+- [ ] Snippet rows show the first line as title and "age · Shell/SQL/YAML · count×" below it; an empty query lists the most recently copied snippets first. With no snippets the list is empty and nothing breaks.
+- [ ] <kbd>Return</kbd> on a snippet copies it and closes the palette; the copy does not appear as a new history entry and does not raise the snippet's count.
+- [ ] In snippet mode <kbd>⌘</kbd><kbd>⌫</kbd> removes the selected snippet without touching the query, and copying the same text again does not bring it back. In history mode <kbd>⌘</kbd><kbd>⌫</kbd> still deletes the query text.
+- [ ] When another app owns <kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd>, <kbd>⌃</kbd><kbd>⌥</kbd><kbd>V</kbd> still opens the palette and Tab still reaches the snippets.
 
 ## 6. History window
 
