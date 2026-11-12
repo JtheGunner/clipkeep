@@ -1,0 +1,3 @@
+# Commands the youtrack-task reviewer may run besides the built-in test and build runners.
+# `scripts/test.sh` and `swift test` are already built in; the formatter check is not.
+scripts/lint.sh
