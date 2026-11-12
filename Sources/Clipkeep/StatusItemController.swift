@@ -304,7 +304,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             Self.logger.error(
                 "Snippet backfill failed: \(String(describing: error), privacy: .public)")
             alert.messageText = "Übernahme fehlgeschlagen"
-            alert.informativeText = "Der Verlauf konnte nicht gelesen werden."
+            alert.informativeText =
+                "Das Übernehmen ist fehlgeschlagen. Bereits übernommene Einträge bleiben erhalten; ein erneuter Lauf setzt sie fort."
         }
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()

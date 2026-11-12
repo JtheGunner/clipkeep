@@ -37,6 +37,18 @@ import Testing
             }
         }
 
+        /// Proves the secret value reached neither the stored text, the folded search text nor
+        /// the full-text index.
+        func expectNoTrace(of value: String) throws {
+            #expect(try snippets.list(limit: 100).allSatisfy { !$0.text.contains(value) })
+            let searchTexts = try database.read { connection in
+                try connection.query("SELECT search_text FROM snippets") { $0.text(0) }
+            }
+            #expect(!searchTexts.isEmpty)
+            #expect(searchTexts.allSatisfy { !$0.contains(value) })
+            #expect(try snippets.search(value, limit: 10).isEmpty)
+        }
+
         func historyRows() throws -> [String] {
             try database.read { connection in
                 try connection.query(
@@ -70,6 +82,31 @@ import Testing
         #expect(stored.first?.language == .shell)
         #expect(stored.first?.text.contains("<VALUE>") == true)
         #expect(stored.first?.text.contains("hunter2hunter2") == false)
+        try fixture.expectNoTrace(of: "hunter2")
+    }
+
+    @Test func promoteOfAnExistingSnippetBumpsIt() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try fixture.record("ls", at: base)
+        guard
+            case .inserted(let snippetID) = try fixture.snippets.add(
+                text: "ls", language: .yaml, origin: .auto, appName: "Terminal", at: base)
+        else {
+            Issue.record("expected the snippet to be inserted")
+            return
+        }
+
+        let outcome = try fixture.promoter.promote(contentID: id, language: .shell)
+
+        #expect(outcome == .stored(snippetID))
+        let stored = try fixture.snippets.list(limit: 10)
+        #expect(stored.count == 1)
+        #expect(stored.first?.copyCount == 2)
+        // The row is bumped, not rewritten: its language and origin stay as stored.
+        #expect(stored.first?.language == .yaml)
+        #expect(stored.first?.origin == .auto)
+        #expect(stored.first?.appName == "Terminal")
     }
 
     @Test func promoteTakesTheRecognisedLanguage() throws {
@@ -152,11 +189,27 @@ import Testing
         #expect(try fixture.snippets.count() == 0)
     }
 
-    @Test func promoteRefusesTextFarAboveTheSnippetSize() throws {
+    @Test func promoteRefusesSourceTextAboveTheReadLimit() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let limit = SnippetFilter.Threshold.maximumBytes * SnippetCapture.sizeSlackFactor
+        let huge = String(repeating: "a", count: limit + 1)
+        let id = try fixture.record(huge, at: base)
+
+        #expect(try fixture.promoter.promote(contentID: id, language: .shell) == .tooLarge)
+        #expect(try fixture.snippets.count() == 0)
+    }
+
+    @Test func promoteRefusesAnonymisedTextAboveTheSnippetSize() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
         let line = "echo build step done\n"
+        // Between the filter's byte cap and the read limit: only the anonymised-size guard trips.
         let huge = String(repeating: line, count: SnippetFilter.Threshold.maximumBytes / 10)
+        #expect(huge.utf8.count > SnippetFilter.Threshold.maximumBytes)
+        #expect(
+            huge.utf8.count
+                <= SnippetFilter.Threshold.maximumBytes * SnippetCapture.sizeSlackFactor)
         let id = try fixture.record(huge, at: base)
 
         #expect(try fixture.promoter.promote(contentID: id, language: .shell) == .tooLarge)
@@ -220,6 +273,7 @@ import Testing
         let stored = try fixture.snippets.list(limit: 10)
         #expect(stored.first?.text.contains("<VALUE>") == true)
         #expect(stored.allSatisfy { !$0.text.contains("hunter2") })
+        try fixture.expectNoTrace(of: "hunter2")
     }
 
     @Test func backfillDropsTextWithAResidualSecret() throws {
