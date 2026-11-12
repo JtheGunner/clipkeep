@@ -68,6 +68,21 @@ name one with `--baseline`.
 > Modes: `automatic`, `separators`, `blank-lines`, `every-line`. Choose gold targets that are not
 > secrets, because those entries never reach the database.
 
+## ✂️ Evaluating the snippet filter
+
+```bash
+swift run clipkeep-eval --snippets --report ~/Desktop/snippet-report.txt
+```
+
+Runs the snippet anonymiser and filter over your real clipboard history (deleted entries and
+parked secrets are skipped) and lists the accepted snippets and the code-like texts that were
+rejected. The tool opens the encrypted database with the key from the Keychain, so macOS asks
+once to allow the eval binary.
+
+> [!WARNING]
+> The report contains private clipboard content. Write it outside the repository (the tool
+> refuses a path inside the current directory), never commit it, and delete it after review.
+
 ## 🎯 Baseline
 
 | Metric | Baseline |
