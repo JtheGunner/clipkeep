@@ -75,10 +75,11 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 
 - [ ] The menu groups "Suchpalette öffnen" and "Verlauf öffnen …" in one block and everything about snippets ("Snippet-Suche öffnen", "Snippet-Explorer öffnen …", "Snippets automatisch erfassen", "Snippets aus Verlauf übernehmen …") in a second block, with a separator between the two blocks and another before "Textdatei importieren …".
 - [ ] The menu reads "Snippet-Suche öffnen (⌃⌥S)" and opens the palette in snippet mode; when another app owns the shortcut it reads "Snippet-Suche öffnen (Kurzbefehl ⌃⌥S ist belegt)" and still works.
-- [ ] "Snippet-Explorer öffnen …" opens a window listing every snippet with the columns Snippet, Sprache, Thema, Zuletzt genutzt and Häufigkeit; the count under the list reads "N Snippets". Light and dark appearance both look right.
+- [ ] "Snippet-Explorer öffnen …" opens a window listing every snippet with the columns Snippet, Sprache, Thema, Zuletzt genutzt, Angelegt and Häufigkeit; the count under the list reads "N Snippets". Light and dark appearance both look right.
 - [ ] Clicking a column header sorts by it and a second click reverses it (Snippet, Sprache and Thema start A to Z, Zuletzt genutzt and Häufigkeit start newest or most first); a snippet without a topic stays at the end of a Thema sort.
 - [ ] The language menu limits the list to Shell, SQL or YAML and the topic menu then lists only that language's topics with their counts; the search field narrows the list by text and topic as you type, and the count reads "N von M Snippets".
 - [ ] Selecting a snippet shows its full text and a line with language, topic, created, last used, origin and source app. "Kopieren" and a double click put it on the clipboard without adding a history entry.
+- [ ] Narrowing the filters so the selected snippet disappears leaves nothing selected (the text area is empty and "Kopieren" and "Löschen …" are disabled) instead of selecting another snippet; relaxing the filters afterwards removes the "Kein Snippet passt zu den Filtern." message.
 - [ ] "Löschen …" asks first; after confirming the snippet is gone, copying the same text again does not bring it back.
 - [ ] A snippet captured while the window is open appears after clicking out of and back into the window. With no snippets the window says so instead of showing an empty table.
 

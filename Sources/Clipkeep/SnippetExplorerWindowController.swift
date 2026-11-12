@@ -32,6 +32,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private var topicByID: [Int64: String] = [:]
     private var query = SnippetExplorerQuery()
     private var isRebuildingMenus = false
+    private var loadFailed = false
 
     private static let languages: [(SnippetLanguage?, String)] = [
         (nil, "Alle Sprachen"), (.shell, "Shell"), (.sql, "SQL"), (.yaml, "YAML"),
@@ -162,7 +163,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         let columns: [(SnippetSortKey, String, CGFloat, CGFloat)] = [
             (.title, "Snippet", 360, 160), (.language, "Sprache", 70, 56),
             (.topic, "Thema", 110, 70), (.lastUsed, "Zuletzt genutzt", 120, 90),
-            (.count, "Häufigkeit", 80, 64),
+            (.created, "Angelegt", 130, 90), (.count, "Häufigkeit", 80, 64),
         ]
         for (key, title, width, minWidth) in columns {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key.rawValue))
@@ -196,13 +197,14 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     private func reload() {
         let selectedID = selectedSnippet?.id
+        loadFailed = false
         do {
             all = try store.list(limit: Self.loadLimit)
         } catch {
             Self.logger.error(
                 "Loading snippets failed: \(String(describing: error), privacy: .public)")
             all = []
-            infoLabel.stringValue = "Snippets konnten nicht geladen werden."
+            loadFailed = true
         }
         topicByID = Dictionary(
             all.compactMap { snippet in SnippetTopic.of(snippet).map { (snippet.id, $0) } },
@@ -240,6 +242,9 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private func applyFilters(keeping selectedID: Int64? = nil) {
         shown = SnippetExplorer.apply(query, to: all)
         table.reloadData()
+        // The table keeps a row index across a reload; without this a different snippet could
+        // become the selection when the chosen one drops out of the list.
+        table.deselectAll(nil)
         if let selectedID, let row = shown.firstIndex(where: { $0.id == selectedID }) {
             table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             table.scrollRowToVisible(row)
@@ -249,13 +254,17 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             shown.count == total
             ? (total == 1 ? "1 Snippet" : "\(total) Snippets")
             : "\(shown.count) von \(total) Snippets"
-        if total == 0 {
-            infoLabel.stringValue =
-                "Noch keine Snippets. Kopierter Shell-, SQL- und YAML-Code erscheint hier automatisch."
-        } else if shown.isEmpty {
-            infoLabel.stringValue = "Kein Snippet passt zu den Filtern."
-        }
         updateSelectionState()
+    }
+
+    /// What the info line says while nothing is selected.
+    private var emptySelectionMessage: String {
+        if loadFailed { return "Snippets konnten nicht geladen werden." }
+        if all.isEmpty {
+            return
+                "Noch keine Snippets. Kopierter Shell-, SQL- und YAML-Code erscheint hier automatisch."
+        }
+        return shown.isEmpty ? "Kein Snippet passt zu den Filtern." : ""
     }
 
     @objc private func languageChanged() {
@@ -294,6 +303,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         deleteButton.isEnabled = snippet != nil
         guard let snippet else {
             detailView.string = ""
+            infoLabel.stringValue = emptySelectionMessage
             return
         }
         detailView.string = snippet.text
@@ -362,6 +372,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         case .lastUsed:
             cell.stringValue = Self.relativeDates.localizedString(
                 for: snippet.lastCopiedAt, relativeTo: Date())
+        case .created: cell.stringValue = Self.absoluteDates.string(from: snippet.createdAt)
         case .count: cell.stringValue = "\(snippet.copyCount)×"
         default: cell.stringValue = ""
         }
