@@ -78,6 +78,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         return false
                     }
                 }
+                let snippetControl = try SnippetCaptureControl(
+                    settings: SettingsStore(database: database))
+                let snippetCapture = SnippetCapture(
+                    store: SnippetStore(database: database), control: snippetControl,
+                    onError: { error in
+                        // Never log copied content, only the error.
+                        Self.logger.error(
+                            "Snippet capture failed: \(String(describing: error), privacy: .public)"
+                        )
+                    })
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
@@ -85,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         contextDetails: ContextReader(
                             environment: systemContext.environment,
                             readsSafari: { StatusItemController.readsSafari }),
-                        control: control),
+                        control: control, snippets: snippetCapture),
                     onError: { error in
                         // Never log copied content, only the error.
                         Self.logger.error(
@@ -95,7 +105,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 watcher.start()
                 await MaintenanceScheduler.start(database: database)
                 await self?.captureStarted(
-                    watcher, control: control, bitwarden: bitwarden, secrets: parker,
+                    watcher, control: control, snippetControl: snippetControl,
+                    bitwarden: bitwarden, secrets: parker,
                     search: PaletteSearch(database: database),
                     history: HistoryWindowController(
                         browser: HistoryBrowser(database: database),
@@ -139,13 +150,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func captureStarted(
-        _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync,
+        _ watcher: ClipboardWatcher, control: CaptureControl,
+        snippetControl: SnippetCaptureControl, bitwarden: BitwardenSync,
         secrets: SecretParker, search: PaletteSearch,
         history: HistoryWindowController, importer: ImportWindowController
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
+        statusItemController?.attach(snippetControl: snippetControl)
         statusItemController?.attach(bitwarden: bitwarden)
         statusItemController?.attach(secrets: secrets)
         self.history = history

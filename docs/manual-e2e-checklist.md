@@ -44,6 +44,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 - [ ] Copying text from Safari, Chrome, a terminal and an editor creates entries with the right source app.
 - [ ] Window title and address are recorded where the permissions are granted.
 - [ ] "Aufzeichnung pausieren" stops capture, the menu bar logo is dimmed, "Aufzeichnung fortsetzen" resumes it and the logo is back to full strength.
+- [ ] "Snippets automatisch erfassen" is checked by default. With it on, copying a shell command, a SQL statement or a YAML block adds a snippet (secrets shown as placeholders, never the value); with it off, or while capture is paused, nothing is added. The choice survives a restart.
 - [ ] "… ignorieren" for the front app stops recording from that app; removing it under "Ignorieren" resumes.
 - [ ] A content rule ("Inhaltsregel hinzufügen …") skips matching copies; an invalid pattern shows "Regel nicht übernommen".
 

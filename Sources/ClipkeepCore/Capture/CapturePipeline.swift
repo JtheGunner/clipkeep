@@ -147,6 +147,7 @@ public struct CapturePipeline: Sendable {
     private let detector: SecretDetector
     private let secretSink: (any SecretSink)?
     private let contextDetails: (any ContextDetailProviding)?
+    private let snippets: SnippetCapture?
     /// Pause state and ignore rules this pipeline obeys.
     public let control: CaptureControl
 
@@ -154,8 +155,9 @@ public struct CapturePipeline: Sendable {
         store: ContentStore, configuration: CaptureConfiguration = CaptureConfiguration(),
         detector: SecretDetector = SecretDetector(), secretSink: (any SecretSink)? = nil,
         contextDetails: (any ContextDetailProviding)? = nil,
-        control: CaptureControl = CaptureControl()
+        control: CaptureControl = CaptureControl(), snippets: SnippetCapture? = nil
     ) {
+        self.snippets = snippets
         self.contextDetails = contextDetails
         self.control = control
         self.store = store
@@ -196,6 +198,9 @@ public struct CapturePipeline: Sendable {
             return .skipped(reason)
         }
         if control.matchesPattern(text) { return .skipped(.ignoredByRule) }
+        // After every do-not-record rule, before the secret skip: a snippet with a secret in it
+        // is stored anonymised even though the history drops the copy.
+        snippets?.capture(text: text, context: source, at: copiedAt)
         if detector.containsSecret(in: text), !(secretSink?.isException(text) ?? false) {
             if control.isPaused || control.pauseGeneration != pauseGeneration {
                 return .skipped(.paused)

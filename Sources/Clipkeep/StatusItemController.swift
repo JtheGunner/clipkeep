@@ -16,6 +16,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let automationItem = NSMenuItem()
     private let safariItem = NSMenuItem()
     private let pauseItem = NSMenuItem()
+    private let snippetCaptureItem = NSMenuItem()
+    private var snippetControl: SnippetCaptureControl?
     private let ignoreAppItem = NSMenuItem()
     private let ignoredAppsItem = NSMenuItem()
     private let bitwardenItem = NSMenuItem()
@@ -91,6 +93,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
         menu.addItem(pauseItem)
+        snippetCaptureItem.title = "Snippets automatisch erfassen"
+        snippetCaptureItem.target = self
+        snippetCaptureItem.action = #selector(toggleSnippetCapture)
+        snippetCaptureItem.isEnabled = false
+        menu.addItem(snippetCaptureItem)
         ignoreAppItem.target = self
         ignoreAppItem.action = #selector(ignoreFrontmostApp)
         ignoreAppItem.isEnabled = false
@@ -192,6 +199,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let paused = control?.isPaused ?? false
         pauseItem.title = paused ? "Aufzeichnung fortsetzen" : "Aufzeichnung pausieren"
         pauseItem.image = Symbols.image(paused ? "play" : "pause", nil)
+        snippetCaptureItem.state = (snippetControl?.isEnabled ?? false) ? .on : .off
         let front = Self.frontmostForeignApp()
         ignoreAppItem.title = front.map { "„\($0.name)“ ignorieren" } ?? "Frontmost-App ignorieren"
         ignoreAppItem.isEnabled = control != nil && front != nil
@@ -228,6 +236,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.control = control
         pauseItem.isEnabled = true
         updateIcon()
+    }
+
+    /// Enables the snippet collection toggle once the database is open.
+    func attach(snippetControl: SnippetCaptureControl) {
+        self.snippetControl = snippetControl
+        snippetCaptureItem.isEnabled = true
+    }
+
+    @objc private func toggleSnippetCapture() {
+        guard let snippetControl else { return }
+        do {
+            try snippetControl.setEnabled(!snippetControl.isEnabled)
+        } catch {
+            showSaveProblem()
+        }
     }
 
     func attach(palette: PaletteController, hotKeyRegistered: Bool) {

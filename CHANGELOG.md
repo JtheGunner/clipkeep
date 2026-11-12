@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Shell, SQL and YAML snippets are collected automatically from your copies, with secrets replaced by placeholders before anything is stored. Copies that capture skips (pause, ignored or password manager apps, ignore rules, Clipkeep's own copies) are never collected, and "Snippets automatisch erfassen" in the menu switches collection off.
 - The Clipkeep logo: the app icon in Finder, Launchpad, dialogs and notifications, the menu bar icon (dimmed while capture is paused) and the README header.
 
 ### Fixed
