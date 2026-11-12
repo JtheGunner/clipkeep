@@ -84,4 +84,55 @@ import Testing
         #expect(text.contains("Rejected but code-like (1)"))
         #expect(text.contains("git status -s"))
     }
+
+    @Test func readOnlyConnectionRejectsWritesAndLeavesTheFileUntouched() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.record(text: "SELECT 1 FROM dual;", copiedAt: base)
+        _ = try fixture.database.read {
+            try $0.query("PRAGMA wal_checkpoint(TRUNCATE)") { $0.int(0) }
+        }
+        let before = try Data(contentsOf: URL(fileURLWithPath: fixture.temp.path))
+        let modified =
+            try FileManager.default.attributesOfItem(atPath: fixture.temp.path)[
+                .modificationDate] as? Date
+
+        let readOnly = try Database(path: fixture.temp.path, key: fixture.temp.key, readOnly: true)
+        let report = try SnippetEvaluation.run(database: readOnly)
+        #expect(report.examined == 1)
+        #expect(throws: (any Error).self) {
+            try readOnly.write { try $0.execute("DELETE FROM contents") }
+        }
+
+        let after = try Data(contentsOf: URL(fileURLWithPath: fixture.temp.path))
+        #expect(after == before)
+        let modifiedAfter =
+            try FileManager.default.attributesOfItem(atPath: fixture.temp.path)[
+                .modificationDate] as? Date
+        #expect(modifiedAfter == modified)
+    }
+
+    @Test func readOnlyOpenOfAMissingFileCreatesNothing() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+
+        #expect(throws: (any Error).self) {
+            _ = try Database(path: temp.path, key: temp.key, readOnly: true)
+        }
+        #expect(!FileManager.default.fileExists(atPath: temp.path))
+    }
+
+    @Test func missingSchemaFailsWithoutDetailsOrMigration() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let unmigrated = try temp.open(migrated: false)
+
+        #expect(throws: SnippetEvaluationError.unreadableHistory) {
+            _ = try SnippetEvaluation.run(database: unmigrated)
+        }
+        let tables = try unmigrated.read {
+            try $0.query("SELECT count(*) FROM sqlite_master") { $0.int(0) }
+        }
+        #expect(tables == [0])
+    }
 }

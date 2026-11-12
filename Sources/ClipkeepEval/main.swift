@@ -73,18 +73,17 @@ func load<T: Decodable>(_ type: T.Type, _ path: String) -> T {
     }
 }
 
-/// Runs the snippet filter over the real history. The report holds copied content, so it is
-/// refused inside the current directory (the repository) and never printed to a log.
+/// Runs the snippet filter over the real history through a read-only connection: nothing is
+/// created, migrated or written. The report holds copied content, so it is written owner-only
+/// and refused inside the repository.
 func runSnippetEvaluation(reportPath: String?) -> Never {
-    if let reportPath {
-        let target = URL(fileURLWithPath: reportPath).standardizedFileURL.path
-        let workingDirectory = FileManager.default.currentDirectoryPath
-        if target.hasPrefix(workingDirectory + "/") {
-            fail(
-                "The report contains private clipboard content; write it outside \(workingDirectory)"
-            )
-        }
+    let output = EvaluationOutput.decide(
+        isTerminal: isatty(STDOUT_FILENO) != 0, reportPath: reportPath)
+    if output == .refusedNonInteractive {
+        fail("--snippets prints private clipboard text; give --report FILE or run it in a terminal")
     }
+    let root = EvaluationReportWriter.repositoryRoot(
+        startingAt: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
     let report: SnippetEvaluationReport
     do {
         let support = try FileManager.default.url(
@@ -95,25 +94,30 @@ func runSnippetEvaluation(reportPath: String?) -> Never {
             fail("No Clipkeep database at \(path)")
         }
         let database = try Database(
-            path: path, key: try KeychainDatabaseKeyStore().loadOrCreateKey())
-        try Schema.migrator.migrate(database)
+            path: path, key: try KeychainDatabaseKeyStore().loadOrCreateKey(), readOnly: true)
         report = try SnippetEvaluation.run(database: database)
     } catch {
         fail("Snippet evaluation failed: \(error)")
     }
     let text = report.rendered()
-    if let reportPath {
+    switch output {
+    case .reportFile(let path):
         do {
-            try Data(text.utf8).write(to: URL(fileURLWithPath: reportPath))
+            try EvaluationReportWriter.write(text, to: path, repositoryRoot: root)
         } catch {
-            fail("Cannot write \(reportPath): \(error)")
+            fail("Cannot write the report to \(path): \(error)")
         }
         print(
             "Examined \(report.examined), accepted \(report.accepted.count), "
-                + "rejected but code-like \(report.rejectedCodeLike.count); report in \(reportPath)"
-        )
-    } else {
+                + "rejected but code-like \(report.rejectedCodeLike.count); report in \(path)")
+    case .terminal:
+        FileHandle.standardError.write(
+            Data(
+                "Warning: the output contains private clipboard text and may stay in scrollback or logs.\n"
+                    .utf8))
         print(text, terminator: "")
+    case .refusedNonInteractive:
+        break
     }
     exit(0)
 }

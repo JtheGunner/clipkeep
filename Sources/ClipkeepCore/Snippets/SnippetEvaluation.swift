@@ -42,21 +42,25 @@ public struct SnippetEvaluationReport: Sendable {
 
 /// Measures the snippet filter against stored history, to tune its thresholds before the
 /// collection is switched on.
+public enum SnippetEvaluationError: Error, Equatable {
+    /// The database lacks what the evaluation reads. The cause is left out on purpose, so no
+    /// SQL text or stored content ends up in an error message.
+    case unreadableHistory
+}
+
 public enum SnippetEvaluation {
     private static let minimumCodeLikeLines = 3
 
     public static func run(
         database: Database, rejectedLimit: Int = 50
     ) throws -> SnippetEvaluationReport {
-        let texts = try database.read { connection in
-            try connection.query(
-                """
-                SELECT text FROM contents
-                WHERE deleted_at IS NULL AND kind != ?
-                ORDER BY last_copied_at DESC, id DESC
-                """, [.text(ContentKind.secret.rawValue)]
-            ) { $0.text(0) }
+        let texts: [String]
+        do {
+            texts = try readTexts(from: database)
+        } catch {
+            throw SnippetEvaluationError.unreadableHistory
         }
+
         let anonymizer = SnippetAnonymizer()
         var accepted: [SnippetEvaluationReport.Entry] = []
         var rejected: [SnippetEvaluationReport.Entry] = []
@@ -70,6 +74,18 @@ public enum SnippetEvaluation {
         }
         return SnippetEvaluationReport(
             accepted: accepted, rejectedCodeLike: rejected, examined: texts.count)
+    }
+
+    private static func readTexts(from database: Database) throws -> [String] {
+        try database.read { connection in
+            try connection.query(
+                """
+                SELECT text FROM contents
+                WHERE deleted_at IS NULL AND kind != ?
+                ORDER BY last_copied_at DESC, id DESC
+                """, [.text(ContentKind.secret.rawValue)]
+            ) { $0.text(0) }
+        }
     }
 
     private static func isCodeLike(_ text: String) -> Bool {
