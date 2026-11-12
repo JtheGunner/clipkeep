@@ -66,7 +66,7 @@ These make the feature a failure even if it technically works:
 
 A new migration (version 12) adds a `snippets` table that has **no foreign key to `contents`**:
 
-- `id`, `text` (already anonymised), `hash` (unique, over the normalised anonymised text),
+- `id`, `text` (already anonymised), `hash` (unique, the exact hash of the anonymised text),
   `language` (`shell`, `sql`, `yaml`), `search_text`, `created_at`, `last_copied_at`, `copy_count`,
   `origin` (`auto`, `history`), `app_name` (the source app, informational).
 - An FTS5 trigram index over `search_text`, with the same insert/delete/update triggers as

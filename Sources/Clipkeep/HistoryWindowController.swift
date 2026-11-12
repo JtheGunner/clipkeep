@@ -1252,6 +1252,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private func showNoDetail() {
         detail = nil
         parkedSecret = nil
+        snippetNote = ""
         contentView.string = rows.isEmpty ? "Keine Einträge." : "Eintrag auswählen."
         infoView.string = ""
         updateButtons()

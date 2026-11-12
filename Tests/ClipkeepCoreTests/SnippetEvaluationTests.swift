@@ -42,6 +42,22 @@ import Testing
         #expect(!report.rejectedCodeLike.contains { $0.text == "ls" })
     }
 
+    @Test func dropsATextWhoseRedactionLeftASecretBehind() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let command = "DB_PASSWORD=hunter2hunter2 ./scripts/test.sh --filter Core"
+        _ = try fixture.store.record(text: command, copiedAt: base)
+        // An anonymiser that lets the value through simulates a redaction that missed a secret.
+        let lenient = SnippetAnonymizer(
+            detector: SecretDetector(allowedHashes: [ContentHashing.exactHash("hunter2hunter2")]))
+
+        let report = try SnippetEvaluation.run(database: fixture.database, anonymizer: lenient)
+
+        #expect(report.examined == 1)
+        #expect(report.accepted.isEmpty)
+        #expect(!report.rejectedCodeLike.contains { $0.text.contains("hunter2hunter2") })
+    }
+
     @Test func listsMultiLineNonCodeTextAsRejectedCodeLike() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }

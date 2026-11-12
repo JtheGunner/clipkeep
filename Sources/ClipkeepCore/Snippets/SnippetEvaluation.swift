@@ -52,7 +52,9 @@ public enum SnippetEvaluation {
     private static let minimumCodeLikeLines = 3
 
     public static func run(
-        database: Database, rejectedLimit: Int = 50
+        database: Database, rejectedLimit: Int = 50,
+        anonymizer: SnippetAnonymizer = SnippetAnonymizer(),
+        residualDetector: SecretDetector = SecretDetector()
     ) throws -> SnippetEvaluationReport {
         let texts: [String]
         do {
@@ -61,11 +63,13 @@ public enum SnippetEvaluation {
             throw SnippetEvaluationError.unreadableHistory
         }
 
-        let anonymizer = SnippetAnonymizer()
         var accepted: [SnippetEvaluationReport.Entry] = []
         var rejected: [SnippetEvaluationReport.Entry] = []
         for original in texts {
             let text = anonymizer.anonymize(original)
+            // The live paths drop a text that still holds a secret after redaction; the report
+            // must not print one either.
+            guard !residualDetector.containsSecret(in: text) else { continue }
             if let language = SnippetFilter.evaluate(text) {
                 accepted.append(.init(language: language, text: text))
             } else if rejected.count < rejectedLimit, isCodeLike(text) {
