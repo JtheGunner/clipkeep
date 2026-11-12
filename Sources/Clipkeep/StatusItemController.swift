@@ -42,6 +42,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenInstaller: any BitwardenInstalling = HomebrewBitwardenInstaller()
     private let paletteItem = NSMenuItem()
     private var palette: PaletteController?
+    private let snippetPaletteItem = NSMenuItem()
+    private let snippetExplorerItem = NSMenuItem()
+    private var snippetExplorer: SnippetExplorerWindowController?
     private let historyItem = NSMenuItem()
     private let importItem = NSMenuItem()
     private let removeImportItem = NSMenuItem()
@@ -84,6 +87,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         historyItem.action = #selector(openHistory)
         historyItem.isEnabled = false
         menu.addItem(historyItem)
+        // The clipboard history and the snippet collection are separate features.
+        menu.addItem(.separator())
+
+        snippetPaletteItem.title = "Snippet-Suche öffnen"
+        snippetPaletteItem.target = self
+        snippetPaletteItem.action = #selector(openSnippetPalette)
+        snippetPaletteItem.isEnabled = false
+        menu.addItem(snippetPaletteItem)
+
+        snippetExplorerItem.title = "Snippet-Explorer öffnen …"
+        snippetExplorerItem.target = self
+        snippetExplorerItem.action = #selector(openSnippetExplorer)
+        snippetExplorerItem.isEnabled = false
+        menu.addItem(snippetExplorerItem)
+        snippetCaptureItem.title = "Snippets automatisch erfassen"
+        snippetCaptureItem.target = self
+        snippetCaptureItem.action = #selector(toggleSnippetCapture)
+        snippetCaptureItem.isEnabled = false
+        menu.addItem(snippetCaptureItem)
+        snippetBackfillItem.title = "Snippets aus Verlauf übernehmen …"
+        snippetBackfillItem.target = self
+        snippetBackfillItem.action = #selector(backfillSnippets)
+        snippetBackfillItem.isEnabled = false
+        menu.addItem(snippetBackfillItem)
+        menu.addItem(.separator())
 
         importItem.title = "Textdatei importieren …"
         importItem.target = self
@@ -99,16 +127,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
         menu.addItem(pauseItem)
-        snippetCaptureItem.title = "Snippets automatisch erfassen"
-        snippetCaptureItem.target = self
-        snippetCaptureItem.action = #selector(toggleSnippetCapture)
-        snippetCaptureItem.isEnabled = false
-        menu.addItem(snippetCaptureItem)
-        snippetBackfillItem.title = "Snippets aus Verlauf übernehmen …"
-        snippetBackfillItem.target = self
-        snippetBackfillItem.action = #selector(backfillSnippets)
-        snippetBackfillItem.isEnabled = false
-        menu.addItem(snippetBackfillItem)
         ignoreAppItem.target = self
         ignoreAppItem.action = #selector(ignoreFrontmostApp)
         ignoreAppItem.isEnabled = false
@@ -120,7 +138,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         paletteItem.image = Symbols.image("magnifyingglass", nil)
+        snippetPaletteItem.image = Symbols.image("text.magnifyingglass", nil)
         historyItem.image = Symbols.image("clock", nil)
+        snippetExplorerItem.image = Symbols.image("curlybraces", nil)
         importItem.image = Symbols.image("square.and.arrow.down", nil)
         removeImportItem.image = Symbols.image("trash", nil)
         ignoreAppItem.image = Symbols.image("nosign", nil)
@@ -311,12 +331,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         alert.runModal()
     }
 
-    func attach(palette: PaletteController, hotKeyRegistered: Bool) {
+    func attach(
+        palette: PaletteController, hotKeyRegistered: Bool, snippetHotKeyRegistered: Bool
+    ) {
         self.palette = palette
         paletteItem.title =
             hotKeyRegistered
             ? "Suchpalette öffnen (⌃⌥V)" : "Suchpalette öffnen (Kurzbefehl ⌃⌥V ist belegt)"
         paletteItem.isEnabled = true
+        snippetPaletteItem.title =
+            snippetHotKeyRegistered
+            ? "Snippet-Suche öffnen (⌃⌥S)" : "Snippet-Suche öffnen (Kurzbefehl ⌃⌥S ist belegt)"
+        snippetPaletteItem.isEnabled = true
+    }
+
+    func attach(snippetExplorer: SnippetExplorerWindowController) {
+        self.snippetExplorer = snippetExplorer
+        snippetExplorerItem.isEnabled = true
+    }
+
+    @objc private func openSnippetPalette() {
+        // The menu is still closing; the panel opens right after.
+        DispatchQueue.main.async { [palette] in palette?.show(mode: .snippets) }
+    }
+
+    @objc private func openSnippetExplorer() {
+        DispatchQueue.main.async { [snippetExplorer] in snippetExplorer?.show() }
     }
 
     func attach(history: HistoryWindowController) {

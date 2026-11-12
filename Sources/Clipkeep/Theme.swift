@@ -58,6 +58,8 @@ enum Metrics {
     enum Window {
         static let history = NSSize(width: 1_100, height: 680)
         static let historyMin = NSSize(width: 800, height: 480)
+        static let explorer = NSSize(width: 900, height: 620)
+        static let explorerMin = NSSize(width: 640, height: 420)
         static let importer = NSSize(width: 640, height: 520)
         static let importerMin = NSSize(width: 520, height: 400)
         static let paletteWidth: CGFloat = 640
