@@ -125,6 +125,35 @@ import Testing
         #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(0.5))
     }
 
+    /// A shell snippet padded with a trailing comment line to exactly `bytes` UTF-8 bytes.
+    private static func paddedShellSnippet(bytes: Int) -> String {
+        let head = "kubectl get pods -n prod | grep Crash\n"
+        return head + String(repeating: "#", count: bytes - head.utf8.count)
+    }
+
+    @Test func textOfExactlyTheSizeLimitIsEvaluated() {
+        let text = Self.paddedShellSnippet(bytes: SnippetFilter.Threshold.maximumBytes)
+
+        #expect(text.utf8.count == 32 * 1024)
+        #expect(SnippetFilter.evaluate(text) == .shell)
+    }
+
+    @Test func textOneByteOverTheSizeLimitIsRejected() {
+        let text = Self.paddedShellSnippet(bytes: SnippetFilter.Threshold.maximumBytes + 1)
+
+        #expect(SnippetFilter.evaluate(text) == nil)
+    }
+
+    @Test func thousandsOfLinesBelowTheSizeLimitReturnQuickly() {
+        let text = String(repeating: "ls -la x\n", count: 3_300)
+        let started = Date()
+
+        _ = SnippetFilter.evaluate(text)
+
+        #expect(text.utf8.count < SnippetFilter.Threshold.maximumBytes)
+        #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(0.1))
+    }
+
     @Test func evaluationIsDeterministic() {
         let text = "kubectl get pods -n prod | grep Crash"
 
