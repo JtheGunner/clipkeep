@@ -61,6 +61,8 @@ import Testing
         "a: 1\nb: 2\nc: 3",
         "- milk\n- eggs\n  - organic\n- bread",
         "From: Ada\nTo: Grace\nSubject: Lunch",
+        "Ingredients:\n  - eggs\n  - milk\nSteps:\n  - boil water",
+        "alert:\n  labels:\n    - severity = warning\n    - team = ops\n    - pod = web-1",
         "/usr/local/etc/some/very/long/path/file.conf",
         "42",
     ])
@@ -123,6 +125,77 @@ import Testing
         for input in inputs { _ = SnippetFilter.evaluate(input) }
 
         #expect(Date().timeIntervalSince(started) < PerformanceBudget.limit(0.5))
+    }
+
+    /// An alert notification as pasted from a web form: headers ending in `:`, items written
+    /// as ` - key = value`, prose values and a long percent-encoded link. All values are fake.
+    private static func alertNotification(state: String, alert: String, job: String) -> String {
+        [
+            "Alerts \(state):",
+            "Labels:",
+            " - alertname = \(alert)",
+            " - namespace = demo",
+            " - pod = demo-pod-7c448d85b-\(job)",
+            " - severity = warning",
+            "Annotations:",
+            " - description = Job demo/\(job) ist fehlgeschlagen. Die Meldung endet nach 24 h.",
+            " - summary = Job demo/\(job) fehlgeschlagen",
+            "Source: https://prometheus.example.com/graph?g0.expr=%28kube_job_failed%7Bjob%3D%22"
+                + job + "%22%7D%29&g0.tab=1",
+        ].joined(separator: "\n")
+    }
+
+    @Test func rejectsASingleAlertNotification() {
+        let text = Self.alertNotification(state: "Firing", alert: "DemoJobFailed", job: "job-1")
+
+        #expect(SnippetFilter.evaluate(text) == nil)
+    }
+
+    @Test func rejectsRepeatedAlertNotifications() {
+        let text = [
+            Self.alertNotification(state: "Firing", alert: "DemoJobFailed", job: "job-1"),
+            Self.alertNotification(state: "Firing", alert: "OtherAlert", job: "job-2"),
+            Self.alertNotification(state: "Resolved", alert: "DemoJobFailed", job: "job-1"),
+            Self.alertNotification(state: "Firing", alert: "ThirdAlert", job: "job-3"),
+        ].joined(separator: "\n\n\n")
+
+        #expect(SnippetFilter.evaluate(text) == nil)
+        #expect(SnippetFilter.evaluate(text.replacingOccurrences(of: "\n", with: "\r\n")) == nil)
+    }
+
+    @Test(arguments: [
+        """
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: web
+        spec:
+          replicas: 2
+          template:
+            spec:
+              containers:
+                - name: web
+                  image: example/web:1.4
+        """,
+        """
+        web:
+          image: example/app:2.1
+          environment:
+            - APP_ENV=production
+            - LOG_LEVEL=debug
+          ports:
+            - "8080:80"
+        """,
+        """
+        env:
+          - name: LOG_LEVEL
+            value: debug
+          - name: REPLICAS
+            value: "3"
+        """,
+    ])
+    func acceptsYAMLCloseToNotificationText(text: String) {
+        #expect(SnippetFilter.evaluate(text) == .yaml)
     }
 
     /// A shell snippet padded with a trailing comment line to exactly `bytes` UTF-8 bytes.

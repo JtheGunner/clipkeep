@@ -193,6 +193,11 @@ private enum YAMLRule {
         #"^(?:-\s+)?(?:"[^"]{1,100}"|'[^']{1,100}'|[A-Za-z0-9_][A-Za-z0-9_.\-/]{0,100})\s*:(?:\s+(.*))?$"#
     )
     private static let listItem = SnippetFilter.regex(#"^-(?:\s+\S.*)?$"#)
+    /// `- name = value` is key/value notation from forms, notifications or INI files. YAML would
+    /// read it as one plain string, so it is no evidence of YAML structure. (`- NAME=value`
+    /// without spaces is a common YAML list of environment variables and still counts.)
+    private static let spacedAssignmentItem = SnippetFilter.regex(
+        #"^-\s+[A-Za-z0-9_.\-]{1,100}\s+=(?:\s|$)"#)
 
     private struct Line {
         let indent: Int
@@ -245,7 +250,8 @@ private enum YAMLRule {
             indent: indent, isKey: isKey,
             opensBlock: isKey && value.isEmpty,
             opensScalar: isKey && (value.hasPrefix("|") || value.hasPrefix(">")),
-            isListItem: SnippetFilter.matches(listItem, body))
+            isListItem: SnippetFilter.matches(listItem, body)
+                && !SnippetFilter.matches(spacedAssignmentItem, body))
     }
 
     /// Every indent is a multiple of the smallest one, and a line only goes deeper below a line
@@ -262,10 +268,12 @@ private enum YAMLRule {
         return true
     }
 
-    /// A flat list of `key: value` lines reads like headers or notes; YAML worth keeping nests.
+    /// A flat list of `key: value` lines reads like headers or notes, and a heading over a plain
+    /// bullet list reads like a form or a note. YAML worth keeping nests a mapping: a key line
+    /// directly below a deeper-holding key line.
     private static func hasNesting(_ lines: [Line]) -> Bool {
         zip(lines, lines.dropFirst()).contains { previous, line in
-            line.indent > previous.indent && previous.isKey
+            line.indent > previous.indent && previous.isKey && line.isKey
         }
     }
 }
