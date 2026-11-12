@@ -73,7 +73,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 
 ## 5a. Snippet explorer and menu
 
-- [ ] The menu groups "Suchpalette öffnen" and "Verlauf öffnen …" in one block and "Snippet-Suche öffnen" and "Snippet-Explorer öffnen …" in a second block, with a separator between the two blocks and another before "Textdatei importieren …".
+- [ ] The menu groups "Suchpalette öffnen" and "Verlauf öffnen …" in one block and everything about snippets ("Snippet-Suche öffnen", "Snippet-Explorer öffnen …", "Snippets automatisch erfassen", "Snippets aus Verlauf übernehmen …") in a second block, with a separator between the two blocks and another before "Textdatei importieren …".
 - [ ] The menu reads "Snippet-Suche öffnen (⌃⌥S)" and opens the palette in snippet mode; when another app owns the shortcut it reads "Snippet-Suche öffnen (Kurzbefehl ⌃⌥S ist belegt)" and still works.
 - [ ] "Snippet-Explorer öffnen …" opens a window listing every snippet with the columns Snippet, Sprache, Thema, Zuletzt genutzt and Häufigkeit; the count under the list reads "N Snippets". Light and dark appearance both look right.
 - [ ] Clicking a column header sorts by it and a second click reverses it (Snippet, Sprache and Thema start A to Z, Zuletzt genutzt and Häufigkeit start newest or most first); a snippet without a topic stays at the end of a Thema sort.

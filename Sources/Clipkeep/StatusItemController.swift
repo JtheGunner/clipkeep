@@ -101,6 +101,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         snippetExplorerItem.action = #selector(openSnippetExplorer)
         snippetExplorerItem.isEnabled = false
         menu.addItem(snippetExplorerItem)
+        snippetCaptureItem.title = "Snippets automatisch erfassen"
+        snippetCaptureItem.target = self
+        snippetCaptureItem.action = #selector(toggleSnippetCapture)
+        snippetCaptureItem.isEnabled = false
+        menu.addItem(snippetCaptureItem)
+        snippetBackfillItem.title = "Snippets aus Verlauf übernehmen …"
+        snippetBackfillItem.target = self
+        snippetBackfillItem.action = #selector(backfillSnippets)
+        snippetBackfillItem.isEnabled = false
+        menu.addItem(snippetBackfillItem)
         menu.addItem(.separator())
 
         importItem.title = "Textdatei importieren …"
@@ -117,16 +127,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pauseItem.action = #selector(togglePause)
         pauseItem.isEnabled = false
         menu.addItem(pauseItem)
-        snippetCaptureItem.title = "Snippets automatisch erfassen"
-        snippetCaptureItem.target = self
-        snippetCaptureItem.action = #selector(toggleSnippetCapture)
-        snippetCaptureItem.isEnabled = false
-        menu.addItem(snippetCaptureItem)
-        snippetBackfillItem.title = "Snippets aus Verlauf übernehmen …"
-        snippetBackfillItem.target = self
-        snippetBackfillItem.action = #selector(backfillSnippets)
-        snippetBackfillItem.isEnabled = false
-        menu.addItem(snippetBackfillItem)
         ignoreAppItem.target = self
         ignoreAppItem.action = #selector(ignoreFrontmostApp)
         ignoreAppItem.isEnabled = false
