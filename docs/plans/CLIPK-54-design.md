@@ -128,7 +128,7 @@ Child tickets), so no build ever captures with an unreviewed filter.
 One palette, two sources. A second global hotkey (Control+Option+S) opens it directly in snippet
 mode; Tab switches the mode while it is open. `PaletteController` takes its source through a small
 protocol so the existing history search is unchanged. A snippet row shows the first non-empty line
-as title and `language · age · count×` as subtitle. An empty query lists snippets by
+as title and `age · language · count×` as subtitle. An empty query lists snippets by
 `last_copied_at`; a query uses the trigram index and orders by match, then recency and copy count.
 Return copies through `OwnCopyWriter`.
 
@@ -165,14 +165,15 @@ The same code serves a one-time backfill action that seeds the collection from t
 ## Child tickets (proposed order)
 
 1. Storage: migration 12, `SnippetStore`, rejections, FTS search, tests.
-2. Filter and anonymiser with a labelled regression set; snippet mode in `ClipkeepEval`.
-3. Evaluate the filter against the real history (review gate before capture goes live).
+2. Filter and anonymiser with a labelled regression set.
+3. Snippet evaluation in `ClipkeepEval` and the review against the real history (gate before
+   capture goes live).
 4. Capture integration and the on/off menu item.
 5. Palette snippet mode and the second hotkey.
 6. Promote from history, delete, one-time backfill from the history.
-7. Docs: README, CHANGELOG, manual checklist.
 
-Tickets 1 and 2 are independent. 4 needs 1 to 3. 5 needs 1. 6 needs 1, 2 and 5.
+Documentation (README, CHANGELOG, manual checklist) is part of the ticket that changes the
+behaviour. Tickets 1 and 2 are independent. 3 needs 2. 4 needs 1 to 3. 5 needs 1. 6 needs 1, 2 and 5.
 
 ## Decisions left to the builder
 
