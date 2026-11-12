@@ -1,3 +1,5 @@
+import AppKit
+import Carbon.HIToolbox
 import Foundation
 import Testing
 
@@ -57,22 +59,22 @@ import Testing
         defer { fixture.temp.remove() }
         _ = try fixture.store.add(
             text: "kubectl get pods", language: .shell, origin: .auto, appName: nil, at: now)
+        // Same length and term frequency, so the match ranks both equally.
         _ = try fixture.store.add(
-            text: "SELECT * FROM orders", language: .sql, origin: .auto, appName: nil,
+            text: "SELECT a FROM orders", language: .sql, origin: .auto, appName: nil,
             at: now.addingTimeInterval(-50))
         _ = try fixture.store.add(
-            text: "SELECT id FROM orders WHERE total > 10", language: .sql, origin: .auto,
-            appName: nil, at: now.addingTimeInterval(-40))
-        // A second copy raises the count of the older query above the newer one.
+            text: "SELECT b FROM orders", language: .sql, origin: .auto, appName: nil,
+            at: now.addingTimeInterval(-40))
+        // An earlier second copy raises the count without making the first query newer.
         _ = try fixture.store.add(
-            text: "SELECT * FROM orders", language: .sql, origin: .auto, appName: nil,
-            at: now.addingTimeInterval(-30))
+            text: "SELECT a FROM orders", language: .sql, origin: .auto, appName: nil,
+            at: now.addingTimeInterval(-60))
 
         let rows = try fixture.search.rows(for: "  orders ", now: now)
 
-        #expect(rows.count == 2)
-        #expect(rows.allSatisfy { $0.text.contains("orders") })
-        #expect(rows.first?.text == "SELECT * FROM orders")
+        // The higher copy count wins over the more recent copy.
+        #expect(rows.map(\.text) == ["SELECT a FROM orders", "SELECT b FROM orders"])
         #expect(try fixture.search.rows(for: "nothing-here", now: now).isEmpty)
     }
 
@@ -171,5 +173,54 @@ import Testing
             snippet: snippet(text: String(repeating: "x", count: 500)), now: now)
         #expect(row.title.count == PaletteRow.maximumTitleLength)
         #expect(row.title.hasSuffix("…"))
+    }
+
+    // MARK: - Delete shortcut
+
+    /// `NSEvent.ModifierFlags` is not `Sendable`, so the cases are passed by raw value.
+    private static let modifierCases: [(UInt, PaletteDeleteShortcut.Decision)] = [
+        (NSEvent.ModifierFlags.command.rawValue, .delete),
+        (NSEvent.ModifierFlags([.command, .capsLock]).rawValue, .delete),
+        (NSEvent.ModifierFlags([.command, .function]).rawValue, .delete),
+        (NSEvent.ModifierFlags([.command, .numericPad]).rawValue, .delete),
+        (NSEvent.ModifierFlags([.command, .shift]).rawValue, .notShortcut),
+        (NSEvent.ModifierFlags([.command, .option]).rawValue, .notShortcut),
+        (NSEvent.ModifierFlags([.command, .control]).rawValue, .notShortcut),
+        (NSEvent.ModifierFlags.capsLock.rawValue, .notShortcut),
+        (0, .notShortcut),
+    ]
+
+    @Test(arguments: modifierCases)
+    func commandDeleteMatchesWhateverTheLockAndFunctionKeys(
+        modifiers: UInt, expected: PaletteDeleteShortcut.Decision
+    ) {
+        #expect(
+            PaletteDeleteShortcut.decision(
+                keyCode: kVK_Delete, modifiers: NSEvent.ModifierFlags(rawValue: modifiers),
+                isRepeat: false, inSnippetMode: true) == expected)
+    }
+
+    @Test func aHeldCommandDeleteIsConsumedButDeletesNothingMore() {
+        #expect(
+            PaletteDeleteShortcut.decision(
+                keyCode: kVK_Delete, modifiers: [.command, .capsLock], isRepeat: true,
+                inSnippetMode: true) == .consume)
+    }
+
+    @Test func otherKeysAndTheHistoryModeAreLeftToTheField() {
+        #expect(
+            PaletteDeleteShortcut.decision(
+                keyCode: kVK_ForwardDelete, modifiers: .command, isRepeat: false,
+                inSnippetMode: true) == .notShortcut)
+        #expect(
+            PaletteDeleteShortcut.decision(
+                keyCode: kVK_ANSI_S, modifiers: .command, isRepeat: false, inSnippetMode: true)
+                == .notShortcut)
+        for isRepeat in [false, true] {
+            #expect(
+                PaletteDeleteShortcut.decision(
+                    keyCode: kVK_Delete, modifiers: .command, isRepeat: isRepeat,
+                    inSnippetMode: false) == .notShortcut)
+        }
     }
 }

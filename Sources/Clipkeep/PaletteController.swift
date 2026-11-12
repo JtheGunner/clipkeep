@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 import ClipkeepCore
 import os
 
@@ -11,20 +10,15 @@ enum PaletteMode {
 
 /// A panel that can take keyboard input without making Clipkeep the active app.
 private final class PalettePanel: NSPanel {
-    /// Called for Command+Delete; returns whether it handled the key.
-    var onCommandDelete: (@MainActor () -> Bool)?
+    /// Offered each key equivalent first; returns whether it handled the key.
+    var onKeyEquivalent: (@MainActor (NSEvent) -> Bool)?
 
     override var canBecomeKey: Bool { true }
 
     /// Key equivalents reach the window before the field editor, so a handled Command+Delete
     /// never deletes query text. Unhandled, it falls through to the field as usual.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if event.type == .keyDown, Int(event.keyCode) == kVK_Delete, modifiers == .command,
-            onCommandDelete?() == true
-        {
-            return true
-        }
+        if onKeyEquivalent?(event) == true { return true }
         return super.performKeyEquivalent(with: event)
     }
 }
@@ -78,7 +72,7 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.delegate = self
-        panel.onCommandDelete = { [weak self] in self?.deleteSelectedSnippet() ?? false }
+        panel.onKeyEquivalent = { [weak self] event in self?.handleKeyEquivalent(event) ?? false }
 
         let background = NSVisualEffectView()
         background.material = .popover
@@ -252,12 +246,25 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         hide()
     }
 
-    /// Deletes the selected snippet; in history mode Command+Delete stays a text edit.
-    private func deleteSelectedSnippet() -> Bool {
-        guard mode == .snippets else { return false }
+    /// Command+Delete in snippet mode; in history mode it stays a text edit of the query.
+    private func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+        // `isARepeat` is only valid for key events.
+        guard event.type == .keyDown else { return false }
+        switch PaletteDeleteShortcut.decision(
+            keyCode: Int(event.keyCode), modifiers: event.modifierFlags,
+            isRepeat: event.isARepeat, inSnippetMode: mode == .snippets)
+        {
+        case .notShortcut: return false
+        case .consume: return true
+        case .delete:
+            deleteSelectedSnippet()
+            return true
+        }
+    }
+
+    private func deleteSelectedSnippet() {
         let index = table.selectedRow
-        // Handled even without a selection, so the key never edits the query in snippet mode.
-        guard rows.indices.contains(index) else { return true }
+        guard rows.indices.contains(index) else { return }
         do {
             try deleteSnippet(rows[index].contentID)
         } catch {
@@ -265,7 +272,6 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
                 "Deleting a snippet failed: \(String(describing: error), privacy: .public)")
         }
         reload(query: field.stringValue, selecting: index)
-        return true
     }
 
     @objc private func rowClicked() {
