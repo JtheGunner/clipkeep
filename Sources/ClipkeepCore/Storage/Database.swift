@@ -9,11 +9,13 @@ public final class Database: @unchecked Sendable {
     private let queue = DispatchQueue(label: "li.wuermli.clipkeep.database")
     private let connection: Connection
 
-    /// Opens or creates the database at `path` and unlocks it with a 32-byte `key`.
-    public init(path: String, key: Data) throws {
+    /// Opens or creates the database at `path` and unlocks it with a 32-byte `key`. With
+    /// `readOnly`, the file must exist and nothing is created, switched to WAL or written.
+    public init(path: String, key: Data, readOnly: Bool = false) throws {
         precondition(key.count == 32, "The database key must be 32 bytes")
         var opened: OpaquePointer?
-        guard sqlite3_open(path, &opened) == SQLITE_OK, let handle = opened else {
+        let flags = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+        guard sqlite3_open_v2(path, &opened, flags, nil) == SQLITE_OK, let handle = opened else {
             let message = opened.map { String(cString: sqlite3_errmsg($0)) } ?? "out of memory"
             sqlite3_close(opened)
             throw DatabaseError.open(message)
@@ -31,10 +33,12 @@ public final class Database: @unchecked Sendable {
                 throw DatabaseError.open("SQLCipher is not the linked SQLite library")
             }
             try Self.verifyKey(setup)
-            _ = try setup.query("PRAGMA journal_mode = WAL") { $0.text(0) }
-            try setup.execute("PRAGMA foreign_keys = ON")
-            // REPLACE conflicts delete rows implicitly; the index triggers must fire for those too.
-            try setup.execute("PRAGMA recursive_triggers = ON")
+            if !readOnly {
+                _ = try setup.query("PRAGMA journal_mode = WAL") { $0.text(0) }
+                try setup.execute("PRAGMA foreign_keys = ON")
+                // REPLACE conflicts delete rows implicitly; the index triggers must fire for those too.
+                try setup.execute("PRAGMA recursive_triggers = ON")
+            }
         } catch {
             sqlite3_close(handle)
             throw error

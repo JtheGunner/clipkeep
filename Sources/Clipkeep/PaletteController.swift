@@ -2,12 +2,29 @@ import AppKit
 import ClipkeepCore
 import os
 
-/// A panel that can take keyboard input without making Clipkeep the active app.
-private final class PalettePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+/// What the palette searches.
+enum PaletteMode {
+    case history
+    case snippets
 }
 
-/// The floating search palette: type to search, arrows to choose, Return to copy, Esc to close.
+/// A panel that can take keyboard input without making Clipkeep the active app.
+private final class PalettePanel: NSPanel {
+    /// Offered each key equivalent first; returns whether it handled the key.
+    var onKeyEquivalent: (@MainActor (NSEvent) -> Bool)?
+
+    override var canBecomeKey: Bool { true }
+
+    /// Key equivalents reach the window before the field editor, so a handled Command+Delete
+    /// never deletes query text. Unhandled, it falls through to the field as usual.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if onKeyEquivalent?(event) == true { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+/// The floating search palette: type to search, arrows to choose, Return to copy, Esc to close,
+/// Tab to switch between history and snippets, Command+Delete to delete a snippet.
 @MainActor
 final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataSource,
     NSTableViewDelegate, NSWindowDelegate
@@ -18,15 +35,24 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
     private static let rowHeight = Metrics.Row.palette
     private static let visibleRows: CGFloat = 8
 
-    private let search: PaletteSearch
+    private let history: any PaletteSource
+    private let snippets: any PaletteSource
+    private let deleteSnippet: (Int64) throws -> Void
     private let copyWriter: OwnCopyWriter
     private let panel: PalettePanel
     private let field = NSSearchField()
     private let table = NSTableView()
     private var rows: [PaletteRow] = []
+    private(set) var mode: PaletteMode = .history
 
-    init(search: PaletteSearch, copyWriter: OwnCopyWriter = OwnCopyWriter()) {
-        self.search = search
+    init(
+        history: any PaletteSource, snippets: any PaletteSource,
+        deleteSnippet: @escaping (Int64) throws -> Void,
+        copyWriter: OwnCopyWriter = OwnCopyWriter()
+    ) {
+        self.history = history
+        self.snippets = snippets
+        self.deleteSnippet = deleteSnippet
         self.copyWriter = copyWriter
         panel = PalettePanel(
             contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 400),
@@ -46,6 +72,7 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.delegate = self
+        panel.onKeyEquivalent = { [weak self] event in self?.handleKeyEquivalent(event) ?? false }
 
         let background = NSVisualEffectView()
         background.material = .popover
@@ -54,7 +81,7 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         background.layer?.cornerRadius = Metrics.Radius.panel
         background.layer?.masksToBounds = true
 
-        field.placeholderString = "Zwischenablage durchsuchen …"
+        field.placeholderString = Self.placeholder(for: mode)
         field.font = Typography.paletteInput
         field.focusRingType = .none
         field.delegate = self
@@ -102,11 +129,17 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
 
     var isVisible: Bool { panel.isVisible }
 
-    func toggle() {
-        isVisible ? hide() : show()
+    /// Hides the palette when it is open in `mode`; otherwise shows it in `mode`.
+    func toggle(mode: PaletteMode) {
+        if isVisible && self.mode == mode {
+            hide()
+        } else {
+            show(mode: mode)
+        }
     }
 
-    func show() {
+    func show(mode: PaletteMode = .history) {
+        setMode(mode)
         field.stringValue = ""
         reload(query: "")
         position()
@@ -141,19 +174,40 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         panel.setFrame(frame, display: true)
     }
 
+    private static func placeholder(for mode: PaletteMode) -> String {
+        switch mode {
+        case .history: "Zwischenablage durchsuchen …"
+        case .snippets: "Snippets durchsuchen …"
+        }
+    }
+
+    private func setMode(_ mode: PaletteMode) {
+        self.mode = mode
+        field.placeholderString = Self.placeholder(for: mode)
+    }
+
+    /// Keeps the query, so the same words search the other source.
+    private func switchMode() {
+        setMode(mode == .history ? .snippets : .history)
+        reload(query: field.stringValue)
+    }
+
     // MARK: - Searching
 
     /// Runs on the main thread: the query is a few milliseconds, and an answer that is always
     /// current means Return can never copy a row of an older query.
-    private func reload(query: String) {
+    private func reload(query: String, selecting index: Int = 0) {
+        let source = mode == .history ? history : snippets
         do {
-            rows = try search.rows(for: query)
+            rows = try source.rows(for: query, now: Date())
         } catch {
             Self.logger.error("Search failed: \(String(describing: error), privacy: .public)")
             rows = []
         }
         table.reloadData()
-        if !rows.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
+        if !rows.isEmpty {
+            table.selectRowIndexes([min(index, rows.count - 1)], byExtendingSelection: false)
+        }
         if panel.isVisible { resizePanel() }
     }
 
@@ -171,6 +225,8 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         case #selector(NSResponder.moveUp(_:)): moveSelection(by: -1)
         case #selector(NSResponder.insertNewline(_:)): chooseSelected()
         case #selector(NSResponder.cancelOperation(_:)): hide()
+        case #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            switchMode()
         default: return false
         }
         return true
@@ -188,6 +244,34 @@ final class PaletteController: NSObject, NSSearchFieldDelegate, NSTableViewDataS
         guard rows.indices.contains(index) else { return }
         copyWriter.copy(rows[index].text)
         hide()
+    }
+
+    /// Command+Delete in snippet mode; in history mode it stays a text edit of the query.
+    private func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+        // `isARepeat` is only valid for key events.
+        guard event.type == .keyDown else { return false }
+        switch PaletteDeleteShortcut.decision(
+            keyCode: Int(event.keyCode), modifiers: event.modifierFlags,
+            isRepeat: event.isARepeat, inSnippetMode: mode == .snippets)
+        {
+        case .notShortcut: return false
+        case .consume: return true
+        case .delete:
+            deleteSelectedSnippet()
+            return true
+        }
+    }
+
+    private func deleteSelectedSnippet() {
+        let index = table.selectedRow
+        guard rows.indices.contains(index) else { return }
+        do {
+            try deleteSnippet(rows[index].contentID)
+        } catch {
+            Self.logger.error(
+                "Deleting a snippet failed: \(String(describing: error), privacy: .public)")
+        }
+        reload(query: field.stringValue, selecting: index)
     }
 
     @objc private func rowClicked() {

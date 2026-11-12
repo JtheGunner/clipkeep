@@ -254,8 +254,15 @@ import Testing
             let seconds = Date().timeIntervalSince(started)
             return (seconds, try store.duplicateLinks(of: try #require(last).contentID))
         }
-        let withoutLinking = try importTexts(DuplicateConfiguration(maximumLinks: 0))
-        let withLinking = try importTexts(.default)
+        // A single pair of runs is dominated by runner noise (a busy CI host moved the ratio by
+        // more than the budget), so each variant runs twice, alternating, and the faster run
+        // counts. An unbounded search is slower in every run, so the regression stays visible.
+        var withoutLinking = try importTexts(DuplicateConfiguration(maximumLinks: 0))
+        var withLinking = try importTexts(.default)
+        let secondWithLinking = try importTexts(.default)
+        let secondWithoutLinking = try importTexts(DuplicateConfiguration(maximumLinks: 0))
+        withLinking.seconds = min(withLinking.seconds, secondWithLinking.seconds)
+        withoutLinking.seconds = min(withoutLinking.seconds, secondWithoutLinking.seconds)
         #expect(withLinking.seconds < withoutLinking.seconds * 1.5)
         #expect(!withLinking.links.isEmpty)
         #expect(withLinking.links.count <= DuplicateConfiguration.default.maximumLinks)

@@ -1,8 +1,8 @@
 public enum Schema {
-    public static let latestVersion = 11
+    public static let latestVersion = 12
     public static let migrations = [
         version1, version2, version3, version4, version5, version6, version7, version8, version9,
-        version10, version11,
+        version10, version11, version12,
     ]
     public static let migrator = Migrator(migrations: migrations)
 
@@ -276,4 +276,51 @@ public enum Schema {
     private static let version11 = Migration(
         version: 11,
         statements: ["ALTER TABLE parked_secrets ADD COLUMN vault_item_id TEXT"])
+
+    /// Snippets: a collection of code kept apart from the clipboard history. It has no link to
+    /// `contents`, so history maintenance never touches it. `snippet_rejections` remembers the
+    /// hash of every deleted snippet so the same text is not captured again.
+    private static let version12 = Migration(
+        version: 12,
+        statements: [
+            """
+            CREATE TABLE snippets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                hash TEXT NOT NULL UNIQUE,
+                language TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                app_name TEXT,
+                search_text TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                last_copied_at REAL NOT NULL,
+                copy_count INTEGER NOT NULL DEFAULT 1
+            )
+            """,
+            "CREATE INDEX snippets_last_copied_at ON snippets(last_copied_at DESC, id DESC)",
+            "CREATE TABLE snippet_rejections (hash TEXT PRIMARY KEY)",
+            """
+            CREATE VIRTUAL TABLE snippets_fts USING fts5(
+                search_text, content='snippets', content_rowid='id', tokenize='trigram'
+            )
+            """,
+            """
+            CREATE TRIGGER snippets_fts_insert AFTER INSERT ON snippets BEGIN
+                INSERT INTO snippets_fts(rowid, search_text) VALUES (new.id, new.search_text);
+            END
+            """,
+            """
+            CREATE TRIGGER snippets_fts_delete AFTER DELETE ON snippets BEGIN
+                INSERT INTO snippets_fts(snippets_fts, rowid, search_text)
+                VALUES ('delete', old.id, old.search_text);
+            END
+            """,
+            """
+            CREATE TRIGGER snippets_fts_update AFTER UPDATE OF id, search_text ON snippets BEGIN
+                INSERT INTO snippets_fts(snippets_fts, rowid, search_text)
+                VALUES ('delete', old.id, old.search_text);
+                INSERT INTO snippets_fts(rowid, search_text) VALUES (new.id, new.search_text);
+            END
+            """,
+        ])
 }

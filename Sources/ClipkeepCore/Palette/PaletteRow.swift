@@ -7,17 +7,17 @@ public struct PaletteRow: Sendable, Equatable {
     public let text: String
     public let title: String
     public let subtitle: String
-    private let kind: String
     /// The German name of the entry's type, for tooltips and accessibility.
-    public var typeName: String { Self.typeName(kind) }
+    public let typeName: String
     /// The SF Symbol that stands for the entry's type.
-    public var symbolName: String { HistoryRow.symbolName(for: kind) }
+    public let symbolName: String
 
     public static let maximumTitleLength = 120
 
     public init(hit: SearchHit, now: Date = Date(), calendar: Calendar = .current) {
         contentID = hit.contentID
-        kind = hit.kind
+        typeName = Self.typeName(hit.kind)
+        symbolName = HistoryRow.symbolName(for: hit.kind)
         text = hit.text
         title = Self.title(of: hit.text)
         var parts: [String] = []
@@ -26,6 +26,27 @@ public struct PaletteRow: Sendable, Equatable {
         parts.append(Self.typeName(hit.kind))
         if hit.occurrenceCount > 1 { parts.append("\(hit.occurrenceCount)×") }
         subtitle = parts.joined(separator: " · ")
+    }
+
+    /// A snippet row: `contentID` is the snippet id, the subtitle reads `age · language · count×`.
+    public init(snippet: Snippet, now: Date = Date(), calendar: Calendar = .current) {
+        contentID = snippet.id
+        typeName = Self.languageName(snippet.language)
+        let kind: ContentKind = snippet.language == .shell ? .command : .code
+        symbolName = HistoryRow.symbolName(for: kind.rawValue)
+        text = snippet.text
+        title = Self.title(of: snippet.text)
+        var parts = [Self.age(of: snippet.lastCopiedAt, now: now, calendar: calendar), typeName]
+        if snippet.copyCount > 1 { parts.append("\(snippet.copyCount)×") }
+        subtitle = parts.joined(separator: " · ")
+    }
+
+    static func languageName(_ language: SnippetLanguage) -> String {
+        switch language {
+        case .shell: "Shell"
+        case .sql: "SQL"
+        case .yaml: "YAML"
+        }
     }
 
     /// The first non-empty line, cut to fit one row.
@@ -73,8 +94,13 @@ public struct PaletteRow: Sendable, Equatable {
     }
 }
 
-/// The search behind the palette.
-public struct PaletteSearch: Sendable {
+/// Where the palette gets its rows from: the clipboard history or the snippet collection.
+public protocol PaletteSource: Sendable {
+    func rows(for query: String, now: Date) throws -> [PaletteRow]
+}
+
+/// The history search behind the palette.
+public struct PaletteSearch: PaletteSource {
     public static let rowLimit = 20
 
     private let search: SearchService

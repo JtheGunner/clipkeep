@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var history: HistoryWindowController?
     private var importer: ImportWindowController?
     private var paletteHotKey: GlobalHotKey?
+    private var snippetHotKey: GlobalHotKey?
     private let systemContext = SystemContext()
     private let secretNotifier = SecretNotifier()
 
@@ -78,6 +79,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         return false
                     }
                 }
+                // A snippet setting problem must not stop the history: collection stays off.
+                let snippetControl = SnippetCaptureControl.loadOrDisabled(
+                    settings: SettingsStore(database: database),
+                    onError: { error in
+                        Self.logger.error(
+                            "Snippet capture disabled: \(String(describing: error), privacy: .public)"
+                        )
+                    })
+                let snippetStore = SnippetStore(database: database)
+                let snippetPromoter = SnippetPromoter(database: database, store: snippetStore)
+                let snippetCapture = SnippetCapture(
+                    store: snippetStore, control: snippetControl,
+                    onError: { error in
+                        // Never log copied content, only the error.
+                        Self.logger.error(
+                            "Snippet capture failed: \(String(describing: error), privacy: .public)"
+                        )
+                    })
                 let poller = ClipboardPoller(
                     pasteboard: SystemPasteboard(), source: tracker,
                     pipeline: CapturePipeline(
@@ -85,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         contextDetails: ContextReader(
                             environment: systemContext.environment,
                             readsSafari: { StatusItemController.readsSafari }),
-                        control: control),
+                        control: control, snippets: snippetCapture),
                     onError: { error in
                         // Never log copied content, only the error.
                         Self.logger.error(
@@ -95,15 +114,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 watcher.start()
                 await MaintenanceScheduler.start(database: database)
                 await self?.captureStarted(
-                    watcher, control: control, bitwarden: bitwarden, secrets: parker,
-                    search: PaletteSearch(database: database),
+                    watcher, control: control, snippetControl: snippetControl,
+                    bitwarden: bitwarden, secrets: parker,
+                    search: PaletteSearch(database: database), snippets: snippetStore,
+                    snippetPromoter: snippetPromoter,
                     history: HistoryWindowController(
                         browser: HistoryBrowser(database: database),
                         search: SearchService(database: database),
                         actions: ItemActions(database: database),
                         exporter: MarkdownExporter(database: database),
                         topics: TopicService(database: database), secrets: parker,
-                        bitwarden: bitwarden),
+                        bitwarden: bitwarden, promoter: snippetPromoter),
                     importer: ImportWindowController(
                         remover: ImportRemover(database: database),
                         importer: TextImporter(
@@ -139,25 +160,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func captureStarted(
-        _ watcher: ClipboardWatcher, control: CaptureControl, bitwarden: BitwardenSync,
-        secrets: SecretParker, search: PaletteSearch,
-        history: HistoryWindowController, importer: ImportWindowController
+        _ watcher: ClipboardWatcher, control: CaptureControl,
+        snippetControl: SnippetCaptureControl, bitwarden: BitwardenSync,
+        secrets: SecretParker, search: PaletteSearch, snippets: SnippetStore,
+        snippetPromoter: SnippetPromoter, history: HistoryWindowController,
+        importer: ImportWindowController
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
+        statusItemController?.attach(snippetControl: snippetControl)
+        statusItemController?.attach(snippetPromoter: snippetPromoter)
         statusItemController?.attach(bitwarden: bitwarden)
         statusItemController?.attach(secrets: secrets)
         self.history = history
         statusItemController?.attach(history: history)
         self.importer = importer
         statusItemController?.attach(importer: importer)
-        let palette = PaletteController(search: search)
+        let palette = PaletteController(
+            history: search, snippets: SnippetPaletteSearch(store: snippets),
+            deleteSnippet: { id in _ = try snippets.delete(id: id) })
         self.palette = palette
         // Control + Option + V.
         paletteHotKey = GlobalHotKey(
-            keyCode: kVK_ANSI_V, modifiers: controlKey | optionKey,
-            action: { [weak palette] in palette?.toggle() })
+            identifier: 1, keyCode: kVK_ANSI_V, modifiers: controlKey | optionKey,
+            action: { [weak palette] in palette?.toggle(mode: .history) })
+        // Control + Option + S. Registered on its own, so a taken shortcut leaves the first alone.
+        snippetHotKey = GlobalHotKey(
+            identifier: 2, keyCode: kVK_ANSI_S, modifiers: controlKey | optionKey,
+            action: { [weak palette] in palette?.toggle(mode: .snippets) })
+        if snippetHotKey == nil {
+            Self.logger.error("The snippet hotkey Control+Option+S could not be registered")
+        }
         statusItemController?.attach(
             palette: palette, hotKeyRegistered: paletteHotKey != nil)
     }

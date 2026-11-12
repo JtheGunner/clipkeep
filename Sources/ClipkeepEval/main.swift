@@ -6,6 +6,7 @@ import Foundation
 //   clipkeep-eval                              synthetic corpus, compared with eval/baseline.json
 //   clipkeep-eval --write-baseline             store the current values as the baseline
 //   clipkeep-eval --text notes.txt --gold g.json   an imported text file and your own gold set
+//   clipkeep-eval --snippets [--report FILE]   judge the snippet filter on your real history
 //   options: --corpus FILE  --gold FILE  --baseline FILE  --report FILE
 //            --split automatic|separators|blank-lines|every-line   how --text is cut into entries
 
@@ -23,6 +24,7 @@ struct Options {
     var report: String?
     var splitMode = SplitMode.automatic
     var writeBaseline = false
+    var snippets = false
 }
 
 func fail(_ message: String) -> Never {
@@ -54,6 +56,7 @@ func parse(_ arguments: [String]) -> Options {
             options.splitMode = mode
         case "--report": options.report = value()
         case "--write-baseline": options.writeBaseline = true
+        case "--snippets": options.snippets = true
         default: fail("Unknown option \(argument)")
         }
     }
@@ -70,7 +73,57 @@ func load<T: Decodable>(_ type: T.Type, _ path: String) -> T {
     }
 }
 
+/// Runs the snippet filter over the real history through a read-only connection: nothing is
+/// created, migrated or written. The report holds copied content, so it is written owner-only
+/// and refused inside the repository.
+func runSnippetEvaluation(reportPath: String?) -> Never {
+    let output = EvaluationOutput.decide(
+        isTerminal: isatty(STDOUT_FILENO) != 0, reportPath: reportPath)
+    if output == .refusedNonInteractive {
+        fail("--snippets prints private clipboard text; give --report FILE or run it in a terminal")
+    }
+    let root = EvaluationReportWriter.repositoryRoot(
+        startingAt: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+    let report: SnippetEvaluationReport
+    do {
+        let support = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil,
+            create: false)
+        let path = support.appendingPathComponent("Clipkeep/clipkeep.db").path
+        guard FileManager.default.fileExists(atPath: path) else {
+            fail("No Clipkeep database at \(path)")
+        }
+        let database = try Database(
+            path: path, key: try KeychainDatabaseKeyStore().loadExistingKey(), readOnly: true)
+        report = try SnippetEvaluation.run(database: database)
+    } catch {
+        fail("Snippet evaluation failed: \(error)")
+    }
+    let text = report.rendered()
+    switch output {
+    case .reportFile(let path):
+        do {
+            try EvaluationReportWriter.write(text, to: path, repositoryRoot: root)
+        } catch {
+            fail("Cannot write the report to \(path): \(error)")
+        }
+        print(
+            "Examined \(report.examined), accepted \(report.accepted.count), "
+                + "rejected but code-like \(report.rejectedCodeLike.count); report in \(path)")
+    case .terminal:
+        FileHandle.standardError.write(
+            Data(
+                "Warning: the output contains private clipboard text and may stay in scrollback or logs.\n"
+                    .utf8))
+        print(text, terminator: "")
+    case .refusedNonInteractive:
+        break
+    }
+    exit(0)
+}
+
 let options = parse(Array(CommandLine.arguments.dropFirst()))
+if options.snippets { runSnippetEvaluation(reportPath: options.report) }
 let gold = load(GoldSet.self, options.gold)
 let metrics: EvalMetrics
 let title: String

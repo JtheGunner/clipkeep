@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Shell, SQL and YAML snippets are collected automatically from your copies, with secrets replaced by placeholders before anything is stored. Copies that capture skips (pause, ignored or password manager apps, ignore rules, Clipkeep's own copies) are never collected, and "Snippets automatisch erfassen" in the menu switches collection off.
+- The palette searches snippets too: Control+Option+S opens it in snippet mode, Tab switches between history and snippets, Return copies the snippet and Command+Delete removes it so it is not collected again.
+- "Als Snippet speichern" in the history window stores the selected entry as a snippet, anonymised, even when automatic collection would skip it; Clipkeep asks for Shell, SQL or YAML when it cannot tell. "Snippets aus Verlauf übernehmen …" in the menu seeds the collection once from the existing history, imported entries included, using the same anonymiser and filter as automatic collection (ignore rules added after an entry was recorded are not applied again); parked secrets are never read, deleted snippets stay deleted and running it again adds nothing twice.
 - The Clipkeep logo: the app icon in Finder, Launchpad, dialogs and notifications, the menu bar icon (dimmed while capture is paused) and the README header.
 
 ### Fixed
