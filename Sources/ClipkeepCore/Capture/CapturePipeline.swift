@@ -200,6 +200,9 @@ public struct CapturePipeline: Sendable {
         if control.matchesPattern(text) { return .skipped(.ignoredByRule) }
         // After every do-not-record rule, before the secret skip: a snippet with a secret in it
         // is stored anonymised even though the history drops the copy.
+        if snippets != nil, control.isPaused || control.pauseGeneration != pauseGeneration {
+            return .skipped(.paused)
+        }
         snippets?.capture(text: text, context: source, at: copiedAt)
         if detector.containsSecret(in: text), !(secretSink?.isException(text) ?? false) {
             if control.isPaused || control.pauseGeneration != pauseGeneration {

@@ -78,8 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         return false
                     }
                 }
-                let snippetControl = try SnippetCaptureControl(
-                    settings: SettingsStore(database: database))
+                // A snippet setting problem must not stop the history: collection stays off.
+                let snippetControl = SnippetCaptureControl.loadOrDisabled(
+                    settings: SettingsStore(database: database),
+                    onError: { error in
+                        Self.logger.error(
+                            "Snippet capture disabled: \(String(describing: error), privacy: .public)"
+                        )
+                    })
                 let snippetCapture = SnippetCapture(
                     store: SnippetStore(database: database), control: snippetControl,
                     onError: { error in

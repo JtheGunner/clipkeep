@@ -20,6 +20,19 @@ public final class SnippetCaptureControl: @unchecked Sendable {
         }
     }
 
+    /// Loads the saved choice, or falls back to collection switched off when it cannot be read,
+    /// so a snippet setting problem never stops the history. `onError` gets the failure.
+    public static func loadOrDisabled(
+        settings: SettingsStore, onError: (Error) -> Void
+    ) -> SnippetCaptureControl {
+        do {
+            return try SnippetCaptureControl(settings: settings)
+        } catch {
+            onError(error)
+            return SnippetCaptureControl(enabled: false)
+        }
+    }
+
     /// In-memory control without persistence, for tests and previews.
     public init(enabled: Bool = true) {
         settings = nil

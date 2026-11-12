@@ -25,7 +25,8 @@ private final class ErrorCounter: @unchecked Sendable {
 
         init(
             snippetControl: SnippetCaptureControl = SnippetCaptureControl(),
-            control: CaptureControl = CaptureControl()
+            control: CaptureControl = CaptureControl(),
+            anonymizer: SnippetAnonymizer = SnippetAnonymizer()
         ) throws {
             temp = try TemporaryDatabase()
             database = try temp.open()
@@ -34,7 +35,8 @@ private final class ErrorCounter: @unchecked Sendable {
             pipeline = CapturePipeline(
                 store: ContentStore(database: database), control: control,
                 snippets: SnippetCapture(
-                    store: snippets, control: snippetControl, onError: { _ in counter.add() }))
+                    store: snippets, control: snippetControl, anonymizer: anonymizer,
+                    onError: { _ in counter.add() }))
         }
 
         func copy(
@@ -90,6 +92,49 @@ private final class ErrorCounter: @unchecked Sendable {
         #expect(stored.count == 1)
         #expect(stored.first?.text.contains("<VALUE>") == true)
         #expect(stored.first?.text.contains("hunter2hunter2") == false)
+        #expect(fixture.counter.errors == 0)
+
+        let searchTexts = try fixture.database.read { connection in
+            try connection.query("SELECT search_text FROM snippets") { $0.text(0) }
+        }
+        #expect(searchTexts.count == 1)
+        #expect(searchTexts.allSatisfy { !$0.contains("hunter2") })
+        #expect(try fixture.snippets.search("hunter2", limit: 10).isEmpty)
+    }
+
+    @Test func aSnippetWithAResidualSecretIsDroppedAndTheHistoryContinues() throws {
+        // An anonymiser that lets the value through simulates a redaction that missed a secret.
+        let lenient = SnippetAnonymizer(
+            detector: SecretDetector(allowedHashes: [ContentHashing.exactHash("hunter2hunter2")]))
+        let fixture = try Fixture(anonymizer: lenient)
+        defer { fixture.temp.remove() }
+        #expect(try fixture.copy(Self.secretShell) == .skipped(.secret))
+        #expect(try fixture.snippets.count() == 0)
+        let indexed = try fixture.database.read { connection in
+            try connection.query("SELECT count(*) FROM snippets_fts") { $0.int(0) }
+        }
+        #expect(indexed == [0])
+        #expect(fixture.counter.errors == 1)
+    }
+
+    @Test func aCodeCopyOverTheSizeCapIsNotASnippetButStaysInTheHistory() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let huge = String(repeating: "git status\n", count: 20_000)
+        expectRecorded(try fixture.copy(huge))
+        #expect(try fixture.snippets.count() == 0)
+    }
+
+    @Test func aCorruptSnippetSettingFallsBackToCollectionOff() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let settings = SettingsStore(database: try temp.open())
+        try settings.set("maybe", for: "snippets.captureEnabled")
+        let reported = ErrorCounter()
+        let control = SnippetCaptureControl.loadOrDisabled(
+            settings: settings, onError: { _ in reported.add() })
+        #expect(!control.isEnabled)
+        #expect(reported.errors == 1)
     }
 
     @Test func nothingIsCapturedWhenPaused() throws {
