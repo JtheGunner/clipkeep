@@ -111,6 +111,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let topics: TopicService
     private let secrets: SecretParker
     private let bitwarden: BitwardenSync
+    private let promoter: SnippetPromoter
 
     private let window: NSWindow
     private let modeControl = NSSegmentedControl(
@@ -135,6 +136,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private let undoButton = NSButton(title: "Löschen rückgängig", target: nil, action: nil)
     private let fetchButton = NSButton(title: "Aus Bitwarden abrufen", target: nil, action: nil)
     private let notSecretButton = NSButton(title: "Kein Secret", target: nil, action: nil)
+    private let snippetButton = NSButton(title: "Als Snippet speichern", target: nil, action: nil)
 
     private var mode = Mode.days
     private var entityChoices: [EntityChoice] = []
@@ -155,6 +157,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private var isExporting = false
     private var searchNote = ""
     private var secretNote = ""
+    private var snippetNote = ""
     private var parkedSecret: ParkedSecret?
     private var isWorkingOnSecret = false
     private var isLoading = false
@@ -164,9 +167,10 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     init(
         browser: HistoryBrowser, search: SearchService, actions: ItemActions,
         exporter: MarkdownExporter, topics: TopicService, secrets: SecretParker,
-        bitwarden: BitwardenSync,
+        bitwarden: BitwardenSync, promoter: SnippetPromoter,
         copyWriter: OwnCopyWriter = OwnCopyWriter()
     ) {
+        self.promoter = promoter
         self.topics = topics
         self.secrets = secrets
         self.bitwarden = bitwarden
@@ -501,6 +505,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
             (starButton, #selector(starClicked)), (deleteButton, #selector(deleteClicked)),
             (undoButton, #selector(undoClicked)), (exportButton, #selector(exportClicked)),
             (fetchButton, #selector(fetchClicked)), (notSecretButton, #selector(notSecretClicked)),
+            (snippetButton, #selector(snippetClicked)),
         ] {
             button.target = self
             button.action = selector
@@ -513,9 +518,10 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
         exportButton.image = Symbols.image("square.and.arrow.up", nil)
         fetchButton.image = Symbols.image("key", nil)
         notSecretButton.image = Symbols.image("lock.open", nil)
+        snippetButton.image = Symbols.image("chevron.left.forwardslash.chevron.right", nil)
         let buttons = NSStackView(views: [
-            copyButton, pinButton, starButton, deleteButton, undoButton, exportButton,
-            fetchButton, notSecretButton,
+            copyButton, pinButton, starButton, snippetButton, deleteButton, undoButton,
+            exportButton, fetchButton, notSecretButton,
         ])
         buttons.orientation = .horizontal
         buttons.spacing = Metrics.Space.s
@@ -1254,6 +1260,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private func showDetail(contentID: Int64) {
         lastDeletedID = nil
         secretNote = ""
+        snippetNote = ""
         reloadHeader()
         do {
             guard let loaded = try browser.detail(contentID: contentID) else {
@@ -1306,6 +1313,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     private func updateButtons() {
         let isSecret = detail?.kind == ContentKind.secret.rawValue
         copyButton.isEnabled = detail != nil && !isSecret
+        snippetButton.isEnabled = detail != nil && !isSecret
         pinButton.isEnabled = detail != nil
         starButton.isEnabled = detail != nil
         deleteButton.isEnabled = detail != nil
@@ -1387,10 +1395,11 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     }
 
     private func reloadHeader() {
-        headerLabel.stringValue = [baseHeader, exportNote, secretNote, searchNote].filter {
-            !$0.isEmpty
-        }
-        .joined(separator: "\n")
+        headerLabel.stringValue = [baseHeader, exportNote, secretNote, snippetNote, searchNote]
+            .filter {
+                !$0.isEmpty
+            }
+            .joined(separator: "\n")
     }
 
     /// Copies the secret behind the selected placeholder to the clipboard, fetching it from
@@ -1470,6 +1479,49 @@ final class HistoryWindowController: NSObject, NSWindowDelegate, NSOutlineViewDa
     @objc private func copyClicked() {
         guard let detail else { return }
         copyWriter.copy(detail.text)
+    }
+
+    /// Stores the selected entry as a snippet, asking for the language when the filter does not
+    /// recognise one. A single entry is small enough to anonymise on the main thread.
+    @objc private func snippetClicked() {
+        guard let detail else { return }
+        do {
+            var outcome = try promoter.promote(contentID: detail.contentID, language: nil)
+            if outcome == .needsLanguage {
+                guard let language = Self.chooseSnippetLanguage() else { return }
+                outcome = try promoter.promote(contentID: detail.contentID, language: language)
+            }
+            snippetNote = Self.snippetNoteText(outcome)
+        } catch {
+            Self.logger.error("Promotion failed: \(String(describing: error), privacy: .public)")
+            snippetNote = "Snippet konnte nicht gespeichert werden."
+        }
+        reloadHeader()
+    }
+
+    private static func chooseSnippetLanguage() -> SnippetLanguage? {
+        let alert = NSAlert()
+        alert.messageText = "Sprache des Snippets"
+        alert.informativeText = "Clipkeep erkennt die Sprache dieses Eintrags nicht. Bitte wählen."
+        let choices: [(String, SnippetLanguage)] = [
+            ("Shell", .shell), ("SQL", .sql), ("YAML", .yaml),
+        ]
+        for (title, _) in choices { alert.addButton(withTitle: title) }
+        alert.addButton(withTitle: "Abbrechen")
+        let index =
+            alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        return choices.indices.contains(index) ? choices[index].1 : nil
+    }
+
+    private static func snippetNoteText(_ outcome: PromotionOutcome) -> String {
+        switch outcome {
+        case .stored: "Als Snippet gespeichert."
+        case .needsLanguage: ""
+        case .unavailable: "Der Eintrag ist nicht mehr verfügbar."
+        case .tooLarge: "Der Eintrag ist zu gross für ein Snippet."
+        case .residualSecret:
+            "Nicht gespeichert: der Text enthält nach dem Anonymisieren noch ein mögliches Secret."
+        }
     }
 
     @objc private func pinClicked() {

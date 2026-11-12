@@ -62,6 +62,24 @@ import Testing
         #expect(snippet.createdAt == base)
     }
 
+    @Test func addWithoutBumpingLeavesAnExistingSnippetAlone() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la", language: .shell, origin: .auto, appName: nil, at: base))
+
+        let again = try fixture.store.add(
+            text: "ls -la", language: .shell, origin: .history, appName: nil,
+            bumpingExisting: false, at: base.addingTimeInterval(120))
+
+        #expect(again == .unchanged(id))
+        let snippet = try #require(try fixture.store.list(limit: 10).first)
+        #expect(snippet.copyCount == 1)
+        #expect(snippet.lastCopiedAt == base)
+        #expect(snippet.origin == .auto)
+    }
+
     @Test func deleteRemovesAndRemembersTheText() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }

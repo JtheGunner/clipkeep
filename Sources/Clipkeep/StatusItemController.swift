@@ -1,9 +1,12 @@
 import AppKit
 import ClipkeepCore
+import os
 
 /// Owns the menu bar icon and its menu. The app has no Dock icon and no window.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
+    private nonisolated static let logger = Logger(
+        subsystem: AppInfo.bundleIdentifier, category: "menu")
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let launchAtLogin: LaunchAtLoginController
     private let launchAtLoginItem = NSMenuItem()
@@ -18,6 +21,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let pauseItem = NSMenuItem()
     private let snippetCaptureItem = NSMenuItem()
     private var snippetControl: SnippetCaptureControl?
+    private let snippetBackfillItem = NSMenuItem()
+    private var snippetPromoter: SnippetPromoter?
+    private var isBackfillingSnippets = false
     private let ignoreAppItem = NSMenuItem()
     private let ignoredAppsItem = NSMenuItem()
     private let bitwardenItem = NSMenuItem()
@@ -98,6 +104,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         snippetCaptureItem.action = #selector(toggleSnippetCapture)
         snippetCaptureItem.isEnabled = false
         menu.addItem(snippetCaptureItem)
+        snippetBackfillItem.title = "Snippets aus Verlauf übernehmen …"
+        snippetBackfillItem.target = self
+        snippetBackfillItem.action = #selector(backfillSnippets)
+        snippetBackfillItem.isEnabled = false
+        menu.addItem(snippetBackfillItem)
         ignoreAppItem.target = self
         ignoreAppItem.action = #selector(ignoreFrontmostApp)
         ignoreAppItem.isEnabled = false
@@ -251,6 +262,52 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } catch {
             showSaveProblem()
         }
+    }
+
+    /// Enables seeding the snippet collection from the history once the database is open.
+    func attach(snippetPromoter: SnippetPromoter) {
+        self.snippetPromoter = snippetPromoter
+        snippetBackfillItem.isEnabled = true
+    }
+
+    /// Asks first, then reads the whole history off the main thread and reports counts only.
+    @objc private func backfillSnippets() {
+        guard let snippetPromoter, !isBackfillingSnippets else { return }
+        let alert = NSAlert()
+        alert.messageText = "Snippets aus Verlauf übernehmen?"
+        alert.informativeText =
+            "Clipkeep durchsucht den Verlauf nach Shell-, SQL- und YAML-Befehlen und übernimmt sie anonymisiert als Snippets. Gelöschte Snippets kommen nicht zurück, der Verlauf bleibt unverändert."
+        alert.addButton(withTitle: "Übernehmen")
+        alert.addButton(withTitle: "Abbrechen")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        isBackfillingSnippets = true
+        snippetBackfillItem.isEnabled = false
+        snippetBackfillItem.title = "Snippets werden übernommen …"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = Result { try snippetPromoter.backfill() }
+            await self?.finishSnippetBackfill(result)
+        }
+    }
+
+    private func finishSnippetBackfill(_ result: Result<BackfillReport, Error>) {
+        isBackfillingSnippets = false
+        snippetBackfillItem.isEnabled = true
+        snippetBackfillItem.title = "Snippets aus Verlauf übernehmen …"
+        let alert = NSAlert()
+        switch result {
+        case .success(let report):
+            alert.messageText = "Snippets übernommen"
+            alert.informativeText =
+                "\(report.examined) Einträge geprüft, \(report.added) neue Snippets übernommen."
+        case .failure(let error):
+            Self.logger.error(
+                "Snippet backfill failed: \(String(describing: error), privacy: .public)")
+            alert.messageText = "Übernahme fehlgeschlagen"
+            alert.informativeText = "Der Verlauf konnte nicht gelesen werden."
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     func attach(palette: PaletteController, hotKeyRegistered: Bool) {

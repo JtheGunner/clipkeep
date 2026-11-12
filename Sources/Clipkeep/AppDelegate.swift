@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         )
                     })
                 let snippetStore = SnippetStore(database: database)
+                let snippetPromoter = SnippetPromoter(database: database, store: snippetStore)
                 let snippetCapture = SnippetCapture(
                     store: snippetStore, control: snippetControl,
                     onError: { error in
@@ -116,13 +117,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     watcher, control: control, snippetControl: snippetControl,
                     bitwarden: bitwarden, secrets: parker,
                     search: PaletteSearch(database: database), snippets: snippetStore,
+                    snippetPromoter: snippetPromoter,
                     history: HistoryWindowController(
                         browser: HistoryBrowser(database: database),
                         search: SearchService(database: database),
                         actions: ItemActions(database: database),
                         exporter: MarkdownExporter(database: database),
                         topics: TopicService(database: database), secrets: parker,
-                        bitwarden: bitwarden),
+                        bitwarden: bitwarden, promoter: snippetPromoter),
                     importer: ImportWindowController(
                         remover: ImportRemover(database: database),
                         importer: TextImporter(
@@ -161,12 +163,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ watcher: ClipboardWatcher, control: CaptureControl,
         snippetControl: SnippetCaptureControl, bitwarden: BitwardenSync,
         secrets: SecretParker, search: PaletteSearch, snippets: SnippetStore,
-        history: HistoryWindowController, importer: ImportWindowController
+        snippetPromoter: SnippetPromoter, history: HistoryWindowController,
+        importer: ImportWindowController
     ) {
         self.watcher = watcher
         self.bitwarden = bitwarden
         statusItemController?.attach(control: control)
         statusItemController?.attach(snippetControl: snippetControl)
+        statusItemController?.attach(snippetPromoter: snippetPromoter)
         statusItemController?.attach(bitwarden: bitwarden)
         statusItemController?.attach(secrets: secrets)
         self.history = history

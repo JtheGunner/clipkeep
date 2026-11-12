@@ -45,6 +45,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 - [ ] Window title and address are recorded where the permissions are granted.
 - [ ] "Aufzeichnung pausieren" stops capture, the menu bar logo is dimmed, "Aufzeichnung fortsetzen" resumes it and the logo is back to full strength.
 - [ ] "Snippets automatisch erfassen" is checked by default. With it on, copying a shell command, a SQL statement or a YAML block adds a snippet (secrets shown as placeholders, never the value); with it off, or while capture is paused, nothing is added. The choice survives a restart.
+- [ ] "Snippets aus Verlauf übernehmen …" asks for confirmation first; "Abbrechen" changes nothing. After "Übernehmen" the menu item reads "Snippets werden übernommen …" until a dialog reports how many entries were checked and how many snippets were added (counts only, no text). Parked secrets are not taken over, a snippet removed in the palette does not come back, and running it a second time reports 0 new snippets without raising any snippet's count. The history itself is unchanged.
 - [ ] "… ignorieren" for the front app stops recording from that app; removing it under "Ignorieren" resumes.
 - [ ] A content rule ("Inhaltsregel hinzufügen …") skips matching copies; an invalid pattern shows "Regel nicht übernommen".
 
@@ -78,6 +79,7 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 - [ ] Every row of the entry list starts with an icon for its type (text, link, e-mail, path, command, JSON, stacktrace, code, number, secret). Hovering the icon shows the type name. Icons look right in light and dark appearance.
 - [ ] Selecting a session fills the entry list with its entries and their text; selecting an entry shows its text and the importance breakdown. The list and the detail text keep a visible height when the window is resized.
 - [ ] Copy, pin, star and delete work; the undo restores a deleted entry.
+- [ ] "Als Snippet speichern" on a SQL statement stores it as a SQL snippet and the header reads "Als Snippet gespeichert."; the snippet appears in the palette's snippet mode. On a short text like `ls` a dialog asks for Shell, SQL or YAML; "Abbrechen" stores nothing. A snippet removed in the palette can be saved again this way. The button is disabled for a parked secret, and the history entry stays unchanged.
 - [ ] Search inside the window finds entries by substring.
 - [ ] Right-click a topic: "Thema umbenennen …" renames it (an empty name restores the automatic label) and "Mit anderem Thema zusammenführen …" moves all its sessions into the chosen topic.
 - [ ] Right-click a session: "In anderes Thema verschieben …" and "Eigenes Thema daraus machen" work; a manual change is not undone by the next rebuild of the topics.

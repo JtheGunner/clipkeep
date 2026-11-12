@@ -28,6 +28,8 @@ public enum SnippetAddOutcome: Sendable, Equatable {
     case inserted(Int64)
     /// The text was already stored; its copy count and last-copied time were updated.
     case bumped(Int64)
+    /// The text was already stored and was left as it is, because bumping was not asked for.
+    case unchanged(Int64)
     /// The user deleted this text before, so it is not stored again unless overridden.
     case rejected
 }
@@ -47,10 +49,11 @@ public struct SnippetStore: Sendable {
     }
 
     /// Stores `text`, or bumps the existing row with the same text. A text the user deleted is
-    /// rejected unless `overridingRejection` is set, which clears the rejection first.
+    /// rejected unless `overridingRejection` is set, which clears the rejection first. Without
+    /// `bumpingExisting`, a stored text is left unchanged instead of counting as another copy.
     public func add(
         text: String, language: SnippetLanguage, origin: SnippetOrigin, appName: String?,
-        overridingRejection: Bool = false, at date: Date = Date()
+        overridingRejection: Bool = false, bumpingExisting: Bool = true, at date: Date = Date()
     ) throws -> SnippetAddOutcome {
         let hash = ContentHashing.exactHash(text)
         return try database.write { connection in
@@ -68,6 +71,7 @@ public struct SnippetStore: Sendable {
                 "SELECT id FROM snippets WHERE hash = ?", [.text(hash)]
             ) { $0.int(0) }
             if let id = existing.first {
+                guard bumpingExisting else { return .unchanged(id) }
                 try connection.execute(
                     """
                     UPDATE snippets
