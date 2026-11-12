@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13
+
 ### Added
 
 - Shell, SQL and YAML snippets are collected automatically from your copies, with secrets replaced by placeholders before anything is stored. Copies that capture skips (pause, ignored or password manager apps, ignore rules, Clipkeep's own copies) are never collected, and "Snippets automatisch erfassen" in the menu switches collection off.
