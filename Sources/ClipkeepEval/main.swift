@@ -94,7 +94,7 @@ func runSnippetEvaluation(reportPath: String?) -> Never {
             fail("No Clipkeep database at \(path)")
         }
         let database = try Database(
-            path: path, key: try KeychainDatabaseKeyStore().loadOrCreateKey(), readOnly: true)
+            path: path, key: try KeychainDatabaseKeyStore().loadExistingKey(), readOnly: true)
         report = try SnippetEvaluation.run(database: database)
     } catch {
         fail("Snippet evaluation failed: \(error)")

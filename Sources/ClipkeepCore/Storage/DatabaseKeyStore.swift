@@ -5,6 +5,7 @@ public enum KeyStoreError: Error, Equatable {
     case randomGenerationFailed(Int32)
     case keychain(Int32)
     case corruptKey
+    case missingKey
 }
 
 /// Provides the 32-byte database key. The key never lives in the database directory.
@@ -25,6 +26,13 @@ public struct KeychainDatabaseKeyStore: DatabaseKeyStore {
     public func loadOrCreateKey() throws -> Data {
         if let key = try load() { return key }
         return try create()
+    }
+
+    /// Returns the stored key and never creates one, for read-only tools that must not write to
+    /// the Keychain.
+    public func loadExistingKey() throws -> Data {
+        guard let key = try load() else { throw KeyStoreError.missingKey }
+        return key
     }
 
     /// Removes the key. Only for tests and a future "reset" feature.
