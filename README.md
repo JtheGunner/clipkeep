@@ -30,7 +30,7 @@ Everything stays on your Mac. There is no cloud, no account and no AI at runtime
 | | Feature | Notes |
 |---|---|---|
 | 🔎 | Palette | Global hotkey <kbd>⌃</kbd><kbd>⌥</kbd><kbd>V</kbd>, full-text search over your history |
-| 🧾 | Snippets | Shell, SQL and YAML copies are collected with secrets replaced by placeholders; <kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd> opens the palette on them. Save any entry by hand («Als Snippet speichern») or seed the collection once from the history, with the same anonymiser and filter («Snippets aus Verlauf übernehmen …») |
+| 🧾 | Snippets | Shell, SQL and YAML copies are collected with secrets replaced by placeholders; <kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd> opens the palette on them, and the snippet explorer in the menu lists them all with filters for language and topic and sortable columns. Save any entry by hand («Als Snippet speichern») or seed the collection once from the history, with the same anonymiser and filter («Snippets aus Verlauf übernehmen …») |
 | 🗓️ | History window | Days, sessions and topics, entry detail, copy / pin / star / delete with undo |
 | 🔐 | Secret handling | Detected secrets are moved to the Keychain; the history keeps only a placeholder |
 | ⏸️ | Control | Pause capture, ignore apps, add content rules |

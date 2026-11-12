@@ -42,6 +42,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let bitwardenInstaller: any BitwardenInstalling = HomebrewBitwardenInstaller()
     private let paletteItem = NSMenuItem()
     private var palette: PaletteController?
+    private let snippetPaletteItem = NSMenuItem()
+    private let snippetExplorerItem = NSMenuItem()
+    private var snippetExplorer: SnippetExplorerWindowController?
     private let historyItem = NSMenuItem()
     private let importItem = NSMenuItem()
     private let removeImportItem = NSMenuItem()
@@ -79,11 +82,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         paletteItem.isEnabled = false
         menu.addItem(paletteItem)
 
+        snippetPaletteItem.title = "Snippet-Suche öffnen"
+        snippetPaletteItem.target = self
+        snippetPaletteItem.action = #selector(openSnippetPalette)
+        snippetPaletteItem.isEnabled = false
+        menu.addItem(snippetPaletteItem)
+
         historyItem.title = "Verlauf öffnen …"
         historyItem.target = self
         historyItem.action = #selector(openHistory)
         historyItem.isEnabled = false
         menu.addItem(historyItem)
+
+        snippetExplorerItem.title = "Snippet-Explorer öffnen …"
+        snippetExplorerItem.target = self
+        snippetExplorerItem.action = #selector(openSnippetExplorer)
+        snippetExplorerItem.isEnabled = false
+        menu.addItem(snippetExplorerItem)
 
         importItem.title = "Textdatei importieren …"
         importItem.target = self
@@ -120,7 +135,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         paletteItem.image = Symbols.image("magnifyingglass", nil)
+        snippetPaletteItem.image = Symbols.image("text.magnifyingglass", nil)
         historyItem.image = Symbols.image("clock", nil)
+        snippetExplorerItem.image = Symbols.image("curlybraces", nil)
         importItem.image = Symbols.image("square.and.arrow.down", nil)
         removeImportItem.image = Symbols.image("trash", nil)
         ignoreAppItem.image = Symbols.image("nosign", nil)
@@ -311,12 +328,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         alert.runModal()
     }
 
-    func attach(palette: PaletteController, hotKeyRegistered: Bool) {
+    func attach(
+        palette: PaletteController, hotKeyRegistered: Bool, snippetHotKeyRegistered: Bool
+    ) {
         self.palette = palette
         paletteItem.title =
             hotKeyRegistered
             ? "Suchpalette öffnen (⌃⌥V)" : "Suchpalette öffnen (Kurzbefehl ⌃⌥V ist belegt)"
         paletteItem.isEnabled = true
+        snippetPaletteItem.title =
+            snippetHotKeyRegistered
+            ? "Snippet-Suche öffnen (⌃⌥S)" : "Snippet-Suche öffnen (Kurzbefehl ⌃⌥S ist belegt)"
+        snippetPaletteItem.isEnabled = true
+    }
+
+    func attach(snippetExplorer: SnippetExplorerWindowController) {
+        self.snippetExplorer = snippetExplorer
+        snippetExplorerItem.isEnabled = true
+    }
+
+    @objc private func openSnippetPalette() {
+        // The menu is still closing; the panel opens right after.
+        DispatchQueue.main.async { [palette] in palette?.show(mode: .snippets) }
+    }
+
+    @objc private func openSnippetExplorer() {
+        DispatchQueue.main.async { [snippetExplorer] in snippetExplorer?.show() }
     }
 
     func attach(history: HistoryWindowController) {

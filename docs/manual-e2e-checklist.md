@@ -71,6 +71,16 @@ Settings → Privacy & Security → Paste from Other Apps → Clipkeep. Only mac
 - [ ] In snippet mode <kbd>⌘</kbd><kbd>⌫</kbd> removes the selected snippet without touching the query, and copying the same text again does not bring it back. In history mode <kbd>⌘</kbd><kbd>⌫</kbd> still deletes the query text.
 - [ ] When another app owns <kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd>, <kbd>⌃</kbd><kbd>⌥</kbd><kbd>V</kbd> still opens the palette and Tab still reaches the snippets.
 
+## 5a. Snippet explorer and menu
+
+- [ ] The menu reads "Snippet-Suche öffnen (⌃⌥S)" under "Suchpalette öffnen" and opens the palette in snippet mode; when another app owns the shortcut it reads "Snippet-Suche öffnen (Kurzbefehl ⌃⌥S ist belegt)" and still works.
+- [ ] "Snippet-Explorer öffnen …" opens a window listing every snippet with the columns Snippet, Sprache, Thema, Zuletzt genutzt and Häufigkeit; the count under the list reads "N Snippets". Light and dark appearance both look right.
+- [ ] Clicking a column header sorts by it and a second click reverses it (Snippet, Sprache and Thema start A to Z, Zuletzt genutzt and Häufigkeit start newest or most first); a snippet without a topic stays at the end of a Thema sort.
+- [ ] The language menu limits the list to Shell, SQL or YAML and the topic menu then lists only that language's topics with their counts; the search field narrows the list by text and topic as you type, and the count reads "N von M Snippets".
+- [ ] Selecting a snippet shows its full text and a line with language, topic, created, last used, origin and source app. "Kopieren" and a double click put it on the clipboard without adding a history entry.
+- [ ] "Löschen …" asks first; after confirming the snippet is gone, copying the same text again does not bring it back.
+- [ ] A snippet captured while the window is open appears after clicking out of and back into the window. With no snippets the window says so instead of showing an empty table.
+
 ## 6. History window
 
 - [ ] "Verlauf öffnen …" lists days, sessions and topics; the detail view shows the entry with its context.

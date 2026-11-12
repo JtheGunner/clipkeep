@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bitwarden: BitwardenSync?
     private var palette: PaletteController?
     private var history: HistoryWindowController?
+    private var snippetExplorer: SnippetExplorerWindowController?
     private var importer: ImportWindowController?
     private var paletteHotKey: GlobalHotKey?
     private var snippetHotKey: GlobalHotKey?
@@ -193,7 +194,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.logger.error("The snippet hotkey Control+Option+S could not be registered")
         }
         statusItemController?.attach(
-            palette: palette, hotKeyRegistered: paletteHotKey != nil)
+            palette: palette, hotKeyRegistered: paletteHotKey != nil,
+            snippetHotKeyRegistered: snippetHotKey != nil)
+        let explorer = SnippetExplorerWindowController(store: snippets)
+        snippetExplorer = explorer
+        statusItemController?.attach(snippetExplorer: explorer)
     }
 
     private func captureFailed() {
