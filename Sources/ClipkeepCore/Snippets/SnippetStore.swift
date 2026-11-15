@@ -69,6 +69,8 @@ public enum SnippetAddOutcome: Sendable, Equatable {
 /// `SnippetShape`) are variants of one snippet.
 public struct SnippetStore: Sendable {
     private static let trigramMinimum = 3
+    /// Longest stored comment, in characters.
+    private static let maxCommentLength = 2000
     private static let qualifiedColumns = """
         s.id, s.text, s.language, s.origin, s.app_name, s.created_at, s.last_copied_at, \
         s.copy_count, s.comment, \
@@ -239,6 +241,24 @@ public struct SnippetStore: Sendable {
         }
     }
 
+    /// Sets or clears the free-text comment of a snippet. The text is trimmed; an empty result
+    /// clears the comment, and anything beyond `maxCommentLength` characters is cut off.
+    /// Returns whether a snippet with this id existed.
+    public func setComment(id: Int64, comment: String?) throws -> Bool {
+        let trimmed = comment?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored = trimmed.flatMap { $0.isEmpty ? nil : String($0.prefix(Self.maxCommentLength)) }
+        return try database.write { connection in
+            let exists = try connection.query(
+                "SELECT 1 FROM snippets WHERE id = ?", [.int(id)]
+            ) { $0.int(0) }
+            guard !exists.isEmpty else { return false }
+            try connection.execute(
+                "UPDATE snippets SET comment = ? WHERE id = ?", [SQLValue(stored), .int(id)])
+            try Self.refreshAggregates(connection, snippetID: id)
+            return true
+        }
+    }
+
     public func count() throws -> Int {
         try database.read { connection in
             try connection.query("SELECT count(*) FROM snippets") { Int($0.int(0)) }.first ?? 0
@@ -248,7 +268,8 @@ public struct SnippetStore: Sendable {
     /// Recomputes what a snippet keeps of its variants: the representative (most recently
     /// copied) variant with its text and app, the summed count, the latest copy time and the
     /// search text over every variant and the comment. Call it after any variant or comment
-    /// change, inside the same transaction.
+    /// change, inside the same transaction. Migration 13 reuses it on databases that have not
+    /// migrated yet, so a change to what it computes also changes that migration.
     static func refreshAggregates(_ connection: Connection, snippetID: Int64) throws {
         let variants = try connection.query(
             """

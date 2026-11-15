@@ -375,6 +375,63 @@ import Testing
         #expect(snippet.comment == nil)
     }
 
+    @Test func setCommentRoundTrips() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        #expect(try fixture.store.setComment(id: id, comment: "  list the folder \n"))
+        #expect(try fixture.store.list(limit: 5).first?.comment == "list the folder")
+
+        #expect(try fixture.store.setComment(id: id, comment: "  "))
+        #expect(try fixture.store.list(limit: 5).first?.comment == nil)
+
+        #expect(try fixture.store.setComment(id: id, comment: "again"))
+        #expect(try fixture.store.setComment(id: id, comment: nil))
+        #expect(try fixture.store.list(limit: 5).first?.comment == nil)
+    }
+
+    @Test func setCommentIsSearchable() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        #expect(try fixture.store.setComment(id: id, comment: "rotate nightly"))
+        #expect(try fixture.store.search("nightly", limit: 5).map(\.id) == [id])
+        #expect(try fixture.store.search("/a/", limit: 5).map(\.id) == [id])
+
+        #expect(try fixture.store.setComment(id: id, comment: nil))
+        #expect(try fixture.store.search("nightly", limit: 5).isEmpty)
+        #expect(try fixture.store.search("/a/", limit: 5).map(\.id) == [id])
+    }
+
+    @Test func setCommentOnMissingSnippetReturnsFalse() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+        _ = try fixture.store.delete(id: id)
+
+        #expect(try fixture.store.setComment(id: id, comment: "late") == false)
+        #expect(try fixture.store.count() == 0)
+    }
+
+    @Test func longCommentIsCapped() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        #expect(try fixture.store.setComment(id: id, comment: String(repeating: "x", count: 5000)))
+        #expect(try fixture.store.list(limit: 5).first?.comment?.count == 2000)
+    }
+
     @Test func differentLanguagesDoNotMerge() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }

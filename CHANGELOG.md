@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A snippet can carry a comment. The snippet explorer has a "Kommentar" field under the info line; the comment is saved when you leave the field, trimmed and capped at 2000 characters, and is found by the explorer search and the snippet palette.
+
 ### Changed
 
 - Snippets that differ only in their values (paths, numbers, quoted strings, URLs, IP addresses, hashes; SQL literals; YAML scalar values) are merged into one snippet that keeps every concrete text as a variant. `ls -la ~/a/plugin/` and `ls -la ~/b/prefs/ 2>/dev/null` become one snippet; redirections do not count, while the program, flags and pipes do. The snippet shows the most recently copied variant, counts the copies of all variants, is found by any variant's text, and deleting it keeps every variant from being collected again. Existing snippets are merged once on the first start after the update. The snippet explorer lists one row per merged snippet with a variant menu that selects which text is shown and copied, and the palette row shows the number of variants.

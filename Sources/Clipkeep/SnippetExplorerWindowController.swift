@@ -6,7 +6,7 @@ import os
 /// selected one in full and copies or deletes it.
 @MainActor
 final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTableViewDataSource,
-    NSTableViewDelegate, NSSearchFieldDelegate
+    NSTableViewDelegate, NSSearchFieldDelegate, NSTextFieldDelegate
 {
     private nonisolated static let logger = Logger(
         subsystem: AppInfo.bundleIdentifier, category: "snippets")
@@ -24,6 +24,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private let detailView = NSTextView()
     private let infoLabel = NSTextField(labelWithString: "")
     private let variantMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let commentField = NSTextField()
     private let countLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton(title: "Kopieren", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Löschen …", target: nil, action: nil)
@@ -37,6 +38,9 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     /// The variants of the selected snippet, newest first; empty when there is no selection or
     /// the lookup failed, in which case only the representative text is offered.
     private var variants: [SnippetVariant] = []
+    /// The snippet whose comment the field shows, so an edit is saved to that snippet even if
+    /// the selection moves before the edit ends.
+    private var commentSnippet: Snippet?
 
     private static let languages: [(SnippetLanguage?, String)] = [
         (nil, "Alle Sprachen"), (.shell, "Shell"), (.sql, "SQL"), (.yaml, "YAML"),
@@ -138,6 +142,12 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         let infoRow = NSStackView(views: [infoLabel, variantMenu])
         infoRow.orientation = .horizontal
         infoRow.spacing = Metrics.Space.s
+        commentField.placeholderString = "Kommentar hinzufügen"
+        commentField.font = Typography.caption
+        commentField.delegate = self
+        commentField.lineBreakMode = .byTruncatingTail
+        commentField.cell?.usesSingleLineMode = true
+        commentField.setAccessibilityLabel("Kommentar")
         countLabel.font = Typography.caption
         countLabel.textColor = .secondaryLabelColor
 
@@ -151,14 +161,16 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         footer.orientation = .horizontal
         footer.spacing = Metrics.Space.s
 
-        let content = NSStackView(views: [bar, tableScroll, infoRow, detailScroll, footer])
+        let content = NSStackView(views: [
+            bar, tableScroll, infoRow, commentField, detailScroll, footer,
+        ])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = Metrics.Space.s
         content.edgeInsets = NSEdgeInsets(
             top: Metrics.Space.m, left: Metrics.Space.m, bottom: Metrics.Space.m,
             right: Metrics.Space.m)
-        for view in [bar, tableScroll, infoRow, detailScroll, footer] {
+        for view in [bar, tableScroll, infoRow, commentField, detailScroll, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
             view.widthAnchor.constraint(
                 equalTo: content.widthAnchor, constant: -2 * Metrics.Space.m
@@ -296,8 +308,36 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        // The comment field shares this delegate; typing there must not refilter and reset it.
+        guard (obj.object as? NSTextField) !== commentField else { return }
         query.text = searchField.stringValue
         applyFilters(keeping: selectedSnippet?.id)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === commentField else { return }
+        commitComment()
+    }
+
+    /// Saves the edited comment to the snippet it was loaded for, then reloads so the list and
+    /// its search text pick it up, keeping that snippet selected.
+    private func commitComment() {
+        guard let snippet = commentSnippet else { return }
+        let edited = commentField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard edited != (snippet.comment ?? "") else { return }
+        do {
+            guard try store.setComment(id: snippet.id, comment: edited) else {
+                reload()
+                infoLabel.stringValue = "Das Snippet existiert nicht mehr."
+                return
+            }
+        } catch {
+            Self.logger.error(
+                "Saving a snippet comment failed: \(String(describing: error), privacy: .public)")
+            infoLabel.stringValue = "Der Kommentar konnte nicht gespeichert werden."
+            return
+        }
+        reload()
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -316,6 +356,9 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         let snippet = selectedSnippet
         copyButton.isEnabled = snippet != nil
         deleteButton.isEnabled = snippet != nil
+        commentSnippet = snippet
+        commentField.isEnabled = snippet != nil
+        commentField.stringValue = snippet?.comment ?? ""
         loadVariants(of: snippet)
         guard let snippet else {
             detailView.string = ""

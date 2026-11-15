@@ -118,6 +118,15 @@ import Testing
         #expect(ids(result) == [7])
     }
 
+    @Test func commentIsFoundInTheExplorer() {
+        let commented = Self.snippet(
+            9, "ls -la /tmp/a/", .shell,
+            searchText: SearchText.fold("ls -la /tmp/a/\nrotate nightly"))
+        let result = SnippetExplorer.apply(
+            SnippetExplorerQuery(text: "nightly"), to: all + [commented])
+        #expect(ids(result) == [9])
+    }
+
     @Test func sortByCountUsesTheSummedCount() {
         let merged = Self.snippet(8, "ls -la /tmp/a/", .shell, count: 20)
         let query = SnippetExplorerQuery(sortKey: .count)

@@ -126,17 +126,17 @@ Order: Task 1 blocks Tasks 2, 3 and 4. Tasks 5 and 6 are independent of the rest
 - Consumes: `Snippet.comment`, `refreshAggregates` (Task 1).
 - Produces: `SnippetStore.setComment(id: Int64, comment: String?) throws -> Bool` (false when the snippet no longer exists; whitespace-only or empty clears the comment; text is trimmed; capped at 2000 characters).
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `setCommentRoundTrips`: set, `list` returns it; set `"  "` clears it (`comment == nil`).
   - `setCommentIsSearchable`: after `setComment(id:, comment: "rotate nightly")`, `search("nightly", limit: 5)` returns the snippet; after clearing it, it does not.
   - `setCommentOnMissingSnippetReturnsFalse`: for an id that was deleted.
   - `longCommentIsCapped`: 5000 characters stored as 2000.
   - `commentIsFoundInTheExplorer`: `SnippetExplorer.apply` with the query `"nightly"` finds it through `searchText`.
-- [ ] **Step 2: Run** `--filter SnippetStoreTests`. Expected: FAIL.
-- [ ] **Step 3: Implement `setComment`** in one `database.write`: update `comment`, call `refreshAggregates`, return whether a row was updated.
-- [ ] **Step 4: Explorer UI.** A one-line `NSTextField` "Kommentar" (placeholder `Kommentar hinzufügen`) under the info label, enabled with a selection. Commit on end of editing (`controlTextDidEndEditing`) by calling `setComment`, then `reload()` keeping the selection; on `false` show `Das Snippet existiert nicht mehr.` in the info label and reload. The comment is shown in the table's detail only (no new column).
-- [ ] **Step 5: Run** the filters and the full suite. Expected: PASS.
-- [ ] **Step 6: Docs and commit.** Checklist and CHANGELOG; commit `feat: add comments to snippets (CLIPK-65)`.
+- [x] **Step 2: Run** `--filter SnippetStoreTests`. Expected: FAIL.
+- [x] **Step 3: Implement `setComment`** in one `database.write`: update `comment`, call `refreshAggregates`, return whether a row was updated.
+- [x] **Step 4: Explorer UI.** A one-line `NSTextField` "Kommentar" (placeholder `Kommentar hinzufügen`) under the info label, enabled with a selection. Commit on end of editing (`controlTextDidEndEditing`) by calling `setComment`, then `reload()` keeping the selection; on `false` show `Das Snippet existiert nicht mehr.` in the info label and reload. The comment is shown in the table's detail only (no new column).
+- [x] **Step 5: Run** the filters and the full suite. Expected: PASS.
+- [x] **Step 6: Docs and commit.** Checklist and CHANGELOG; commit `feat: add comments to snippets (CLIPK-65)`.
 
 ---
 
