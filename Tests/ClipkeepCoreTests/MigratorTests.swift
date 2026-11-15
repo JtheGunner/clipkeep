@@ -62,6 +62,46 @@ import Testing
         }
         #expect(tables.isEmpty)
     }
+
+    @Test func stepRunsAfterTheStatements() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open(migrated: false)
+        let migration = Migration(
+            version: 1, statements: ["CREATE TABLE a (id INTEGER)"],
+            step: { connection in try connection.execute("INSERT INTO a(id) VALUES (7)") })
+
+        try Migrator(migrations: [migration]).migrate(database)
+
+        #expect(try userVersion(database) == 1)
+        let ids = try database.read { try $0.query("SELECT id FROM a") { $0.int(0) } }
+        #expect(ids == [7])
+    }
+
+    @Test func failingStepRollsBackAndKeepsVersion() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open(migrated: false)
+        try Migrator(migrations: Array(Schema.migrations.prefix(12))).migrate(database)
+        let broken = Migration(
+            version: 13, statements: ["CREATE TABLE a (id INTEGER)"],
+            step: { _ in throw StepError.failed })
+
+        #expect(throws: DatabaseError.self) {
+            try Migrator(migrations: Array(Schema.migrations.prefix(12)) + [broken]).migrate(
+                database)
+        }
+
+        #expect(try userVersion(database) == 12)
+        let tables = try database.read {
+            try $0.query("SELECT name FROM sqlite_master WHERE name = 'a'") { $0.text(0) }
+        }
+        #expect(tables.isEmpty)
+    }
+
+    private enum StepError: Error {
+        case failed
+    }
 }
 
 @Suite struct MigratorGuardTests {

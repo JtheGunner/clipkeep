@@ -197,18 +197,281 @@ import Testing
         #expect(try fixture.store.count() == 1)
     }
 
+    @Test func sameShapeAddsAVariantNotASnippet() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: "Terminal",
+                at: base))
+        let later = base.addingTimeInterval(60)
+
+        let second = try fixture.store.add(
+            text: "ls -la /b/", language: .shell, origin: .auto, appName: "iTerm2", at: later)
+
+        #expect(second == .bumped(id))
+        #expect(try fixture.store.count() == 1)
+        let snippets = try fixture.store.list(limit: 10)
+        #expect(snippets.count == 1)
+        let snippet = try #require(snippets.first)
+        #expect(snippet.id == id)
+        #expect(snippet.variantCount == 2)
+        #expect(snippet.copyCount == 2)
+        #expect(snippet.text == "ls -la /b/")
+        #expect(snippet.appName == "iTerm2")
+        #expect(snippet.createdAt == base)
+        #expect(snippet.lastCopiedAt == later)
+        #expect(snippet.shapeHash == SnippetShape.hash(of: "ls -la /a/", language: .shell))
+        let variants = try fixture.store.variants(of: id)
+        #expect(variants.map(\.text) == ["ls -la /b/", "ls -la /a/"])
+        #expect(variants.allSatisfy { $0.snippetID == id && $0.copyCount == 1 })
+        #expect(variants.map(\.lastCopiedAt) == [later, base])
+    }
+
+    @Test func sameTextBumpsTheVariant() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        let again = try fixture.store.add(
+            text: "ls -la /a/", language: .shell, origin: .auto, appName: nil,
+            at: base.addingTimeInterval(30))
+
+        #expect(again == .bumped(id))
+        let variants = try fixture.store.variants(of: id)
+        #expect(variants.count == 1)
+        #expect(variants.first?.copyCount == 2)
+        #expect(variants.first?.lastCopiedAt == base.addingTimeInterval(30))
+        #expect(try fixture.store.list(limit: 10).first?.variantCount == 1)
+    }
+
+    @Test func redirectVariantJoinsTheSnippet() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let texts = [
+            "ls -la ~/Library/Caches/spotty/ 2>/dev/null",
+            "ls -la ~/Library/Caches/spotty/plugin/",
+            "ls -la ~/Library/Caches/spotty/prefs/",
+        ]
+        for (offset, text) in texts.enumerated() {
+            _ = try fixture.store.add(
+                text: text, language: .shell, origin: .auto, appName: nil,
+                at: base.addingTimeInterval(Double(offset)))
+        }
+
+        #expect(try fixture.store.count() == 1)
+        let snippet = try #require(try fixture.store.list(limit: 10).first)
+        #expect(snippet.variantCount == 3)
+        #expect(snippet.copyCount == 3)
+        #expect(Set(try fixture.store.variants(of: snippet.id).map(\.text)) == Set(texts))
+    }
+
+    @Test func unchangedWhenNotBumping() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        let known = try fixture.store.add(
+            text: "ls -la /a/", language: .shell, origin: .history, appName: nil,
+            bumpingExisting: false, at: base.addingTimeInterval(10))
+        #expect(known == .unchanged(id))
+        #expect(try fixture.store.variants(of: id).map(\.copyCount) == [1])
+        #expect(try fixture.store.list(limit: 10).first?.copyCount == 1)
+
+        let newVariant = try fixture.store.add(
+            text: "ls -la /b/", language: .shell, origin: .history, appName: nil,
+            bumpingExisting: false, at: base.addingTimeInterval(20))
+        #expect(newVariant == .unchanged(id))
+        #expect(try fixture.store.count() == 1)
+        let snippet = try #require(try fixture.store.list(limit: 10).first)
+        #expect(snippet.variantCount == 2)
+        #expect(snippet.copyCount == 1)
+        #expect(snippet.origin == .auto)
+    }
+
+    @Test func deleteRejectsEveryVariant() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+        _ = try fixture.store.add(
+            text: "ls -la /b/", language: .shell, origin: .auto, appName: nil, at: base)
+
+        #expect(try fixture.store.delete(id: id))
+        #expect(try fixture.store.count() == 0)
+        #expect(try fixture.store.variants(of: id).isEmpty)
+        for text in ["ls -la /a/", "ls -la /b/"] {
+            #expect(
+                try fixture.store.add(
+                    text: text, language: .shell, origin: .auto, appName: nil, at: base)
+                    == .rejected)
+        }
+        #expect(try fixture.store.count() == 0)
+
+        _ = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /b/", language: .shell, origin: .manual, appName: nil,
+                overridingRejection: true, at: base))
+        #expect(try fixture.store.count() == 1)
+    }
+
+    @Test func manualAddRaisesOrigin() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        _ = try fixture.store.add(
+            text: "ls -la /b/", language: .shell, origin: .manual, appName: nil, at: base)
+        #expect(try fixture.store.list(limit: 10).first?.origin == .manual)
+
+        _ = try fixture.store.add(
+            text: "ls -la /c/", language: .shell, origin: .auto, appName: nil, at: base)
+        _ = try fixture.store.add(
+            text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base)
+        let snippet = try #require(try fixture.store.list(limit: 10).first)
+        #expect(snippet.id == id)
+        #expect(snippet.origin == .manual)
+    }
+
+    @Test func originPriorityOrdersManualHistoryAuto() {
+        #expect(SnippetOrigin.manual.priority == 2)
+        #expect(SnippetOrigin.history.priority == 1)
+        #expect(SnippetOrigin.auto.priority == 0)
+    }
+
+    @Test func searchFindsAnyVariant() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+        _ = try fixture.store.add(
+            text: "ls -la /b/", language: .shell, origin: .auto, appName: nil,
+            at: base.addingTimeInterval(60))
+
+        #expect(try fixture.store.search("/a/", limit: 5).map(\.id) == [id])
+        #expect(try fixture.store.search("/b/", limit: 5).map(\.id) == [id])
+        #expect(try fixture.store.search("ls -la", limit: 5).map(\.id) == [id])
+    }
+
+    @Test func snippetSearchTextCoversAllVariants() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.add(
+            text: "LS -la /Über/", language: .shell, origin: .auto, appName: nil, at: base)
+        _ = try fixture.store.add(
+            text: "LS -la /b/", language: .shell, origin: .auto, appName: nil, at: base)
+
+        let snippet = try #require(try fixture.store.search("über", limit: 5).first)
+        #expect(snippet.searchText.contains(SearchText.fold("LS -la /Über/")))
+        #expect(snippet.searchText.contains(SearchText.fold("LS -la /b/")))
+        #expect(snippet.comment == nil)
+    }
+
+    @Test func differentLanguagesDoNotMerge() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.add(
+            text: "replicas: 2", language: .yaml, origin: .auto, appName: nil, at: base)
+        _ = try fixture.store.add(
+            text: "replicas: 3", language: .shell, origin: .auto, appName: nil, at: base)
+
+        #expect(try fixture.store.count() == 2)
+    }
+
+    @Test func migrationMergesVersion12Snippets() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open(migrated: false)
+        try Migrator(migrations: Array(Schema.migrations.prefix(12))).migrate(database)
+        let rejectedText = "rm -rf /tmp/old"
+        let rows:
+            [(
+                text: String, app: String, count: Int64, created: Double, last: Double,
+                origin: String
+            )] = [
+                ("ls -la /a/", "Terminal", 2, 10, 30, "auto"),
+                ("ls -la /b/", "iTerm2", 3, 5, 20, "history"),
+                ("kubectl get pods", "Terminal", 1, 7, 8, "auto"),
+            ]
+        try database.write { connection in
+            for row in rows {
+                try connection.execute(
+                    """
+                    INSERT INTO snippets
+                        (text, hash, language, origin, app_name, search_text, created_at,
+                         last_copied_at, copy_count)
+                    VALUES (?, ?, 'shell', ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        .text(row.text), .text(ContentHashing.exactHash(row.text)),
+                        .text(row.origin), .text(row.app), .text(SearchText.fold(row.text)),
+                        .double(row.created), .double(row.last), .int(row.count),
+                    ])
+            }
+            try connection.execute(
+                "INSERT INTO snippet_rejections(hash) VALUES (?)",
+                [.text(ContentHashing.exactHash(rejectedText))])
+        }
+
+        try Schema.migrator.migrate(database)
+
+        let store = SnippetStore(database: database)
+        #expect(try store.count() == 2)
+        let merged = try #require(try store.search("/a/", limit: 5).first)
+        #expect(merged.copyCount == 5)
+        #expect(merged.createdAt == Date(timeIntervalSince1970: 5))
+        #expect(merged.lastCopiedAt == Date(timeIntervalSince1970: 30))
+        #expect(merged.origin == .history)
+        #expect(merged.variantCount == 2)
+        #expect(merged.text == "ls -la /a/")
+        #expect(merged.appName == "Terminal")
+        #expect(merged.searchText.contains("ls -la /a/"))
+        #expect(merged.searchText.contains("ls -la /b/"))
+        #expect(merged.shapeHash == SnippetShape.hash(of: "ls -la /a/", language: .shell))
+        #expect(try store.search("/b/", limit: 5).map(\.id) == [merged.id])
+        #expect(try store.variants(of: merged.id).map(\.copyCount) == [2, 3])
+        let other = try #require(try store.search("kubectl", limit: 5).first)
+        #expect(other.variantCount == 1)
+        #expect(other.copyCount == 1)
+        #expect(
+            try store.add(text: rejectedText, language: .shell, origin: .auto, appName: nil)
+                == .rejected)
+        // The merged snippet takes new variants after the migration.
+        #expect(
+            try store.add(text: "ls -la /c/", language: .shell, origin: .auto, appName: nil)
+                == .bumped(merged.id))
+        let seedTables = try database.read { connection in
+            try connection.query(
+                "SELECT name FROM sqlite_temp_master WHERE name = 'snippet_variant_seed'"
+            ) { $0.text(0) }
+        }
+        #expect(seedTables.isEmpty)
+    }
+
     @Test func migrationCreatesTables() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
 
         let names = try fixture.database.read { connection in
             try connection.query(
-                "SELECT name FROM sqlite_master WHERE name IN (?, ?, ?)",
-                [.text("snippets"), .text("snippets_fts"), .text("snippet_rejections")]
+                "SELECT name FROM sqlite_master WHERE name IN (?, ?, ?, ?)",
+                [
+                    .text("snippets"), .text("snippets_fts"), .text("snippet_rejections"),
+                    .text("snippet_variants"),
+                ]
             ) { $0.text(0) }
         }
 
-        #expect(Set(names) == ["snippets", "snippets_fts", "snippet_rejections"])
+        #expect(
+            Set(names) == ["snippets", "snippets_fts", "snippet_rejections", "snippet_variants"])
     }
 }
 

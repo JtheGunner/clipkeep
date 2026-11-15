@@ -13,7 +13,10 @@ import Testing
         Snippet(
             id: id, text: text, language: language, origin: .auto, appName: nil,
             createdAt: Date(timeIntervalSince1970: created * day),
-            lastCopiedAt: Date(timeIntervalSince1970: used * day), copyCount: count)
+            lastCopiedAt: Date(timeIntervalSince1970: used * day), copyCount: count,
+            comment: nil, variantCount: 1,
+            shapeHash: SnippetShape.hash(of: text, language: language),
+            searchText: SearchText.fold(text))
     }
 
     private let docker = snippet(

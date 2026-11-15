@@ -1,11 +1,17 @@
-/// One schema step. `version` numbers must be unique and strictly increasing.
+/// One schema step. `version` numbers must be unique and strictly increasing. `step` is Swift
+/// code for data changes SQL cannot express; it runs after the statements, in the same
+/// transaction, so a failure in either rolls the whole migration back.
 public struct Migration: Sendable {
     public let version: Int
     public let statements: [String]
+    public let step: (@Sendable (Connection) throws -> Void)?
 
-    public init(version: Int, statements: [String]) {
+    public init(
+        version: Int, statements: [String], step: (@Sendable (Connection) throws -> Void)? = nil
+    ) {
         self.version = version
         self.statements = statements
+        self.step = step
     }
 }
 
@@ -36,6 +42,7 @@ public struct Migrator: Sendable {
                     for statement in migration.statements {
                         try connection.execute(statement)
                     }
+                    try migration.step?(connection)
                     // PRAGMA does not accept bound parameters; the value is our own integer.
                     try connection.execute("PRAGMA user_version = \(migration.version)")
                 }

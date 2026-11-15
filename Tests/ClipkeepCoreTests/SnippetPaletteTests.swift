@@ -34,7 +34,9 @@ import Testing
         Snippet(
             id: id, text: text, language: language, origin: .auto, appName: "Terminal",
             createdAt: now.addingTimeInterval(-ago - 100),
-            lastCopiedAt: now.addingTimeInterval(-ago), copyCount: count)
+            lastCopiedAt: now.addingTimeInterval(-ago), copyCount: count, comment: nil,
+            variantCount: 1, shapeHash: SnippetShape.hash(of: text, language: language),
+            searchText: SearchText.fold(text))
     }
 
     // MARK: - Search
