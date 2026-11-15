@@ -123,4 +123,19 @@ import Testing
         let query = SnippetExplorerQuery(sortKey: .count)
         #expect(ids(SnippetExplorer.apply(query, to: all + [merged])).first == 8)
     }
+
+    @Test func variantMenuTitlesStayDistinctForEqualFirstLines() {
+        let long = String(repeating: "x", count: 80)
+        let titles = [
+            SnippetExplorer.variantMenuTitle(
+                position: 1, text: long + "a", copyCount: 2, age: "vor 1 Std."),
+            SnippetExplorer.variantMenuTitle(
+                position: 2, text: long + "b", copyCount: 2, age: "vor 1 Std."),
+            SnippetExplorer.variantMenuTitle(
+                position: 3, text: "SELECT 1\nFROM a", copyCount: 0, age: "vor 1 Std."),
+        ]
+        #expect(Set(titles).count == titles.count)
+        #expect(titles[0].hasPrefix("1 · "))
+        #expect(titles[2] == "3 · SELECT 1  ·  zuletzt vor 1 Std.")
+    }
 }

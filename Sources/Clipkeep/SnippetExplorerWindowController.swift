@@ -352,23 +352,28 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             variants = []
             return
         }
-        for variant in variants { variantMenu.addItem(withTitle: Self.menuTitle(of: variant)) }
+        // Add items directly: addItem(withTitle:) would replace an item with an equal title and
+        // shift every later index away from `variants`.
+        for (offset, variant) in variants.enumerated() {
+            variantMenu.menu?.addItem(
+                NSMenuItem(
+                    title: Self.menuTitle(of: variant, position: offset + 1), action: nil,
+                    keyEquivalent: ""))
+        }
+        guard variantMenu.numberOfItems == variants.count else {
+            Self.logger.error("Variant menu and variants disagree; showing the representative only")
+            variants = []
+            variantMenu.removeAllItems()
+            return
+        }
         variantMenu.selectItem(at: 0)
         variantMenu.isHidden = false
     }
 
-    private static func menuTitle(of variant: SnippetVariant) -> String {
-        let line =
-            variant.text.split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { !$0.isEmpty } ?? ""
-        let title = line.count > 60 ? String(line.prefix(59)) + "…" : line
-        var details: [String] = []
-        if variant.copyCount > 0 { details.append("\(variant.copyCount)×") }
-        details.append(
-            "zuletzt \(relativeDates.localizedString(for: variant.lastCopiedAt, relativeTo: Date()))"
-        )
-        return "\(title)  ·  \(details.joined(separator: " · "))"
+    private static func menuTitle(of variant: SnippetVariant, position: Int) -> String {
+        SnippetExplorer.variantMenuTitle(
+            position: position, text: variant.text, copyCount: variant.copyCount,
+            age: relativeDates.localizedString(for: variant.lastCopiedAt, relativeTo: Date()))
     }
 
     /// The text of the chosen variant, or of the snippet itself when it has none to choose from.
