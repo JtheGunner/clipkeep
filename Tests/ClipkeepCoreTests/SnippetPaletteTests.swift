@@ -29,13 +29,14 @@ import Testing
 
     private func snippet(
         id: Int64 = 3, text: String = "SELECT 1", language: SnippetLanguage = .sql,
-        ago: TimeInterval = 10, count: Int = 1
+        ago: TimeInterval = 10, count: Int = 1, variants: Int = 1
     ) -> Snippet {
         Snippet(
             id: id, text: text, language: language, origin: .auto, appName: "Terminal",
             createdAt: now.addingTimeInterval(-ago - 100),
             lastCopiedAt: now.addingTimeInterval(-ago), copyCount: count, comment: nil,
-            variantCount: 1, shapeHash: SnippetShape.hash(of: text, language: language),
+            variantCount: variants,
+            shapeHash: SnippetShape.hash(of: text, language: language),
             searchText: SearchText.fold(text))
     }
 
@@ -144,6 +145,14 @@ import Testing
         #expect(row.subtitle.contains("SQL"))
         #expect(row.subtitle.contains("2×"))
         #expect(row.subtitle == "gerade eben · SQL · 2×")
+    }
+
+    @Test func snippetRowShowsVariantCount() {
+        let merged = PaletteRow(
+            snippet: snippet(count: 4, variants: 3), now: now, calendar: calendar)
+        #expect(merged.subtitle == "gerade eben · SQL · 4× · 3 Varianten")
+        let single = PaletteRow(snippet: snippet(count: 4), now: now, calendar: calendar)
+        #expect(!single.subtitle.contains("Varianten"))
     }
 
     @Test func aSingleCopyShowsNoCount() {

@@ -28,7 +28,8 @@ public struct PaletteRow: Sendable, Equatable {
         subtitle = parts.joined(separator: " · ")
     }
 
-    /// A snippet row: `contentID` is the snippet id, the subtitle reads `age · language · count×`.
+    /// A snippet row: `contentID` is the snippet id, the subtitle reads
+    /// `age · language · count× · N Varianten` (the variants only when several texts merged).
     public init(snippet: Snippet, now: Date = Date(), calendar: Calendar = .current) {
         contentID = snippet.id
         typeName = Self.languageName(snippet.language)
@@ -38,6 +39,7 @@ public struct PaletteRow: Sendable, Equatable {
         title = Self.title(of: snippet.text)
         var parts = [Self.age(of: snippet.lastCopiedAt, now: now, calendar: calendar), typeName]
         if snippet.copyCount > 1 { parts.append("\(snippet.copyCount)×") }
+        if snippet.variantCount > 1 { parts.append("\(snippet.variantCount) Varianten") }
         subtitle = parts.joined(separator: " · ")
     }
 

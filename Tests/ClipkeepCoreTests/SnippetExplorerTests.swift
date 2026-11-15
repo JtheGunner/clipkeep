@@ -8,7 +8,7 @@ import Testing
 
     private static func snippet(
         _ id: Int64, _ text: String, _ language: SnippetLanguage, created: Double = 0,
-        used: Double = 0, count: Int = 1
+        used: Double = 0, count: Int = 1, searchText: String? = nil
     ) -> Snippet {
         Snippet(
             id: id, text: text, language: language, origin: .auto, appName: nil,
@@ -16,7 +16,7 @@ import Testing
             lastCopiedAt: Date(timeIntervalSince1970: used * day), copyCount: count,
             comment: nil, variantCount: 1,
             shapeHash: SnippetShape.hash(of: text, language: language),
-            searchText: SearchText.fold(text))
+            searchText: searchText ?? SearchText.fold(text))
     }
 
     private let docker = snippet(
@@ -108,5 +108,19 @@ import Testing
     @Test func ignoresSnippetsWithoutATopicInTheTopicList() {
         let anonymous = Self.snippet(5, "$(true)", .shell)
         #expect(SnippetExplorer.topics(in: [anonymous], language: nil).isEmpty)
+    }
+
+    @Test func searchMatchesAnyVariantText() {
+        let merged = Self.snippet(
+            7, "ls -la /tmp/a/", .shell,
+            searchText: SearchText.fold("ls -la /tmp/a/ ls -la /tmp/b/"))
+        let result = SnippetExplorer.apply(SnippetExplorerQuery(text: "/b/"), to: all + [merged])
+        #expect(ids(result) == [7])
+    }
+
+    @Test func sortByCountUsesTheSummedCount() {
+        let merged = Self.snippet(8, "ls -la /tmp/a/", .shell, count: 20)
+        let query = SnippetExplorerQuery(sortKey: .count)
+        #expect(ids(SnippetExplorer.apply(query, to: all + [merged])).first == 8)
     }
 }

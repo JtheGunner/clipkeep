@@ -23,6 +23,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private let table = NSTableView()
     private let detailView = NSTextView()
     private let infoLabel = NSTextField(labelWithString: "")
+    private let variantMenu = NSPopUpButton(frame: .zero, pullsDown: false)
     private let countLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton(title: "Kopieren", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Löschen …", target: nil, action: nil)
@@ -33,6 +34,9 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private var query = SnippetExplorerQuery()
     private var isRebuildingMenus = false
     private var loadFailed = false
+    /// The variants of the selected snippet, newest first; empty when there is no selection or
+    /// the lookup failed, in which case only the representative text is offered.
+    private var variants: [SnippetVariant] = []
 
     private static let languages: [(SnippetLanguage?, String)] = [
         (nil, "Alle Sprachen"), (.shell, "Shell"), (.sql, "SQL"), (.yaml, "YAML"),
@@ -123,6 +127,17 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         infoLabel.font = Typography.caption
         infoLabel.textColor = .secondaryLabelColor
         infoLabel.lineBreakMode = .byTruncatingTail
+        infoLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        infoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        variantMenu.target = self
+        variantMenu.action = #selector(variantChanged)
+        variantMenu.font = Typography.caption
+        variantMenu.toolTip = "Die Variante, die angezeigt und mit „Kopieren“ kopiert wird"
+        variantMenu.setContentHuggingPriority(.required, for: .horizontal)
+        variantMenu.isHidden = true
+        let infoRow = NSStackView(views: [infoLabel, variantMenu])
+        infoRow.orientation = .horizontal
+        infoRow.spacing = Metrics.Space.s
         countLabel.font = Typography.caption
         countLabel.textColor = .secondaryLabelColor
 
@@ -136,14 +151,14 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         footer.orientation = .horizontal
         footer.spacing = Metrics.Space.s
 
-        let content = NSStackView(views: [bar, tableScroll, infoLabel, detailScroll, footer])
+        let content = NSStackView(views: [bar, tableScroll, infoRow, detailScroll, footer])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = Metrics.Space.s
         content.edgeInsets = NSEdgeInsets(
             top: Metrics.Space.m, left: Metrics.Space.m, bottom: Metrics.Space.m,
             right: Metrics.Space.m)
-        for view in [bar, tableScroll, infoLabel, detailScroll, footer] {
+        for view in [bar, tableScroll, infoRow, detailScroll, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
             view.widthAnchor.constraint(
                 equalTo: content.widthAnchor, constant: -2 * Metrics.Space.m
@@ -301,13 +316,15 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         let snippet = selectedSnippet
         copyButton.isEnabled = snippet != nil
         deleteButton.isEnabled = snippet != nil
+        loadVariants(of: snippet)
         guard let snippet else {
             detailView.string = ""
             infoLabel.stringValue = emptySelectionMessage
             return
         }
-        detailView.string = snippet.text
+        detailView.string = displayedText(of: snippet)
         var parts = [SnippetExplorerWindowController.languageName(snippet.language)]
+        if snippet.variantCount > 1 { parts.append("\(snippet.variantCount) Varianten") }
         if let topic = topicByID[snippet.id] { parts.append("Thema: \(topic)") }
         parts.append("angelegt \(Self.absoluteDates.string(from: snippet.createdAt))")
         parts.append("zuletzt genutzt \(Self.absoluteDates.string(from: snippet.lastCopiedAt))")
@@ -317,13 +334,63 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         infoLabel.stringValue = parts.joined(separator: " · ")
     }
 
+    /// Fills the variant menu for the selected snippet and selects its first entry, the
+    /// representative. A failing lookup leaves the menu hidden and the representative alone.
+    private func loadVariants(of snippet: Snippet?) {
+        variants = []
+        variantMenu.removeAllItems()
+        variantMenu.isHidden = true
+        guard let snippet, snippet.variantCount > 1 else { return }
+        do {
+            variants = try store.variants(of: snippet.id)
+        } catch {
+            Self.logger.error(
+                "Loading snippet variants failed: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard variants.count > 1 else {
+            variants = []
+            return
+        }
+        for variant in variants { variantMenu.addItem(withTitle: Self.menuTitle(of: variant)) }
+        variantMenu.selectItem(at: 0)
+        variantMenu.isHidden = false
+    }
+
+    private static func menuTitle(of variant: SnippetVariant) -> String {
+        let line =
+            variant.text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+        let title = line.count > 60 ? String(line.prefix(59)) + "…" : line
+        var details: [String] = []
+        if variant.copyCount > 0 { details.append("\(variant.copyCount)×") }
+        details.append(
+            "zuletzt \(relativeDates.localizedString(for: variant.lastCopiedAt, relativeTo: Date()))"
+        )
+        return "\(title)  ·  \(details.joined(separator: " · "))"
+    }
+
+    /// The text of the chosen variant, or of the snippet itself when it has none to choose from.
+    /// The detail view and "Kopieren" both read it, so the text shown is the text copied.
+    private func displayedText(of snippet: Snippet) -> String {
+        let index = variantMenu.indexOfSelectedItem
+        guard variants.indices.contains(index) else { return snippet.text }
+        return variants[index].text
+    }
+
+    @objc private func variantChanged() {
+        guard let snippet = selectedSnippet else { return }
+        detailView.string = displayedText(of: snippet)
+    }
+
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateSelectionState()
     }
 
     @objc private func copySelected() {
         guard let snippet = selectedSnippet else { return }
-        copyWriter.copy(snippet.text)
+        copyWriter.copy(displayedText(of: snippet))
     }
 
     @objc private func deleteSelected() {

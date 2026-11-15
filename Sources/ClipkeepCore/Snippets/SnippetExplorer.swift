@@ -49,7 +49,7 @@ public enum SnippetExplorer {
             let topic = SnippetTopic.of(snippet)
             if let wanted = query.topic, topic != wanted { return nil }
             if !terms.isEmpty {
-                let haystack = SearchText.fold(snippet.text + " " + (topic ?? ""))
+                let haystack = SearchText.fold(snippet.searchText + " " + (topic ?? ""))
                 guard terms.allSatisfy({ haystack.contains($0) }) else { return nil }
             }
             return (snippet, topic)
