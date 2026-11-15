@@ -27,6 +27,17 @@ import Testing
         #expect(!sameShape("./deploy.sh /x", "./build.sh /x"))
         #expect(!sameShape("cmd | grep foo", "cmd | sort"))
         #expect(!sameShape("cmd /x && ./a.sh", "cmd /x && ./b.sh"))
+        #expect(!sameShape("kill -9 123", "kill -15 123"))
+        #expect(!sameShape("gzip -1 f", "gzip -9 f"))
+        #expect(!sameShape("head -5 f", "head -20 f"))
+        #expect(sameShape("kill -9 123", "kill -9 456"))
+        #expect(sameShape("sleep 5", "sleep 9"))
+    }
+
+    @Test func combinedDashCFlagsKeepTheirCodeLiteral() {
+        #expect(!sameShape(#"bash -lc "echo a""#, #"bash -lc "rm -rf /tmp/x""#))
+        #expect(!sameShape(#"sh -ec "a""#, #"sh -ec "b""#))
+        #expect(!sameShape(#"zsh -ic "a""#, #"zsh -ic "b""#))
     }
 
     @Test func commandArgumentsOfDashCAreNotMasked() {

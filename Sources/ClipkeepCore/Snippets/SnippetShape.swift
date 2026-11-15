@@ -92,10 +92,18 @@ private enum Characters {
 }
 
 /// Shell: values in arguments are masked, redirections are dropped. Program names (the first
-/// word of each command), flags, operators and the code argument of `-c`, `eval` and `exec`
-/// stay literal.
+/// word of each command), flags, operators and the code argument of `-c` (also inside a short
+/// flag cluster such as `-lc`), `eval` and `exec` stay literal.
 private enum ShellShape {
-    private static let codeArgumentWords: Set<String> = ["-c", "eval", "exec"]
+    private static let codeArgumentWords: Set<String> = ["eval", "exec"]
+
+    /// `-c` alone or in a cluster of short flags (`-lc`, `-ec`): the next word is code.
+    private static func takesCodeArgument(_ word: String) -> Bool {
+        if codeArgumentWords.contains(word) { return true }
+        guard word.hasPrefix("-"), !word.hasPrefix("--") else { return false }
+        let flags = word.dropFirst()
+        return flags.contains("c") && flags.allSatisfy(Characters.isLetter)
+    }
 
     static func line(_ characters: [Character]) -> String {
         var scanner = ShellScanner(characters: characters)
@@ -113,7 +121,7 @@ private enum ShellShape {
             case .literal(let text):
                 output.append(text)
             case .word(let word):
-                if let previousWord, codeArgumentWords.contains(previousWord) {
+                if let previousWord, takesCodeArgument(previousWord) {
                     output.append(word)
                 } else if atCommandStart, isAssignment(word) {
                     // `FOO=1 cmd`: the program follows the assignments.
@@ -161,8 +169,9 @@ private enum ShellShape {
         if let content = Characters.quotedContent(word) {
             return Characters.isPlaceholder(content) ? word : ShapeToken.string
         }
-        if Characters.isNumber(word) { return ShapeToken.number }
+        // Flags, numeric ones such as `-9` included, are structure, not values.
         if word.hasPrefix("-") { return word }
+        if Characters.isNumber(word) { return ShapeToken.number }
         if isURL(word) { return ShapeToken.url }
         if isAddress(word) { return ShapeToken.address }
         if isHash(word) { return ShapeToken.hash }
