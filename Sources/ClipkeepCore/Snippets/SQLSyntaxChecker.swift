@@ -1,7 +1,8 @@
 /// The SQL part of `SnippetValidator`: unterminated strings, quoted identifiers and block comments,
-/// unbalanced parentheses, and statements whose verb lacks the structure it needs (`SELECT`
-/// without projection, `INSERT` without a source, `UPDATE` without `SET`). Dialect-specific input
-/// (`#` comments, backslash-escaped quotes, nested comments, unknown verbs, …) is `notChecked`.
+/// unbalanced parentheses, and statements whose verb lacks the structure it needs (`INSERT`
+/// without a source, `UPDATE` without `SET`). Dialect-specific input (`#` comments,
+/// backslash-escaped quotes, nested comments, an empty select list, unknown verbs, …) is
+/// `notChecked`.
 struct SQLSyntaxChecker {
     /// What one statement looked like, collected while scanning it.
     private struct Statement {
@@ -32,7 +33,8 @@ struct SQLSyntaxChecker {
     private var depth = 0
     private var statement = Statement()
     private var sawStatement = false
-    private var sawUnknownVerb = false
+    /// A statement with an unknown verb or a dialect-dependent form such as an empty select list.
+    private var sawUnmodelledStatement = false
     private var structureHint: String?
 
     init(_ bytes: [UInt8]) {
@@ -52,7 +54,7 @@ struct SQLSyntaxChecker {
         if depth > 0 { throw .invalid("Klammer ( nicht geschlossen") }
         // An unknown verb hints at a dialect or a procedure body, where statements may not split
         // the way this checker assumes; only the lexical findings above are certain there.
-        if sawUnknownVerb || !sawStatement { return .notChecked }
+        if sawUnmodelledStatement || !sawStatement { return .notChecked }
         if let structureHint { throw .invalid(structureHint) }
         return .valid
     }
@@ -126,16 +128,20 @@ struct SQLSyntaxChecker {
         guard statement.tokenCount > 0 else { return }
         sawStatement = true
         guard let verb = statement.verb, Self.knownVerbs.contains(verb) else {
-            sawUnknownVerb = true
+            sawUnmodelledStatement = true
+            return
+        }
+        // PostgreSQL 9.4+ accepts an empty select list (`SELECT;`, `SELECT FROM t`), other
+        // dialects reject it, so it gets no verdict.
+        if verb == "SELECT"
+            && (statement.second == nil || statement.second == "FROM"
+                || statement.second == "WHERE")
+        {
+            sawUnmodelledStatement = true
             return
         }
         guard structureHint == nil else { return }
         switch verb {
-        case "SELECT":
-            if statement.second == nil || statement.second == "FROM" || statement.second == "WHERE"
-            {
-                structureHint = "SELECT ohne Spalten"
-            }
         case "INSERT":
             if !statement.hasInsertSource { structureHint = "INSERT ohne VALUES oder SELECT" }
         case "UPDATE":

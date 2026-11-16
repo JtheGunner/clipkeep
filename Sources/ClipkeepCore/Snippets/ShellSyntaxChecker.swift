@@ -35,7 +35,10 @@ struct ShellSyntaxChecker {
 
     private let bytes: [UInt8]
     private var index = 0
+    /// Changed only through `push` and `pop`, which keep `backtickDepth` in step.
     private var frames: [Frame] = []
+    /// How many backtick frames are open, so no per-token work has to search `frames`.
+    private var backtickDepth = 0
     /// True where a new command may start, which is the only place `{` and `}` are reserved words.
     private var isCommandPosition = true
     /// True where a new word starts, which is the only place `#` starts a comment.
@@ -80,6 +83,15 @@ struct ShellSyntaxChecker {
         "„\(operatorText)“ ohne folgenden Befehl"
     }
 
+    private mutating func push(_ frame: Frame) {
+        frames.append(frame)
+        if frame == .backtick { backtickDepth += 1 }
+    }
+
+    private mutating func pop() {
+        if frames.removeLast() == .backtick { backtickDepth -= 1 }
+    }
+
     private mutating func endWord() {
         isWordStart = false
         isCommandPosition = false
@@ -96,12 +108,12 @@ struct ShellSyntaxChecker {
         switch bytes[index] {
         case ASCII.backslash: index += 2
         case ASCII.doubleQuote:
-            frames.removeLast()
+            pop()
             index += 1
             endWord()
         case ASCII.dollar: try stepDollar(isInCode: false)
         case ASCII.backtick:
-            frames.append(.backtick)
+            push(.backtick)
             index += 1
             startCommand()
         default: index += 1
@@ -113,14 +125,14 @@ struct ShellSyntaxChecker {
     private mutating func stepInArithmetic() throws(SyntaxProblem) {
         switch bytes[index] {
         case ASCII.openParen:
-            frames.append(.arithmeticParen)
+            push(.arithmeticParen)
             index += 1
         case ASCII.closeParen:
             if frames.last == .arithmeticParen {
-                frames.removeLast()
+                pop()
                 index += 1
             } else if bytes.byte(at: index + 1) == ASCII.closeParen {
-                frames.removeLast()
+                pop()
                 index += 2
                 endWord()
             } else {
@@ -163,7 +175,7 @@ struct ShellSyntaxChecker {
         }
         if byte == ASCII.hash && isWordStart {
             // Inside backticks the comment rules depend on the shell's quoting pass.
-            guard !frames.contains(.backtick) else { throw .notChecked }
+            guard backtickDepth == 0 else { throw .notChecked }
             while index < bytes.count && bytes[index] != ASCII.lineFeed { index += 1 }
             return
         }
@@ -185,16 +197,16 @@ struct ShellSyntaxChecker {
             try skipSingleQuoted(from: index + 1, honoursEscapes: false)
             endWord()
         case ASCII.doubleQuote:
-            frames.append(.doubleQuote)
+            push(.doubleQuote)
             index += 1
             endWord()
         case ASCII.backtick:
             index += 1
             if frames.last == .backtick {
-                frames.removeLast()
+                pop()
                 endWord()
             } else {
-                frames.append(.backtick)
+                push(.backtick)
                 startCommand()
             }
         case ASCII.dollar: try stepDollar(isInCode: true)
@@ -266,10 +278,10 @@ struct ShellSyntaxChecker {
         switch next {
         case ASCII.openParen:
             if bytes.byte(at: index + 2) == ASCII.openParen {
-                frames.append(.arithmetic)
+                push(.arithmetic)
                 index += 3
             } else {
-                frames.append(.commandSubstitution)
+                push(.commandSubstitution)
                 index += 2
                 startCommand()
                 return
@@ -340,7 +352,7 @@ struct ShellSyntaxChecker {
         while next < bytes.count && ASCII.isBlank(bytes[next]) { next += 1 }
         // `name()` defines a function.
         if bytes.byte(at: next) == ASCII.closeParen { throw .notChecked }
-        frames.append(.subshell)
+        push(.subshell)
         index += 1
         startCommand()
     }
@@ -350,7 +362,7 @@ struct ShellSyntaxChecker {
         guard frames.last == .subshell || frames.last == .commandSubstitution else {
             throw .invalid("Klammer ) ohne öffnende Klammer")
         }
-        frames.removeLast()
+        pop()
         index += 1
         isWordStart = true
         isCommandPosition = false
@@ -361,7 +373,7 @@ struct ShellSyntaxChecker {
         let isStandalone = next.map(ASCII.isWhitespace) ?? false
         index += 1
         if isCommandPosition && isStandalone {
-            frames.append(.group)
+            push(.group)
             startCommand()
         } else {
             endWord()
@@ -391,7 +403,7 @@ struct ShellSyntaxChecker {
             return
         }
         if let pendingOperator { throw .invalid(Self.danglingHint(pendingOperator)) }
-        frames.removeLast()
+        pop()
         endWord()
     }
 

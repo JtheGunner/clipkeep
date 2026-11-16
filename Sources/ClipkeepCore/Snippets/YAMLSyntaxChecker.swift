@@ -15,6 +15,9 @@ struct YAMLSyntaxChecker {
         /// Nothing but anchors, tags or a comment: the content follows on the next lines.
         case empty
         case blockScalar
+        /// A plain (unquoted) scalar, which more indented lines may continue.
+        case plainScalar
+        /// A quoted scalar or flow collection that closed on its line.
         case scalar
         /// A quoted scalar or flow collection that continues on the next line.
         case open
@@ -31,6 +34,8 @@ struct YAMLSyntaxChecker {
     private var quote: UInt8?
     /// The previous content line ended in `key:` or `-` with nothing after it.
     private var expectsChild = false
+    /// The previous content line ended in a plain scalar.
+    private var endsInPlainScalar = false
     /// The indentation of the line that started the block scalar being skipped.
     private var blockScalarParent: Int?
     private var lineNumber = 0
@@ -74,6 +79,7 @@ struct YAMLSyntaxChecker {
             guard let after = try scanInline(from: start, to: end) else { return }
             try requireLineEnd(from: after, to: end)
             expectsChild = false
+            endsInPlainScalar = false
             return
         }
         var contentStart = start
@@ -98,6 +104,7 @@ struct YAMLSyntaxChecker {
         {
             levels.removeAll()
             expectsChild = false
+            endsInPlainScalar = false
             let rest = skipBlanks(from: start + 3, to: end)
             // `--- |` or `--- value` put content on the marker line.
             if rest < end && bytes[rest] != ASCII.hash { throw .notChecked }
@@ -146,6 +153,7 @@ struct YAMLSyntaxChecker {
         )
         if shape.value == .blockScalar { blockScalarParent = indent }
         expectsChild = shape.value == .empty && (shape.isKey || isSequenceEntry)
+        endsInPlainScalar = shape.value == .plainScalar
     }
 
     /// Checks the line's indentation against the open block collections and updates them.
@@ -158,7 +166,8 @@ struct YAMLSyntaxChecker {
             didDedent = true
         }
         if let top = levels.last, top.indent == indent {
-            if top.kind == .mapping && !isSequenceEntry && !shape.isKey && shape.value == .scalar {
+            let isScalar = shape.value == .scalar || shape.value == .plainScalar
+            if top.kind == .mapping && !isSequenceEntry && !shape.isKey && isScalar {
                 throw onLine("Zeile ohne „:“ in einer Zuordnung")
             }
         } else {
@@ -169,7 +178,10 @@ struct YAMLSyntaxChecker {
             }
             if !levels.isEmpty && !expectsChild {
                 // A deeper plain line continues a multi-line plain scalar, which is not modelled.
+                // After a plain value a deeper `- x` line is part of that scalar (`-` is legal in
+                // plain text); only a key, whose `: ` no plain scalar may contain, is wrong there.
                 guard shape.isKey || isSequenceEntry else { throw .notChecked }
+                if isSequenceEntry && !shape.isKey && endsInPlainScalar { throw .notChecked }
                 throw onLine("Einrückung uneinheitlich")
             }
             let kind: LevelKind = isSequenceEntry ? .sequence : shape.isKey ? .mapping : .scalar
@@ -215,7 +227,7 @@ struct YAMLSyntaxChecker {
             afterNode = after
         } else {
             guard let separator = plainKeySeparator(from: position, to: end) else {
-                return Shape(value: .scalar)
+                return Shape(value: .plainScalar)
             }
             // `a: b: c` is not modelled.
             guard allowsKey else { throw .notChecked }

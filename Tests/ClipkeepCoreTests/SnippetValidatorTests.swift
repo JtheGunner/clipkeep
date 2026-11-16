@@ -94,7 +94,7 @@ import Testing
     @Test(arguments: [
         "SELECT 'abc FROM t", "UPDATE t WHERE a = 1", "INSERT INTO t",
         "SELECT id FROM t WHERE a = 1)", "SELECT \"id FROM t", "SELECT 1 /* open",
-        "SELECT FROM t", "insert into t (a, b)",
+        "insert into t (a, b)",
     ])
     func sqlStructuralErrorsAreInvalid(text: String) {
         #expect(isInvalid(SnippetValidator.check(text, language: .sql)))
@@ -102,6 +102,8 @@ import Testing
 
     @Test(arguments: [
         "PRAGMA user_version", "SHOW TABLES", "SELECT 1; VACUUM",
+        // PostgreSQL 9.4+ accepts an empty select list.
+        "SELECT FROM t", "SELECT;", "SELECT WHERE true",
         "SELECT [it's] FROM t", "SELECT 'it\\'s' FROM t", "SELECT 1 # don't",
         "SELECT 1 /* a /* nested */ */", "(SELECT 1) UNION (SELECT 2)",
     ])
@@ -142,6 +144,7 @@ import Testing
     @Test(arguments: [
         "a: [1, 2", "a: \"x", "a:\n  b: 1\n   c: 2", "a: 'x", "a: {b: 1", "a: [1, 2}",
         "a:\n    b: 1\n  c: 2", "a: 1\nb\nc: 2", "- name: x\n    image: y",
+        "k: \"v\"\n  - x", "k: [1]\n  - x", "k: v\n  b: 1",
     ])
     func yamlStructuralErrorsAreInvalid(text: String) {
         #expect(isInvalid(SnippetValidator.check(text, language: .yaml)))
@@ -193,6 +196,8 @@ import Testing
         """,
         "{\n  \"a\": 1,\n  \"b\": [1, 2]\n}", "description: a long\n  continued line",
         "- a:\n  - x", "ports:\n  - \"8080:80\"\n  - 9090:90",
+        // A deeper `- ` line after a plain value continues that plain scalar.
+        "k: v\n  - x", "- a\n  - b", "description: does X\n  - and Y\n  - and Z\nnext: 1",
     ])
     func validYAMLIsNeverInvalid(text: String) {
         let check = SnippetValidator.check(text, language: .yaml)
@@ -280,6 +285,32 @@ import Testing
             _ = SnippetValidator.evaluate(text, language: language)
             #expect(
                 Date().timeIntervalSince(start) < PerformanceBudget.limit(3.0),
+                "\(text.prefix(8))")
+        }
+    }
+
+    /// Deep nesting followed by many comments or separators: any per-token work that grows with
+    /// the nesting depth turns these quadratic. Each input fits under the check's length limit,
+    /// so it is what a paste into the creation sheet would cost on every keystroke.
+    @Test(arguments: SnippetLanguage.allCases)
+    func deepNestingWithManyCommentsStaysLinear(language: SnippetLanguage) {
+        let inputs = [
+            String(repeating: "(", count: 131_072) + String(repeating: "\n#", count: 65_536),
+            String(repeating: "{ ", count: 65_536) + String(repeating: "\n#", count: 65_536),
+            String(repeating: "$(", count: 65_536) + String(repeating: "\n#", count: 65_536),
+            String(repeating: "`", count: 65_537) + String(repeating: "\n#", count: 65_536),
+            String(repeating: "[", count: 131_072) + String(repeating: "\n#", count: 65_536),
+            String(repeating: "(", count: 131_072) + String(repeating: "\n--", count: 43_690),
+            String(repeating: "(", count: 131_072) + String(repeating: ";", count: 131_072),
+            String(repeating: "a:\n", count: 1) + String(repeating: " ", count: 131_000)
+                + "b:\n" + String(repeating: "#\n", count: 65_536),
+        ]
+        for text in inputs {
+            #expect(text.utf8.count <= SnippetValidator.maximumUTF8Length)
+            let start = Date()
+            _ = SnippetValidator.check(text, language: language)
+            #expect(
+                Date().timeIntervalSince(start) < PerformanceBudget.limit(0.5),
                 "\(text.prefix(8))")
         }
     }
