@@ -8,11 +8,12 @@ public enum SnippetShape {
     /// older rules can be recomputed.
     public static let version = 1
 
-    /// The normalised text. Lines are shaped one by one and keep their count and order.
+    /// The normalised text. Lines are shaped one by one and keep their count and order. Any
+    /// line break counts, `\r\n` (one `Character`) included.
     public static func of(_ text: String, language: SnippetLanguage) -> String {
         let lines = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line in Array(line.hasSuffix("\r") ? line.dropLast() : line) }
+            .split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map(Array.init)
         let shaped: [String] =
             switch language {
             case .shell: lines.map(ShellShape.line)
@@ -67,6 +68,19 @@ private enum Characters {
         }
         guard end < characters.count, characters[end] == ">" else { return nil }
         return end + 1 - index
+    }
+
+    /// Whether `characters` continues with `text` at `index`. It compares in place, since the
+    /// scanners ask for every character of the line.
+    static func hasPrefix(_ text: String, in characters: [Character], at index: Int) -> Bool {
+        var position = index
+        for expected in text {
+            guard position < characters.count, characters[position] == expected else {
+                return false
+            }
+            position += 1
+        }
+        return true
     }
 
     static func isPlaceholder(_ text: String) -> Bool {
@@ -252,6 +266,18 @@ private struct ShellScanner {
     mutating func next() -> Token? {
         while index < characters.count, characters[index].isWhitespace { index += 1 }
         guard index < characters.count else { return nil }
+        let start = index
+        let token = scanToken()
+        // Every step must consume input, or the caller's loop never ends. A rule that does not
+        // is a bug; the character it stopped on is kept as it is instead.
+        guard index > start else {
+            index = start + 1
+            return .literal(String(characters[start]))
+        }
+        return token
+    }
+
+    private mutating func scanToken() -> Token {
         if characters[index] == "#" {
             defer { index = characters.count }
             return .literal(String(characters[index...]))
@@ -275,9 +301,7 @@ private struct ShellScanner {
     }
 
     private func hasPrefix(_ text: String) -> Bool {
-        let expected = Array(text)
-        guard index + expected.count <= characters.count else { return false }
-        return Array(characters[index..<index + expected.count]) == expected
+        Characters.hasPrefix(text, in: characters, at: index)
     }
 
     /// `>`, `>>`, `2>`, `2>&`, `&>`, `<` and friends; nil for placeholders and `<(`/`>(`.
@@ -317,6 +341,15 @@ private struct ShellScanner {
         var word = ""
         while index < characters.count {
             let character = characters[index]
+            if character == "<" || character == ">", index + 1 < characters.count,
+                characters[index + 1] == "("
+            {
+                // Process substitution, `<( … )` or `>( … )`: one word, like `$( … )`.
+                let start = index
+                skipParenthesised()
+                word += String(characters[start..<index])
+                continue
+            }
             if character.isWhitespace || "|&;>".contains(character) { break }
             if character == "<" {
                 guard let length = Characters.placeholderLength(in: characters, at: index) else {
@@ -354,7 +387,11 @@ private struct ShellScanner {
         index = min(index + 1, characters.count)
     }
 
+    /// Skips `$( … )`, `<( … )` or `>( … )` from its first character to the matching `)`, or to
+    /// the end of the line when it is not closed.
     private mutating func skipParenthesised() {
+        // The `$`, `<` or `>` before the opening parenthesis.
+        index += 1
         var depth = 0
         while index < characters.count {
             switch characters[index] {
@@ -365,6 +402,12 @@ private struct ShellScanner {
                 continue
             case "\"":
                 skipQuoted(closing: "\"", escapes: true)
+                continue
+            case "`":
+                skipQuoted(closing: "`", escapes: true)
+                continue
+            case "\\":
+                index = min(index + 2, characters.count)
                 continue
             default: break
             }
@@ -455,9 +498,7 @@ private enum SQLShape {
     }
 
     private static func matches(_ text: String, _ characters: [Character], at index: Int) -> Bool {
-        let expected = Array(text)
-        guard index + expected.count <= characters.count else { return false }
-        return Array(characters[index..<index + expected.count]) == expected
+        Characters.hasPrefix(text, in: characters, at: index)
     }
 
     /// The index after the closing quote; a doubled quote is an escaped one.
@@ -487,18 +528,24 @@ private enum YAMLShape {
 
     static func line(_ characters: [Character]) -> String {
         let indentation = String(characters.prefix { $0 == " " || $0 == "\t" })
-        var rest = String(characters.dropFirst(indentation.count))
+        let trimmed = String(characters.dropFirst(indentation.count))
             .trimmingCharacters(in: .whitespaces)
-        if rest.isEmpty || rest.hasPrefix("#") || rest == "---" || rest == "..." {
-            return indentation + rest
+        if trimmed.isEmpty || trimmed.hasPrefix("#") || trimmed == "---" || trimmed == "..." {
+            return indentation + trimmed
         }
+        // Slices, not copies: a line of many `- ` markers must stay linear.
+        var rest = Substring(trimmed)
         var parts: [String] = []
         while rest == "-" || rest.hasPrefix("- ") {
             parts.append("-")
-            rest = String(rest.dropFirst()).trimmingCharacters(in: .whitespaces)
+            rest = rest.dropFirst().drop(while: isBlank)
         }
-        if !rest.isEmpty { parts.append(entry(rest)) }
+        if !rest.isEmpty { parts.append(entry(String(rest))) }
         return indentation + parts.joined(separator: " ")
+    }
+
+    private static func isBlank(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy(CharacterSet.whitespaces.contains)
     }
 
     /// `key: value` keeps the key and masks the value; anything else is a scalar.
@@ -537,14 +584,23 @@ private enum YAMLShape {
         return shaped.isEmpty ? comment : "\(shaped) \(comment)"
     }
 
+    /// Anchors and tags (`&a`, `!tag`) stay, then the content is masked. The markers are read
+    /// in a loop, not by recursion, so a long run of them cannot exhaust the stack.
     private static func node(_ text: String) -> String {
-        guard let first = text.first else { return text }
-        if first == "|" || first == ">" || first == "*" { return text }
-        if first == "&" || first == "!" {
-            let marker = text.prefix { $0 != " " }
-            let rest = text.dropFirst(marker.count).trimmingCharacters(in: .whitespaces)
-            return rest.isEmpty ? String(marker) : "\(marker) \(node(rest))"
+        var parts: [String] = []
+        var rest = Substring(text)
+        while let first = rest.first, first == "&" || first == "!" {
+            let marker = rest.prefix { $0 != " " }
+            parts.append(String(marker))
+            rest = rest.dropFirst(marker.count).drop(while: isBlank)
         }
+        if let content = content(String(rest)) { parts.append(content) }
+        return parts.joined(separator: " ")
+    }
+
+    private static func content(_ text: String) -> String? {
+        guard let first = text.first else { return nil }
+        if first == "|" || first == ">" || first == "*" { return text }
         if first == "[" || first == "{" { return flow(text) }
         return scalar(text)
     }

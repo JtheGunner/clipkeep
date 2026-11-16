@@ -535,6 +535,41 @@ import Testing
         #expect(seedTables.isEmpty)
     }
 
+    /// Process substitution once hung the shape scanner, and with it migration 13 at launch.
+    @Test func migrationCompletesOnProcessSubstitution() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open(migrated: false)
+        try Migrator(migrations: Array(Schema.migrations.prefix(12))).migrate(database)
+        let texts = [
+            "diff <(ls a) <(ls b)", "tee >(gzip)", "source <(kubectl completion zsh)",
+            "cat <(", "echo $(",
+        ]
+        try database.write { connection in
+            for text in texts {
+                try connection.execute(
+                    """
+                    INSERT INTO snippets
+                        (text, hash, language, origin, app_name, search_text, created_at,
+                         last_copied_at, copy_count)
+                    VALUES (?, ?, 'shell', 'auto', NULL, ?, 1, 2, 1)
+                    """,
+                    [
+                        .text(text), .text(ContentHashing.exactHash(text)),
+                        .text(SearchText.fold(text)),
+                    ])
+            }
+        }
+
+        try Schema.migrator.migrate(database)
+
+        let store = SnippetStore(database: database)
+        #expect(try store.count() == texts.count)
+        #expect(
+            try store.add(text: "tee >(xz)", language: .shell, origin: .auto, appName: nil)
+                != .rejected)
+    }
+
     @Test func migrationCreatesTables() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
