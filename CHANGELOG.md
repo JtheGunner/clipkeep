@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- The snippet explorer colours the text of the selected snippet for shell, SQL and YAML (keywords, strings, numbers, comments, operators, variables and flags, keys), in light and dark appearance. Only the colours change; the copied text stays exactly as shown.
 - A snippet can carry a comment. The snippet explorer has a "Kommentar" field under the info line; the comment is saved when you leave the field, trimmed and capped at 2000 characters, and is found by the explorer search and the snippet palette.
 - "Neu …" in the snippet explorer adds a snippet by hand: text, language (guessed from the text until you pick one) and an optional comment. The text is anonymised like every other snippet; one that is empty, too large or still contains a secret after anonymising is refused and the sheet says why. A text that matches the shape of an existing snippet joins it as a variant and the explorer says so; a snippet you deleted before comes back.
 

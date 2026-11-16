@@ -408,7 +408,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             infoLabel.stringValue = emptySelectionMessage
             return
         }
-        detailView.string = displayedText(of: snippet)
+        showDetailText(of: snippet)
         var parts = [SnippetExplorerWindowController.languageName(snippet.language)]
         if snippet.variantCount > 1 { parts.append("\(snippet.variantCount) Varianten") }
         if let topic = topicByID[snippet.id] { parts.append("Thema: \(topic)") }
@@ -471,7 +471,15 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     @objc private func variantChanged() {
         guard let snippet = selectedSnippet else { return }
-        detailView.string = displayedText(of: snippet)
+        showDetailText(of: snippet)
+    }
+
+    /// Shows the displayed text in the detail view, coloured for the snippet's language. The styling
+    /// never changes a character, so the view still holds exactly the text "Kopieren" copies.
+    private func showDetailText(of snippet: Snippet) {
+        let styled = SnippetSyntaxStyle.attributedString(
+            for: displayedText(of: snippet), language: snippet.language)
+        detailView.textStorage?.setAttributedString(styled)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
