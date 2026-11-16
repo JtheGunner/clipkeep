@@ -344,9 +344,16 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         defer { isCommittingComment = false }
         let notice: String?
         do {
-            notice =
-                try store.setComment(id: snippet.id, comment: edited)
-                ? nil : "Das Snippet existiert nicht mehr."
+            switch try creator.setComment(id: snippet.id, comment: edited) {
+            case .saved, .cleared: notice = nil
+            case .notFound: notice = "Das Snippet existiert nicht mehr."
+            case .residualSecret:
+                // Nothing is stored; the typed text stays in the field so it can be fixed.
+                show(
+                    notice: "Der Kommentar enthält ein Geheimnis, das nicht entfernt werden konnte."
+                )
+                return
+            }
         } catch {
             Self.logger.error(
                 "Saving a snippet comment failed: \(String(describing: error), privacy: .public)")
@@ -534,10 +541,13 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         switch outcome {
         case nil: return
         case .created(let id): snippetID = id
-        case .joined(let id):
+        case .joined(let id, let commentKept):
             snippetID = id
-            notice = "Zu einem bestehenden Snippet hinzugefügt."
-        case .empty, .tooLarge, .residualSecret: return
+            notice =
+                commentKept
+                ? "Zu einem bestehenden Snippet hinzugefügt. Der bestehende Kommentar wurde beibehalten."
+                : "Zu einem bestehenden Snippet hinzugefügt."
+        case .empty, .tooLarge, .residualSecret, .commentResidualSecret: return
         }
         flushPendingComment()
         searchField.stringValue = ""

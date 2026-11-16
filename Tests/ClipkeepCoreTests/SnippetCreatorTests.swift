@@ -103,14 +103,23 @@ import Testing
         let outcome = try fixture.creator.create(
             text: "ls -la /b/", language: .shell, comment: "listing")
 
-        #expect(outcome == .joined(id))
+        #expect(outcome == .joined(id, commentKept: false))
         let joined = try fixture.only()
         #expect(joined.variantCount == 2)
         #expect(joined.origin == .manual)
         #expect(joined.comment == "listing")
 
-        _ = try fixture.creator.create(text: "ls -la /c/", language: .shell, comment: "other")
+        #expect(
+            try fixture.creator.create(text: "ls -la /c/", language: .shell, comment: "other")
+                == .joined(id, commentKept: true))
         #expect(try fixture.only().comment == "listing")
+        // Nothing typed, or the same comment again, keeps nothing back from the user.
+        #expect(
+            try fixture.creator.create(text: "ls -la /d/", language: .shell, comment: " ")
+                == .joined(id, commentKept: false))
+        #expect(
+            try fixture.creator.create(text: "ls -la /e/", language: .shell, comment: "listing")
+                == .joined(id, commentKept: false))
     }
 
     @Test func createClearsARejection() throws {
@@ -132,6 +141,112 @@ import Testing
         }
     }
 
+    // MARK: - Comments
+
+    private static func githubToken() -> String {
+        // Assembled at runtime so no secret-shaped literal sits in the repository.
+        "gh" + "p_" + "aB3dE5fG7hJ9kL1mN2pQ4rS6tU8vW0xYzaB3"
+    }
+
+    private func insertedSnippet(_ fixture: Fixture) throws -> Int64 {
+        guard
+            case .inserted(let id) = try fixture.snippets.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil)
+        else { throw CreatorTestError.notInserted }
+        return id
+    }
+
+    @Test func commentSecretsAreReplacedByPlaceholders() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedSnippet(fixture)
+        let token = Self.githubToken()
+
+        #expect(try fixture.creator.setComment(id: id, comment: "uses \(token) here") == .saved)
+
+        let comment = try #require(try fixture.only().comment)
+        #expect(comment == "uses <GITHUB_TOKEN> here")
+        #expect(!(try fixture.only().searchText.contains(token.lowercased())))
+        #expect(try fixture.snippets.search(token, limit: 10).isEmpty)
+    }
+
+    @Test func commentWithAResidualSecretIsRefusedAndTheOldOneKept() throws {
+        let lenient = SnippetAnonymizer(
+            detector: SecretDetector(allowedHashes: [ContentHashing.exactHash("hunter2hunter2")]))
+        let fixture = try Fixture(anonymizer: lenient)
+        defer { fixture.temp.remove() }
+        let id = try insertedSnippet(fixture)
+        #expect(try fixture.creator.setComment(id: id, comment: "before") == .saved)
+
+        #expect(
+            try fixture.creator.setComment(id: id, comment: "DB_PASSWORD=hunter2hunter2")
+                == .residualSecret)
+
+        #expect(try fixture.only().comment == "before")
+        #expect(try fixture.snippets.search("hunter2", limit: 10).isEmpty)
+    }
+
+    @Test func plainCommentsAreStoredUnchangedAndCanBeCleared() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedSnippet(fixture)
+        let plain = "Räumt /tmp auf, siehe Ticket 42 – nur nachts ausführen!"
+
+        #expect(try fixture.creator.setComment(id: id, comment: "  \(plain) \n") == .saved)
+        #expect(try fixture.only().comment == plain)
+        #expect(try fixture.creator.setComment(id: id, comment: "   ") == .cleared)
+        #expect(try fixture.only().comment == nil)
+        #expect(try fixture.creator.setComment(id: id, comment: "again") == .saved)
+        #expect(try fixture.creator.setComment(id: id, comment: nil) == .cleared)
+        #expect(try fixture.only().comment == nil)
+    }
+
+    @Test func commentCapStillApplies() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedSnippet(fixture)
+
+        #expect(
+            try fixture.creator.setComment(id: id, comment: String(repeating: "x", count: 5000))
+                == .saved)
+
+        #expect(try fixture.only().comment?.count == 2000)
+    }
+
+    @Test func commentOnAMissingSnippetReportsNotFound() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedSnippet(fixture)
+        _ = try fixture.snippets.delete(id: id)
+
+        #expect(try fixture.creator.setComment(id: id, comment: "late") == .notFound)
+    }
+
+    @Test func createAnonymisesTheComment() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let token = Self.githubToken()
+
+        let outcome = try fixture.creator.create(
+            text: "ls -la /a/", language: .shell, comment: "token \(token)")
+
+        #expect(outcome == .created(try fixture.only().id))
+        #expect(try fixture.only().comment == "token <GITHUB_TOKEN>")
+    }
+
+    @Test func createWithAResidualSecretInTheCommentStoresNothing() throws {
+        let lenient = SnippetAnonymizer(
+            detector: SecretDetector(allowedHashes: [ContentHashing.exactHash("hunter2hunter2")]))
+        let fixture = try Fixture(anonymizer: lenient)
+        defer { fixture.temp.remove() }
+
+        #expect(
+            try fixture.creator.create(
+                text: "ls -la /a/", language: .shell, comment: "DB_PASSWORD=hunter2hunter2")
+                == .commentResidualSecret)
+        #expect(try fixture.snippets.count() == 0)
+    }
+
     @Test func guessLanguageUsesTheFilterAndDefaultsToShell() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }
@@ -141,4 +256,8 @@ import Testing
                 == .sql)
         #expect(fixture.creator.guessLanguage("hello there") == .shell)
     }
+}
+
+private enum CreatorTestError: Error {
+    case notInserted
 }

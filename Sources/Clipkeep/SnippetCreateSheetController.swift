@@ -178,6 +178,8 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
         case .tooLarge: show(error: "Der Text ist zu gross für ein Snippet.")
         case .residualSecret:
             show(error: "Der Text enthält ein Geheimnis, das nicht entfernt werden konnte.")
+        case .commentResidualSecret:
+            show(error: "Der Kommentar enthält ein Geheimnis, das nicht entfernt werden konnte.")
         case .created, .joined:
             close()
             onFinished(outcome)

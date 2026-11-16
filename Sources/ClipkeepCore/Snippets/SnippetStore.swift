@@ -251,17 +251,23 @@ public struct SnippetStore: Sendable {
         }
     }
 
-    /// Sets or clears the free-text comment of a snippet. The text is trimmed; an empty result
-    /// clears the comment, and anything beyond `maxCommentLength` characters is cut off.
-    /// Returns whether a snippet with this id existed.
-    public func setComment(id: Int64, comment: String?) throws -> Bool {
+    /// The comment as stored: trimmed, nil when empty, cut off after `maxCommentLength`
+    /// characters.
+    static func storedComment(_ comment: String?) -> String? {
         // Trim again after the cut so it never leaves trailing whitespace behind.
-        let stored = comment.flatMap { text -> String? in
+        comment.flatMap { text -> String? in
             let cut = String(
-                text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCommentLength)
+                text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxCommentLength)
             ).trimmingCharacters(in: .whitespacesAndNewlines)
             return cut.isEmpty ? nil : cut
         }
+    }
+
+    /// Sets or clears the free-text comment of a snippet, stored as `storedComment` gives it.
+    /// Returns whether a snippet with this id existed. Internal on purpose: the app writes
+    /// comments through `SnippetCreator.setComment`, which anonymises them first.
+    func setComment(id: Int64, comment: String?) throws -> Bool {
+        let stored = Self.storedComment(comment)
         return try database.write { connection in
             let exists = try connection.query(
                 "SELECT 1 FROM snippets WHERE id = ?", [.int(id)]
