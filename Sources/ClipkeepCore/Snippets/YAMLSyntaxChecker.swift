@@ -46,6 +46,8 @@ struct YAMLSyntaxChecker {
     }
 
     mutating func run() throws(SyntaxProblem) -> SnippetCheck {
+        // Helm (`{{ … }}`) and Jinja (`{% … %}`) templates are YAML only once rendered.
+        if containsTemplateMarker() { return .notChecked }
         var lineStart = 0
         while lineStart < bytes.count {
             var lineEnd = lineStart
@@ -66,6 +68,16 @@ struct YAMLSyntaxChecker {
             throw .invalid("Klammer \(Character(Unicode.Scalar(open))) nicht geschlossen")
         }
         return sawContent ? .valid : .notChecked
+    }
+
+    private func containsTemplateMarker() -> Bool {
+        let openBrace = UInt8(ascii: "{")
+        let percent = UInt8(ascii: "%")
+        for index in bytes.indices.dropLast() where bytes[index] == openBrace {
+            let next = bytes[index + 1]
+            if next == openBrace || next == percent { return true }
+        }
+        return false
     }
 
     private func onLine(_ message: String) -> SyntaxProblem {

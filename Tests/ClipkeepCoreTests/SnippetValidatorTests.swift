@@ -204,6 +204,21 @@ import Testing
         #expect(!isInvalid(check), "\(check)")
     }
 
+    /// Helm and Jinja templates are not YAML until rendered; judging them cries wolf.
+    @Test(arguments: [
+        "a: 1\n{{- if .Values.x }}\nb: 2\n{{- end }}", "a: 1\n{% if x %}\nb: 2\n{% endif %}",
+        "image: {{ .Values.image }}", "{%- for i in items %}\n- {{ i }}\n{%- endfor %}",
+    ])
+    func yamlTemplatesAreNotChecked(text: String) {
+        #expect(SnippetValidator.check(text, language: .yaml) == .notChecked)
+    }
+
+    @Test func yamlWithoutTemplateMarkersIsStillChecked() {
+        #expect(SnippetValidator.check("a: 1\nb: {c: 2}", language: .yaml) == .valid)
+        #expect(isInvalid(SnippetValidator.check("a: 1\nb\nc: 2", language: .yaml)))
+        #expect(isInvalid(SnippetValidator.check("a: { b: 1", language: .yaml)))
+    }
+
     @Test(arguments: [
         "items:\n  - name: a\n    value: 1\n  - name: b", "list: [1, 2, {a: b}]",
         "script: |\n  echo (\nnext: 1", "---\na: 1\n---\nb: 2",
