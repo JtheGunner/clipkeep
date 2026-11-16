@@ -226,6 +226,25 @@ Marked as the author's calls, not agreed with the user:
 - Manual add trusts the chosen language and blocks oversize or secret-bearing text.
 - Exact UI layout of the variant list, check mark and add sheet.
 
+## Deviations in the build
+
+- The snippet palette is not highlighted: it has no preview pane, only one-line rows.
+- A SQL `SELECT` without a projection yields `notChecked`, not invalid: the anti-goal (no false
+  "invalid" on working code) outranks the check.
+- The redirect rule is narrower than "redirections do not count": only stderr redirections
+  (`2>`, `2>>`), fd duplications (`2>&1`, `>&2`) and redirections to `/dev/null` are dropped. Any
+  other redirection keeps its operator and a masked target, so `echo hi > /etc/hosts` and
+  `echo hi` stay apart. The user's example, `2>/dev/null`, still does not count.
+- More shell words stay literal than listed under "Guards against wrong merges": words with
+  `$( … )`, backticks or process substitution, the argument of `-e`, `--command`, `--eval` and
+  `--exec`, the command or script after a wrapper (`sudo`, `env`, `bash`, `python3`, …) and the
+  remote command after the host of `ssh`.
+- Comments are anonymised like snippet text, and a comment with a residual secret is refused; a
+  manual add that joins a snippet with a comment tells the user the existing comment was kept.
+- YAML containing `{{` or `{%` (Helm, Jinja) is `notChecked`.
+- `snippet_variants.origin` records how each variant came in; it does not affect which variant
+  represents the snippet.
+
 ## Proposed child tickets (order)
 
 1. Shape key and merge in storage: migration, `SnippetShape`, store changes, delete/rejections,
