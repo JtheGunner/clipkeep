@@ -409,14 +409,22 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             return
         }
         showDetailText(of: snippet)
-        var parts = [SnippetExplorerWindowController.languageName(snippet.language)]
+        infoLabel.stringValue = infoLine(of: snippet)
+    }
+
+    /// The info line for the selected snippet, led by the syntax check of the displayed variant.
+    private func infoLine(of snippet: Snippet) -> String {
+        var parts: [String] = []
+        let check = SnippetValidator.check(displayedText(of: snippet), language: snippet.language)
+        if let status = check.statusText { parts.append(status) }
+        parts.append(SnippetExplorerWindowController.languageName(snippet.language))
         if snippet.variantCount > 1 { parts.append("\(snippet.variantCount) Varianten") }
         if let topic = topicByID[snippet.id] { parts.append("Thema: \(topic)") }
         parts.append("angelegt \(Self.absoluteDates.string(from: snippet.createdAt))")
         parts.append("zuletzt genutzt \(Self.absoluteDates.string(from: snippet.lastCopiedAt))")
         parts.append(Self.originName(snippet.origin))
         if let app = snippet.appName { parts.append("aus \(app)") }
-        infoLabel.stringValue = parts.joined(separator: " · ")
+        return parts.joined(separator: " · ")
     }
 
     /// Fills the variant menu for the selected snippet and selects its first entry, the
@@ -472,6 +480,8 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     @objc private func variantChanged() {
         guard let snippet = selectedSnippet else { return }
         showDetailText(of: snippet)
+        // The check follows the variant on display.
+        infoLabel.stringValue = infoLine(of: snippet)
     }
 
     /// Shows the displayed text in the detail view, coloured for the snippet's language. The styling

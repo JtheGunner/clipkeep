@@ -20,6 +20,8 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
     private let languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let commentField = NSTextField()
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
+    /// The syntax check of the text as typed. Informational only: it never blocks saving.
+    private let checkLabel = NSTextField(wrappingLabelWithString: "")
     private let saveButton = NSButton(title: "Speichern", target: nil, action: nil)
     private let cancelButton = NSButton(title: "Abbrechen", target: nil, action: nil)
     private var languageChosenByUser = false
@@ -73,6 +75,10 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
         languageRow.orientation = .horizontal
         languageRow.spacing = Metrics.Space.s
 
+        checkLabel.font = Typography.caption
+        checkLabel.textColor = .secondaryLabelColor
+        checkLabel.isHidden = true
+
         commentField.placeholderString = "Kommentar hinzufügen"
         commentField.setAccessibilityLabel("Kommentar")
 
@@ -95,8 +101,8 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
         buttons.spacing = Metrics.Space.s
 
         let content = NSStackView(views: [
-            Self.label("Text"), textScroll, languageRow, Self.label("Kommentar"), commentField,
-            errorLabel, buttons,
+            Self.label("Text"), textScroll, checkLabel, languageRow, Self.label("Kommentar"),
+            commentField, errorLabel, buttons,
         ])
         content.orientation = .vertical
         content.alignment = .leading
@@ -104,7 +110,7 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
         content.edgeInsets = NSEdgeInsets(
             top: Metrics.Space.l, left: Metrics.Space.l, bottom: Metrics.Space.l,
             right: Metrics.Space.l)
-        for view in [textScroll, commentField, errorLabel, buttons] {
+        for view in [textScroll, checkLabel, commentField, errorLabel, buttons] {
             view.translatesAutoresizingMaskIntoConstraints = false
             view.widthAnchor.constraint(
                 equalTo: content.widthAnchor, constant: -2 * Metrics.Space.l
@@ -112,6 +118,7 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
         }
         sheet.contentView = content
         applyGuessedLanguage()
+        updateSyntaxCheck()
     }
 
     private static func label(_ title: String) -> NSTextField {
@@ -123,8 +130,19 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         errorLabel.isHidden = true
-        guard !languageChosenByUser else { return }
-        applyGuessedLanguage()
+        if !languageChosenByUser { applyGuessedLanguage() }
+        updateSyntaxCheck()
+    }
+
+    private var selectedLanguage: SnippetLanguage {
+        Self.languages[max(0, languagePopup.indexOfSelectedItem)].0
+    }
+
+    /// Shows the check result for the current text and language; nothing when it was not checked.
+    private func updateSyntaxCheck() {
+        let status = SnippetValidator.check(textView.string, language: selectedLanguage).statusText
+        checkLabel.stringValue = status ?? ""
+        checkLabel.isHidden = status == nil
     }
 
     private func applyGuessedLanguage() {
@@ -135,6 +153,7 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
 
     @objc private func languagePicked() {
         languageChosenByUser = true
+        updateSyntaxCheck()
     }
 
     @objc private func cancel() {
@@ -143,7 +162,7 @@ final class SnippetCreateSheetController: NSObject, NSTextViewDelegate {
     }
 
     @objc private func save() {
-        let language = Self.languages[max(0, languagePopup.indexOfSelectedItem)].0
+        let language = selectedLanguage
         let outcome: SnippetCreateOutcome
         do {
             outcome = try creator.create(
