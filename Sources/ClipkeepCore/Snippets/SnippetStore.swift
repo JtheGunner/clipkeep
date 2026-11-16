@@ -128,7 +128,8 @@ public struct SnippetStore: Sendable {
             ) { $0.int(0) }
             if let snippetID = shapes.first {
                 try insertVariant(
-                    connection, snippetID: snippetID, text: text, hash: hash, appName: appName,
+                    connection, snippetID: snippetID, text: text, hash: hash, origin: origin,
+                    appName: appName,
                     copyCount: bumpingExisting ? 1 : 0, at: date)
                 try raiseOrigin(connection, snippetID: snippetID, to: origin)
                 try Self.refreshAggregates(connection, snippetID: snippetID)
@@ -149,7 +150,8 @@ public struct SnippetStore: Sendable {
                 ])
             let snippetID = connection.lastInsertRowID
             try insertVariant(
-                connection, snippetID: snippetID, text: text, hash: hash, appName: appName,
+                connection, snippetID: snippetID, text: text, hash: hash, origin: origin,
+                appName: appName,
                 copyCount: 1, at: date)
             try Self.refreshAggregates(connection, snippetID: snippetID)
             return .inserted(snippetID)
@@ -327,17 +329,18 @@ public struct SnippetStore: Sendable {
 
     private func insertVariant(
         _ connection: Connection, snippetID: Int64, text: String, hash: String,
-        appName: String?, copyCount: Int64, at date: Date
+        origin: SnippetOrigin, appName: String?, copyCount: Int64, at date: Date
     ) throws {
         try connection.execute(
             """
             INSERT INTO snippet_variants
-                (snippet_id, text, hash, app_name, created_at, last_copied_at, copy_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (snippet_id, text, hash, origin, app_name, created_at, last_copied_at,
+                 copy_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                .int(snippetID), .text(text), .text(hash), SQLValue(appName), SQLValue(date),
-                SQLValue(date), .int(copyCount),
+                .int(snippetID), .text(text), .text(hash), .text(origin.rawValue),
+                SQLValue(appName), SQLValue(date), SQLValue(date), .int(copyCount),
             ])
     }
 

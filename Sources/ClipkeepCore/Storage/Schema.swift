@@ -335,7 +335,8 @@ public enum Schema {
         statements: [
             """
             CREATE TEMP TABLE snippet_variant_seed AS
-            SELECT id AS snippet_id, text, hash, app_name, created_at, last_copied_at, copy_count
+            SELECT id AS snippet_id, text, hash, origin, app_name, created_at, last_copied_at,
+                copy_count
             FROM snippets
             """,
             """
@@ -383,6 +384,8 @@ public enum Schema {
                 snippet_id INTEGER NOT NULL REFERENCES snippets(id) ON DELETE CASCADE,
                 text TEXT NOT NULL,
                 hash TEXT NOT NULL UNIQUE,
+                -- How this variant came in, with the values of snippets.origin. Only recorded.
+                origin TEXT NOT NULL DEFAULT 'auto',
                 -- The source app of this variant; the snippet shows the representative's.
                 app_name TEXT,
                 created_at REAL NOT NULL,

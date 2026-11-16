@@ -19,8 +19,10 @@ enum SnippetShapeMigration {
         try connection.execute(
             """
             INSERT INTO snippet_variants
-                (snippet_id, text, hash, app_name, created_at, last_copied_at, copy_count)
-            SELECT snippet_id, text, hash, app_name, created_at, last_copied_at, copy_count
+                (snippet_id, text, hash, origin, app_name, created_at, last_copied_at,
+                 copy_count)
+            SELECT snippet_id, text, hash, origin, app_name, created_at, last_copied_at,
+                copy_count
             FROM snippet_variant_seed ORDER BY snippet_id
             """)
         try connection.execute("DROP TABLE snippet_variant_seed")

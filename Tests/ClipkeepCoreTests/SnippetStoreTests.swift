@@ -535,6 +535,59 @@ import Testing
         #expect(seedTables.isEmpty)
     }
 
+    private func variantOrigins(_ database: Database) throws -> [String: String] {
+        try database.read { connection in
+            Dictionary(
+                uniqueKeysWithValues: try connection.query(
+                    "SELECT text, origin FROM snippet_variants"
+                ) { ($0.text(0), $0.text(1)) })
+        }
+    }
+
+    @Test func eachVariantRecordsHowItCameIn() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        _ = try fixture.store.add(
+            text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base)
+        _ = try fixture.store.add(
+            text: "ls -la /b/", language: .shell, origin: .history, appName: nil, at: base)
+        _ = try fixture.store.add(
+            text: "ls -la /c/", language: .shell, origin: .manual, appName: nil, at: base)
+
+        #expect(try fixture.store.count() == 1)
+        #expect(
+            try variantOrigins(fixture.database)
+                == ["ls -la /a/": "auto", "ls -la /b/": "history", "ls -la /c/": "manual"])
+    }
+
+    @Test func migrationRecordsEachVariantsOriginThroughTheMerge() throws {
+        let temp = try TemporaryDatabase()
+        defer { temp.remove() }
+        let database = try temp.open(migrated: false)
+        try Migrator(migrations: Array(Schema.migrations.prefix(12))).migrate(database)
+        try database.write { connection in
+            for (text, origin) in [("ls -la /a/", "auto"), ("ls -la /b/", "history")] {
+                try connection.execute(
+                    """
+                    INSERT INTO snippets
+                        (text, hash, language, origin, app_name, search_text, created_at,
+                         last_copied_at, copy_count)
+                    VALUES (?, ?, 'shell', ?, NULL, ?, 1, 2, 1)
+                    """,
+                    [
+                        .text(text), .text(ContentHashing.exactHash(text)), .text(origin),
+                        .text(SearchText.fold(text)),
+                    ])
+            }
+        }
+
+        try Schema.migrator.migrate(database)
+
+        #expect(try SnippetStore(database: database).count() == 1)
+        #expect(
+            try variantOrigins(database) == ["ls -la /a/": "auto", "ls -la /b/": "history"])
+    }
+
     /// Process substitution once hung the shape scanner, and with it migration 13 at launch.
     @Test func migrationCompletesOnProcessSubstitution() throws {
         let temp = try TemporaryDatabase()
