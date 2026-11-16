@@ -10,10 +10,13 @@ enum SnippetSyntaxStyle {
             string: text,
             attributes: [.font: Typography.mono, .foregroundColor: NSColor.labelColor])
         let length = (text as NSString).length
+        // Text over the highlighter's length limit has no tokens and stays in the plain colour.
+        result.beginEditing()
         for token in SnippetHighlighter.tokens(in: text, language: language)
         where NSMaxRange(token.range) <= length {
             result.addAttribute(.foregroundColor, value: color(for: token.kind), range: token.range)
         }
+        result.endEditing()
         return result
     }
 

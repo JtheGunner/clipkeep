@@ -29,7 +29,17 @@ public struct SnippetToken: Sendable, Equatable {
 /// a single forward pass, so the cost is linear in the text length. Tokens are sorted by location,
 /// never overlap and stay inside the text's UTF-16 length.
 public enum SnippetHighlighter {
+    /// Snippets are capped at 32 KB, so this leaves a wide margin; longer text stays uncoloured
+    /// rather than costing the main thread any time.
+    public static let maximumUTF16Length = 256 * 1024
+
     public static func tokens(in text: String, language: SnippetLanguage) -> [SnippetToken] {
+        guard text.utf16.count <= maximumUTF16Length else { return [] }
+        return scan(text, language: language)
+    }
+
+    /// The lexers without the length limit.
+    static func scan(_ text: String, language: SnippetLanguage) -> [SnippetToken] {
         let units = Array(text.utf16)
         guard !units.isEmpty else { return [] }
         switch language {
@@ -300,9 +310,10 @@ private struct SQLLexer {
             } else if unit == Char.doubleQuote || unit == Char.backtick {
                 index = units.endOfQuote(from: index, limit: count, escapes: false)
             } else if Char.isDigit(unit) {
-                let end = endOfNumber(from: index)
-                sink.add(.number, index, end)
-                index = end
+                let scanned = scanDigitLedWord(from: index)
+                if scanned.isNumber { sink.add(.number, index, scanned.end) }
+                // Always move forward, whatever the scan returned.
+                index = max(scanned.end, index + 1)
             } else if Char.isWordUnit(unit) {
                 index = scanWord(at: index)
             } else if Self.operatorUnits.contains(unit) {
@@ -354,7 +365,10 @@ private struct SQLLexer {
         return units.count
     }
 
-    private func endOfNumber(from start: Int) -> Int {
+    /// A run of digits with an optional fraction is a number. A digit run glued to word characters
+    /// (`2fa`, `0xFF`, `1_000`, `10px`, `1e3`) is one identifier-like word and not a number. The
+    /// returned end is always past `start`.
+    private func scanDigitLedWord(from start: Int) -> (end: Int, isNumber: Bool) {
         var position = start
         var seenDot = false
         while position < units.count {
@@ -370,12 +384,11 @@ private struct SQLLexer {
                 break
             }
         }
-        // A digit run glued to letters (`2fa`) is an identifier, not a number.
-        if position < units.count, Char.isWordUnit(units[position]) {
-            while position < units.count, Char.isWordUnit(units[position]) { position += 1 }
-            return start
+        guard position < units.count, Char.isWordUnit(units[position]) else {
+            return (position, true)
         }
-        return position
+        while position < units.count, Char.isWordUnit(units[position]) { position += 1 }
+        return (position, false)
     }
 
     private mutating func scanWord(at start: Int) -> Int {

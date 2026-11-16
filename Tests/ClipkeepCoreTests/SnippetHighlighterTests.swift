@@ -102,6 +102,39 @@ import Testing
         }
     }
 
+    /// Checks the token invariants and returns the tokens.
+    @discardableResult
+    private func checkedTokens(_ text: String, _ language: SnippetLanguage, limit: Double = 2.0)
+        -> [SnippetToken]
+    {
+        let start = Date()
+        let tokens = SnippetHighlighter.scan(text, language: language)
+        #expect(Date().timeIntervalSince(start) < PerformanceBudget.limit(limit))
+        let string = text as NSString
+        var previousEnd = 0
+        for token in tokens {
+            #expect(token.range.length > 0)
+            #expect(token.range.location >= previousEnd)
+            #expect(NSMaxRange(token.range) <= string.length)
+            previousEnd = max(previousEnd, NSMaxRange(token.range))
+            if NSMaxRange(token.range) <= string.length {
+                #expect(!string.substring(with: token.range).contains("\u{FFFD}"))
+            }
+        }
+        return tokens
+    }
+
+    @Test(arguments: SnippetLanguage.allCases)
+    func digitGluedWordsTerminateAndAreNotNumbers(language: SnippetLanguage) {
+        let text = "select 2fa, 0xFF, 1_000, 10px, 1e3, 1é from t"
+        let tokens = checkedTokens(text, language)
+        let string = text as NSString
+        let numbers = tokens.filter { $0.kind == .number }.map { string.substring(with: $0.range) }
+        for glued in ["2fa", "0xFF", "1_000", "10px", "1e3", "1é"] {
+            #expect(!numbers.contains { $0.contains(glued) || glued.contains($0) })
+        }
+    }
+
     @Test func largeInputIsBounded() {
         let pieces: [(SnippetLanguage, String)] = [
             (.shell, "echo \"a\" | grep -v b && "), (.sql, "select 1 from t where a = 'x' and "),
@@ -109,10 +142,32 @@ import Testing
         ]
         for (language, piece) in pieces {
             let text = String(repeating: piece, count: 1_048_576 / piece.utf8.count)
-            let start = Date()
-            _ = SnippetHighlighter.tokens(in: text, language: language)
-            #expect(Date().timeIntervalSince(start) < PerformanceBudget.limit(1.0))
+            #expect(!checkedTokens(text, language).isEmpty)
         }
+    }
+
+    @Test(arguments: SnippetLanguage.allCases)
+    func adversarialLargeInputsTerminate(language: SnippetLanguage) {
+        let megabyte = 1_048_576
+        let inputs = [
+            "\"" + String(repeating: "a", count: megabyte),
+            "'" + String(repeating: "a", count: megabyte),
+            String(repeating: "$", count: megabyte),
+            String(repeating: "-", count: megabyte),
+            String(repeating: "$-", count: megabyte / 2),
+            String(repeating: "😀é", count: megabyte / 6),
+            String(repeating: "a: 1\r\n", count: megabyte / 7),
+            String(repeating: "select 2fa 1é 0xFF\r\n", count: megabyte / 22),
+            String(repeating: "\\", count: megabyte),
+            String(repeating: "1", count: megabyte) + "x",
+        ]
+        for text in inputs { checkedTokens(text, language, limit: 3.0) }
+    }
+
+    @Test func textOverTheHighlightLimitGetsNoTokens() {
+        let text = String(repeating: "a ", count: SnippetHighlighter.maximumUTF16Length)
+        #expect(SnippetHighlighter.tokens(in: text, language: .shell).isEmpty)
+        #expect(!SnippetHighlighter.tokens(in: "ls -la", language: .shell).isEmpty)
     }
 
     @Test(arguments: SnippetLanguage.allCases)
