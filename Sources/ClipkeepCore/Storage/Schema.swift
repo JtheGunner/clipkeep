@@ -1,8 +1,8 @@
 public enum Schema {
-    public static let latestVersion = 12
+    public static let latestVersion = 13
     public static let migrations = [
         version1, version2, version3, version4, version5, version6, version7, version8, version9,
-        version10, version11, version12,
+        version10, version11, version12, version13,
     ]
     public static let migrator = Migrator(migrations: migrations)
 
@@ -323,4 +323,106 @@ public enum Schema {
             END
             """,
         ])
+
+    /// Snippets that differ only in values merge into one snippet with several variants. The
+    /// exact text and hash move to `snippet_variants`; `snippets` keeps the representative
+    /// variant's text and app, the summed count and the latest copy time, and is looked up by
+    /// `(language, shape_hash)`. `snippets.hash` is `NOT NULL UNIQUE`, so the table is rebuilt
+    /// without it; the old hashes are kept in `snippet_variant_seed` for the Swift step, which
+    /// computes the shapes and merges (see `SnippetShapeMigration`) and drops it again. It is a
+    /// main-schema table, not a TEMP one, so the copied texts stay in the database file with
+    /// every other table, never in a separate temp store, and roll back with the transaction.
+    private static let version13 = Migration(
+        version: 13,
+        statements: [
+            """
+            CREATE TABLE snippet_variant_seed AS
+            SELECT id AS snippet_id, text, hash, origin, app_name, created_at, last_copied_at,
+                copy_count
+            FROM snippets
+            """,
+            """
+            CREATE TABLE snippets_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                language TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                app_name TEXT,
+                search_text TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                last_copied_at REAL NOT NULL,
+                copy_count INTEGER NOT NULL DEFAULT 1,
+                shape_hash TEXT NOT NULL DEFAULT '',
+                shape_version INTEGER NOT NULL DEFAULT 0,
+                comment TEXT,
+                representative_variant_id INTEGER
+            )
+            """,
+            """
+            INSERT INTO snippets_new
+                (id, text, language, origin, app_name, search_text, created_at, last_copied_at,
+                 copy_count)
+            SELECT id, text, language, origin, app_name, search_text, created_at, last_copied_at,
+                copy_count
+            FROM snippets
+            """,
+            // Keep the id sequence, so ids of deleted snippets are not handed out again.
+            "DELETE FROM sqlite_sequence WHERE name = 'snippets_new'",
+            """
+            INSERT INTO sqlite_sequence(name, seq)
+            SELECT 'snippets_new', seq FROM sqlite_sequence WHERE name = 'snippets'
+            """,
+            "DROP TRIGGER snippets_fts_insert",
+            "DROP TRIGGER snippets_fts_delete",
+            "DROP TRIGGER snippets_fts_update",
+            "DROP TABLE snippets_fts",
+            "DROP TABLE snippets",
+            "ALTER TABLE snippets_new RENAME TO snippets",
+            "CREATE INDEX snippets_last_copied_at ON snippets(last_copied_at DESC, id DESC)",
+            "CREATE INDEX snippets_language_shape ON snippets(language, shape_hash)",
+            """
+            CREATE TABLE snippet_variants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snippet_id INTEGER NOT NULL REFERENCES snippets(id) ON DELETE CASCADE,
+                text TEXT NOT NULL,
+                hash TEXT NOT NULL UNIQUE,
+                -- How this variant came in, with the values of snippets.origin. Only recorded.
+                origin TEXT NOT NULL DEFAULT 'auto',
+                -- The source app of this variant; the snippet shows the representative's.
+                app_name TEXT,
+                created_at REAL NOT NULL,
+                last_copied_at REAL NOT NULL,
+                copy_count INTEGER NOT NULL DEFAULT 1
+            )
+            """,
+            """
+            CREATE INDEX snippet_variants_snippet_id
+            ON snippet_variants(snippet_id, last_copied_at DESC, id DESC)
+            """,
+            """
+            CREATE VIRTUAL TABLE snippets_fts USING fts5(
+                search_text, content='snippets', content_rowid='id', tokenize='trigram'
+            )
+            """,
+            """
+            CREATE TRIGGER snippets_fts_insert AFTER INSERT ON snippets BEGIN
+                INSERT INTO snippets_fts(rowid, search_text) VALUES (new.id, new.search_text);
+            END
+            """,
+            """
+            CREATE TRIGGER snippets_fts_delete AFTER DELETE ON snippets BEGIN
+                INSERT INTO snippets_fts(snippets_fts, rowid, search_text)
+                VALUES ('delete', old.id, old.search_text);
+            END
+            """,
+            """
+            CREATE TRIGGER snippets_fts_update AFTER UPDATE OF id, search_text ON snippets BEGIN
+                INSERT INTO snippets_fts(snippets_fts, rowid, search_text)
+                VALUES ('delete', old.id, old.search_text);
+                INSERT INTO snippets_fts(rowid, search_text) VALUES (new.id, new.search_text);
+            END
+            """,
+            "INSERT INTO snippets_fts(snippets_fts) VALUES ('rebuild')",
+        ],
+        step: SnippetShapeMigration.run)
 }

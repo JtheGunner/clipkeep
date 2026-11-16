@@ -11,6 +11,12 @@ public struct SnippetCapture: Sendable {
     /// Texts up to this many times the filter's byte cap are still anonymised before judging.
     static let sizeSlackFactor = 4
 
+    /// Texts above this many bytes are never read into a snippet: the filter's byte cap plus the
+    /// slack. Shared by live capture, promotion and manual creation.
+    static var maximumSourceBytes: Int {
+        SnippetFilter.Threshold.maximumBytes * sizeSlackFactor
+    }
+
     private let store: SnippetStore
     private let control: SnippetCaptureControl
     private let anonymizer: SnippetAnonymizer
@@ -37,7 +43,7 @@ public struct SnippetCapture: Sendable {
         // The secret scan is the costly part, so texts far above the filter's cap skip it. The
         // slack covers anonymising shrinking a text (a private key block becomes a short
         // placeholder); the filter's own cap stays the authority for what is stored.
-        guard text.utf8.count <= SnippetFilter.Threshold.maximumBytes * Self.sizeSlackFactor
+        guard text.utf8.count <= Self.maximumSourceBytes
         else { return }
         let anonymised = anonymizer.anonymize(text)
         guard let language = SnippetFilter.evaluate(anonymised) else { return }

@@ -135,3 +135,26 @@ enum Symbols {
         return icon
     }
 }
+
+/// Colours of the syntax highlighting in the snippet explorer, one dynamic colour per token kind
+/// that follows light and dark appearance.
+enum SyntaxColors {
+    static let keyword = dynamic(light: (0.68, 0.14, 0.60), dark: (0.99, 0.37, 0.64))
+    static let string = dynamic(light: (0.77, 0.10, 0.09), dark: (0.99, 0.42, 0.36))
+    static let number = dynamic(light: (0.11, 0.00, 0.81), dark: (0.82, 0.75, 0.40))
+    static let comment = dynamic(light: (0.42, 0.47, 0.52), dark: (0.50, 0.55, 0.60))
+    static let op = dynamic(light: (0.25, 0.30, 0.35), dark: (0.80, 0.82, 0.85))
+    static let variable = dynamic(light: (0.04, 0.38, 0.58), dark: (0.40, 0.72, 0.90))
+    static let key = dynamic(light: (0.20, 0.31, 0.60), dark: (0.55, 0.70, 1.00))
+    static let punctuation = dynamic(light: (0.40, 0.40, 0.40), dark: (0.65, 0.65, 0.65))
+
+    private static func dynamic(
+        light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)
+    ) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let rgb = isDark ? dark : light
+            return NSColor(srgbRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+        }
+    }
+}

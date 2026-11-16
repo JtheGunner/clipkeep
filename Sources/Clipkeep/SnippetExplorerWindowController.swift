@@ -6,7 +6,7 @@ import os
 /// selected one in full and copies or deletes it.
 @MainActor
 final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTableViewDataSource,
-    NSTableViewDelegate, NSSearchFieldDelegate
+    NSTableViewDelegate, NSSearchFieldDelegate, NSTextFieldDelegate
 {
     private nonisolated static let logger = Logger(
         subsystem: AppInfo.bundleIdentifier, category: "snippets")
@@ -15,6 +15,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private static let loadLimit = 10_000
 
     private let store: SnippetStore
+    private let creator: SnippetCreator
     private let copyWriter: OwnCopyWriter
     private let window: NSWindow
     private let searchField = NSSearchField()
@@ -23,9 +24,12 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private let table = NSTableView()
     private let detailView = NSTextView()
     private let infoLabel = NSTextField(labelWithString: "")
+    private let variantMenu = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let commentField = NSTextField()
     private let countLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton(title: "Kopieren", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Löschen …", target: nil, action: nil)
+    private let newButton = NSButton(title: "Neu …", target: nil, action: nil)
 
     private var all: [Snippet] = []
     private var shown: [Snippet] = []
@@ -33,6 +37,19 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private var query = SnippetExplorerQuery()
     private var isRebuildingMenus = false
     private var loadFailed = false
+    /// The variants of the selected snippet, newest first; empty when there is no selection or
+    /// the lookup failed, in which case only the representative text is offered.
+    private var variants: [SnippetVariant] = []
+    /// The snippet whose comment the field shows, so an edit is saved to that snippet even if
+    /// the selection moves before the edit ends.
+    private var commentSnippet: Snippet?
+    /// True while a comment is being saved; stops the reload that follows from flushing again.
+    private var isCommittingComment = false
+    /// A message the next selection refresh shows after it has rewritten the info label.
+    private var noticeAfterRefresh: String?
+    private var isFlushingComment = false
+    /// The open "add snippet" sheet; while it exists no second one opens.
+    private var createSheet: SnippetCreateSheetController?
 
     private static let languages: [(SnippetLanguage?, String)] = [
         (nil, "Alle Sprachen"), (.shell, "Shell"), (.sql, "SQL"), (.yaml, "YAML"),
@@ -55,6 +72,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     init(store: SnippetStore, copyWriter: OwnCopyWriter = OwnCopyWriter()) {
         self.store = store
+        creator = SnippetCreator(store: store)
         self.copyWriter = copyWriter
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Metrics.Window.explorer),
@@ -123,6 +141,23 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         infoLabel.font = Typography.caption
         infoLabel.textColor = .secondaryLabelColor
         infoLabel.lineBreakMode = .byTruncatingTail
+        infoLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        infoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        variantMenu.target = self
+        variantMenu.action = #selector(variantChanged)
+        variantMenu.font = Typography.caption
+        variantMenu.toolTip = "Die Variante, die angezeigt und mit „Kopieren“ kopiert wird"
+        variantMenu.setContentHuggingPriority(.required, for: .horizontal)
+        variantMenu.isHidden = true
+        let infoRow = NSStackView(views: [infoLabel, variantMenu])
+        infoRow.orientation = .horizontal
+        infoRow.spacing = Metrics.Space.s
+        commentField.placeholderString = "Kommentar hinzufügen"
+        commentField.font = Typography.caption
+        commentField.delegate = self
+        commentField.lineBreakMode = .byTruncatingTail
+        commentField.cell?.usesSingleLineMode = true
+        commentField.setAccessibilityLabel("Kommentar")
         countLabel.font = Typography.caption
         countLabel.textColor = .secondaryLabelColor
 
@@ -132,18 +167,23 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         deleteButton.action = #selector(deleteSelected)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let footer = NSStackView(views: [countLabel, spacer, deleteButton, copyButton])
+        newButton.target = self
+        newButton.action = #selector(newSnippet)
+        newButton.toolTip = "Ein Snippet von Hand hinzufügen"
+        let footer = NSStackView(views: [countLabel, spacer, newButton, deleteButton, copyButton])
         footer.orientation = .horizontal
         footer.spacing = Metrics.Space.s
 
-        let content = NSStackView(views: [bar, tableScroll, infoLabel, detailScroll, footer])
+        let content = NSStackView(views: [
+            bar, tableScroll, infoRow, commentField, detailScroll, footer,
+        ])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = Metrics.Space.s
         content.edgeInsets = NSEdgeInsets(
             top: Metrics.Space.m, left: Metrics.Space.m, bottom: Metrics.Space.m,
             right: Metrics.Space.m)
-        for view in [bar, tableScroll, infoLabel, detailScroll, footer] {
+        for view in [bar, tableScroll, infoRow, commentField, detailScroll, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
             view.widthAnchor.constraint(
                 equalTo: content.widthAnchor, constant: -2 * Metrics.Space.m
@@ -195,8 +235,9 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     // MARK: - Loading and filtering
 
-    private func reload() {
-        let selectedID = selectedSnippet?.id
+    private func reload(selecting snippetID: Int64? = nil) {
+        flushPendingComment()
+        let selectedID = snippetID ?? selectedSnippet?.id
         loadFailed = false
         do {
             all = try store.list(limit: Self.loadLimit)
@@ -240,6 +281,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     }
 
     private func applyFilters(keeping selectedID: Int64? = nil) {
+        flushPendingComment()
         shown = SnippetExplorer.apply(query, to: all)
         table.reloadData()
         // The table keeps a row index across a reload; without this a different snippet could
@@ -281,8 +323,73 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        // The comment field shares this delegate; typing there must not refilter and reset it.
+        guard (obj.object as? NSTextField) !== commentField else { return }
         query.text = searchField.stringValue
         applyFilters(keeping: selectedSnippet?.id)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === commentField else { return }
+        commitComment()
+    }
+
+    /// Saves the edited comment to the snippet it was loaded for, then reloads so the list and
+    /// its search text pick it up, keeping that snippet selected.
+    private func commitComment() {
+        guard !isCommittingComment, let snippet = commentSnippet else { return }
+        let edited = commentField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard edited != (snippet.comment ?? "") else { return }
+        isCommittingComment = true
+        defer { isCommittingComment = false }
+        let notice: String?
+        do {
+            switch try creator.setComment(id: snippet.id, comment: edited) {
+            case .saved, .cleared: notice = nil
+            case .notFound: notice = "Das Snippet existiert nicht mehr."
+            case .residualSecret:
+                // Nothing is stored; the typed text stays in the field so it can be fixed.
+                show(
+                    notice: "Der Kommentar enthält ein Geheimnis, das nicht entfernt werden konnte."
+                )
+                return
+            }
+        } catch {
+            Self.logger.error(
+                "Saving a snippet comment failed: \(String(describing: error), privacy: .public)")
+            show(notice: "Der Kommentar konnte nicht gespeichert werden.")
+            return
+        }
+        reload()
+        if let notice { show(notice: notice) }
+    }
+
+    /// Shows a message in the info label; a refresh that is already running shows it afterwards.
+    private func show(notice: String) {
+        infoLabel.stringValue = notice
+        if isFlushingComment { noticeAfterRefresh = notice }
+    }
+
+    /// Commits a comment edit that is still in progress to the snippet it was started on. Every
+    /// path that rewrites the list, the selection or the comment field calls this first, so no
+    /// edit depends on end-editing firing before the field is repopulated. Ending editing sends
+    /// `controlTextDidEndEditing`, which runs `commitComment`.
+    private func flushPendingComment() {
+        guard !isCommittingComment, commentField.currentEditor() != nil else { return }
+        isFlushingComment = true
+        defer { isFlushingComment = false }
+        window.makeFirstResponder(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Closing the window mid-edit must not drop the comment being typed.
+        flushPendingComment()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        // The app can quit while the window is in the background, without a close; save the
+        // edit now. The flush does nothing while a commit runs or no edit is active.
+        flushPendingComment()
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -298,23 +405,109 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     }
 
     private func updateSelectionState() {
+        // The table selection can change under an active comment edit; save it to its snippet
+        // before the field is repopulated for the new selection.
+        flushPendingComment()
+        defer {
+            if let notice = noticeAfterRefresh {
+                infoLabel.stringValue = notice
+                noticeAfterRefresh = nil
+            }
+        }
         let snippet = selectedSnippet
         copyButton.isEnabled = snippet != nil
         deleteButton.isEnabled = snippet != nil
+        commentSnippet = snippet
+        commentField.isEnabled = snippet != nil
+        commentField.stringValue = snippet?.comment ?? ""
+        loadVariants(of: snippet)
         guard let snippet else {
             detailView.string = ""
             infoLabel.stringValue = emptySelectionMessage
             return
         }
-        detailView.string = snippet.text
-        var parts = [SnippetExplorerWindowController.languageName(snippet.language)]
+        showDetailText(of: snippet)
+        infoLabel.stringValue = infoLine(of: snippet)
+    }
+
+    /// The info line for the selected snippet, led by the syntax check of the displayed variant.
+    private func infoLine(of snippet: Snippet) -> String {
+        var parts: [String] = []
+        let check = SnippetValidator.check(displayedText(of: snippet), language: snippet.language)
+        if let status = check.statusText { parts.append(status) }
+        parts.append(SnippetExplorerWindowController.languageName(snippet.language))
+        if snippet.variantCount > 1 { parts.append("\(snippet.variantCount) Varianten") }
         if let topic = topicByID[snippet.id] { parts.append("Thema: \(topic)") }
         parts.append("angelegt \(Self.absoluteDates.string(from: snippet.createdAt))")
         parts.append("zuletzt genutzt \(Self.absoluteDates.string(from: snippet.lastCopiedAt))")
-        parts.append(
-            snippet.origin == .history ? "aus dem Verlauf übernommen" : "automatisch erfasst")
+        parts.append(Self.originName(snippet.origin))
         if let app = snippet.appName { parts.append("aus \(app)") }
-        infoLabel.stringValue = parts.joined(separator: " · ")
+        return parts.joined(separator: " · ")
+    }
+
+    /// Fills the variant menu for the selected snippet and selects its first entry, the
+    /// representative. A failing lookup leaves the menu hidden and the representative alone.
+    private func loadVariants(of snippet: Snippet?) {
+        variants = []
+        variantMenu.removeAllItems()
+        variantMenu.isHidden = true
+        guard let snippet, snippet.variantCount > 1 else { return }
+        do {
+            variants = try store.variants(of: snippet.id)
+        } catch {
+            Self.logger.error(
+                "Loading snippet variants failed: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard variants.count > 1 else {
+            variants = []
+            return
+        }
+        // Add items directly: addItem(withTitle:) would replace an item with an equal title and
+        // shift every later index away from `variants`.
+        for (offset, variant) in variants.enumerated() {
+            variantMenu.menu?.addItem(
+                NSMenuItem(
+                    title: Self.menuTitle(of: variant, position: offset + 1), action: nil,
+                    keyEquivalent: ""))
+        }
+        guard variantMenu.numberOfItems == variants.count else {
+            Self.logger.error("Variant menu and variants disagree; showing the representative only")
+            variants = []
+            variantMenu.removeAllItems()
+            return
+        }
+        variantMenu.selectItem(at: 0)
+        variantMenu.isHidden = false
+    }
+
+    private static func menuTitle(of variant: SnippetVariant, position: Int) -> String {
+        SnippetExplorer.variantMenuTitle(
+            position: position, text: variant.text, copyCount: variant.copyCount,
+            age: relativeDates.localizedString(for: variant.lastCopiedAt, relativeTo: Date()))
+    }
+
+    /// The text of the chosen variant, or of the snippet itself when it has none to choose from.
+    /// The detail view and "Kopieren" both read it, so the text shown is the text copied.
+    private func displayedText(of snippet: Snippet) -> String {
+        let index = variantMenu.indexOfSelectedItem
+        guard variants.indices.contains(index) else { return snippet.text }
+        return variants[index].text
+    }
+
+    @objc private func variantChanged() {
+        guard let snippet = selectedSnippet else { return }
+        showDetailText(of: snippet)
+        // The check follows the variant on display.
+        infoLabel.stringValue = infoLine(of: snippet)
+    }
+
+    /// Shows the displayed text in the detail view, coloured for the snippet's language. The styling
+    /// never changes a character, so the view still holds exactly the text "Kopieren" copies.
+    private func showDetailText(of snippet: Snippet) {
+        let styled = SnippetSyntaxStyle.attributedString(
+            for: displayedText(of: snippet), language: snippet.language)
+        detailView.textStorage?.setAttributedString(styled)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -323,7 +516,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     @objc private func copySelected() {
         guard let snippet = selectedSnippet else { return }
-        copyWriter.copy(snippet.text)
+        copyWriter.copy(displayedText(of: snippet))
     }
 
     @objc private func deleteSelected() {
@@ -338,6 +531,43 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             guard response == .alertFirstButtonReturn else { return }
             MainActor.assumeIsolated { self?.performDelete(snippet) }
         }
+    }
+
+    @objc private func newSnippet() {
+        guard createSheet == nil, window.attachedSheet == nil else { return }
+        flushPendingComment()
+        let controller = SnippetCreateSheetController(creator: creator) { [weak self] outcome in
+            self?.finishCreating(outcome)
+        }
+        createSheet = controller
+        controller.present(on: window)
+    }
+
+    /// Reloads with the new snippet selected. The filters are cleared so it cannot be hidden by
+    /// them; the sort order stays.
+    private func finishCreating(_ outcome: SnippetCreateOutcome?) {
+        createSheet = nil
+        let snippetID: Int64
+        var notice: String?
+        switch outcome {
+        case nil: return
+        case .created(let id): snippetID = id
+        case .joined(let id, let commentKept):
+            snippetID = id
+            notice =
+                commentKept
+                ? "Zu einem bestehenden Snippet hinzugefügt. Der bestehende Kommentar wurde beibehalten."
+                : "Zu einem bestehenden Snippet hinzugefügt."
+        case .empty, .tooLarge, .residualSecret, .commentResidualSecret: return
+        }
+        flushPendingComment()
+        searchField.stringValue = ""
+        languageMenu.selectItem(at: 0)
+        query.text = ""
+        query.language = nil
+        query.topic = nil
+        reload(selecting: snippetID)
+        if let notice { show(notice: notice) }
     }
 
     private func performDelete(_ snippet: Snippet) {
@@ -401,6 +631,14 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             identifier.rawValue == SnippetSortKey.title.rawValue
             ? .labelColor : .secondaryLabelColor
         return cell
+    }
+
+    private static func originName(_ origin: SnippetOrigin) -> String {
+        switch origin {
+        case .history: "aus dem Verlauf übernommen"
+        case .manual: "von Hand hinzugefügt"
+        case .auto: "automatisch erfasst"
+        }
     }
 
     private static func languageName(_ language: SnippetLanguage) -> String {

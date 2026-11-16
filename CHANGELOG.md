@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The snippet explorer colours the text of the selected snippet for shell, SQL and YAML (keywords, strings, numbers, comments, operators, variables and flags, keys), in light and dark appearance. Only the colours change; the copied text stays exactly as shown.
+- The snippet explorer checks the syntax of the shown snippet and starts its info line with "✓ Syntax gültig" or "✗ Syntax ungültig:" and a short reason: unclosed quotes and brackets and dangling `|` or `&&` in shell, unclosed strings and parentheses and `UPDATE` without `SET` or `INSERT` without values in SQL, tab or inconsistent indentation and unclosed brackets in YAML. Constructs the check does not understand (shell functions and `case`, dialect-specific SQL, Helm or Jinja templates with `{{` or `{%`, …) get no verdict rather than a wrong one. The snippet is never run. "Neu …" shows the same check while you type and still saves an invalid snippet.
+- A snippet can carry a comment. The snippet explorer has a "Kommentar" field under the info line; the comment is saved when you leave the field, trimmed and capped at 2000 characters, and is found by the explorer search and the snippet palette. A secret in a comment is replaced by a placeholder like in the snippet text; a comment that still contains one is refused with "Der Kommentar enthält ein Geheimnis, das nicht entfernt werden konnte." A comment being edited is also saved when the window closes or moves to the background.
+- "Neu …" in the snippet explorer adds a snippet by hand: text, language (guessed from the text until you pick one) and an optional comment. The text is anonymised like every other snippet; one that is empty, too large or still contains a secret after anonymising is refused and the sheet says why. A text that matches the shape of an existing snippet joins it as a variant and the explorer says so, and also when that snippet's existing comment was kept instead of the typed one; a snippet you deleted before comes back.
+
+### Changed
+
+- Snippets that differ only in their values (paths, numbers, quoted strings, URLs, IP addresses, hashes; SQL literals; YAML scalar values) are merged into one snippet that keeps every concrete text as a variant. `ls -la ~/a/plugin/` and `ls -la ~/b/prefs/ 2>/dev/null` become one snippet; stderr redirections, fd duplications such as `2>&1` and redirections to `/dev/null` do not count, while the program, flags, pipes and any other redirection (with its target masked) do. Code is never treated as a value: `$( … )`, backticks, process substitution, the argument of `-c`, `-e`, `--command`, `--eval` and `--exec`, the command or script run by `sudo`, `env`, `bash`, `python3` and similar wrappers, and the remote command of `ssh` stay literal, so `sudo ./deploy.sh` and `sudo ./wipe.sh` remain separate snippets. The snippet shows the most recently copied variant, counts the copies of all variants, is found by any variant's text, and deleting it keeps every variant from being collected again. Existing snippets are merged once on the first start after the update. The snippet explorer lists one row per merged snippet with a variant menu that selects which text is shown and copied, and the palette row shows the number of variants.
+
 ## [0.2.0] - 2026-11-13
 
 ### Added

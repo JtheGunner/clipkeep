@@ -49,11 +49,6 @@ public struct SnippetPromoter: Sendable {
         self.pageSize = max(1, pageSize)
     }
 
-    /// Texts above this many bytes are not read into a snippet at all, as in live capture.
-    private static var maximumSourceBytes: Int {
-        SnippetFilter.Threshold.maximumBytes * SnippetCapture.sizeSlackFactor
-    }
-
     /// Stores one history entry as a snippet. The filter's strictness does not apply, but the
     /// text is always anonymised first and a matching rejection is cleared. The language is
     /// `language` when given, otherwise the one the filter recognises.
@@ -67,7 +62,7 @@ public struct SnippetPromoter: Sendable {
             ) { $0.text(0) }
         }
         guard let original = texts.first else { return .unavailable }
-        guard original.utf8.count <= Self.maximumSourceBytes else { return .tooLarge }
+        guard original.utf8.count <= SnippetCapture.maximumSourceBytes else { return .tooLarge }
 
         let anonymised = anonymizer.anonymize(original)
         guard anonymised.utf8.count <= SnippetFilter.Threshold.maximumBytes else {
@@ -128,7 +123,8 @@ public struct SnippetPromoter: Sendable {
                 ORDER BY id LIMIT ?
                 """,
                 [
-                    .int(Int64(Self.maximumSourceBytes)), .text(ContentKind.secret.rawValue),
+                    .int(Int64(SnippetCapture.maximumSourceBytes)),
+                    .text(ContentKind.secret.rawValue),
                     .int(lastID), .int(Int64(pageSize)),
                 ]
             ) { row in

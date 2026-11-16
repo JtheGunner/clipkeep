@@ -49,7 +49,7 @@ public enum SnippetExplorer {
             let topic = SnippetTopic.of(snippet)
             if let wanted = query.topic, topic != wanted { return nil }
             if !terms.isEmpty {
-                let haystack = SearchText.fold(snippet.text + " " + (topic ?? ""))
+                let haystack = SearchText.fold(snippet.searchText + " " + (topic ?? ""))
                 guard terms.allSatisfy({ haystack.contains($0) }) else { return nil }
             }
             return (snippet, topic)
@@ -58,6 +58,23 @@ public enum SnippetExplorer {
             keyed
             .sorted { precedes($0, $1, query) }
             .map(\.0)
+    }
+
+    /// The variant menu entry: the 1-based position, the first line cut to 60 characters, the
+    /// copy count when above 0 and the age. The position keeps entries distinct even when two
+    /// variants share their first line and age.
+    public static func variantMenuTitle(
+        position: Int, text: String, copyCount: Int, age: String
+    ) -> String {
+        let line =
+            text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+        let title = line.count > 60 ? String(line.prefix(59)) + "…" : line
+        var details: [String] = []
+        if copyCount > 0 { details.append("\(copyCount)×") }
+        details.append("zuletzt \(age)")
+        return "\(position) · \(title)  ·  \(details.joined(separator: " · "))"
     }
 
     /// The topics present, most frequent first, then by name. Snippets without a topic are
