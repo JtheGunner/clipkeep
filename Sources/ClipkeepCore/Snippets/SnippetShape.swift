@@ -39,6 +39,9 @@ private enum ShapeToken {
     static let address = "\u{1}ip"
     static let hash = "\u{1}hash"
     static let bool = "\u{1}bool"
+    /// A plain word that is a value by its position, such as the host of `ssh` or the user of
+    /// `sudo -u`.
+    static let value = "\u{1}val"
 }
 
 /// Character tests shared by the scanners. Only ASCII counts, so the rules do not depend on
@@ -105,53 +108,185 @@ private enum Characters {
     }
 }
 
-/// Shell: values in arguments are masked, redirections are dropped. Program names (the first
-/// word of each command), flags, operators and the code argument of `-c` (also inside a short
-/// flag cluster such as `-lc`), `eval` and `exec` stay literal.
+/// Shell: values in arguments are masked. Kept literal, because a difference there is a
+/// different command: program names (the first word of each command, and the command or script
+/// a wrapper such as `sudo`, `env` or `python3` runs), flags, operators, code (the argument of
+/// `-c`, `-e`, `--command`, `--eval`, `--exec`, `eval` and `exec`, and any word holding `$( … )`,
+/// backticks or `<( … )`) and everything after the host of `ssh`. Redirections of stderr, to
+/// `/dev/null` and fd duplications are dropped; any other keeps its operator and a masked target.
 private enum ShellShape {
     private static let codeArgumentWords: Set<String> = ["eval", "exec"]
+    private static let codeLongFlags: Set<String> = ["--command", "--eval", "--exec"]
+    /// Programs that run the command or script named by their first operand.
+    private static let wrappers: Set<String> = [
+        "sudo", "doas", "env", "nohup", "time", "nice", "command", "builtin", "xargs", "watch",
+        "bash", "sh", "zsh", "python", "python3", "node", "ruby", "perl",
+    ]
+    /// Wrapper flags whose argument is a value, not the command that runs.
+    private static let wrapperValueFlags: [String: Set<String>] = [
+        "sudo": ["-u", "-g", "-h", "-p", "-C", "-U", "-r", "-t", "-D", "-R", "-T"],
+        "doas": ["-u", "-C"],
+        "env": ["-u", "-C", "-P"],
+        "nice": ["-n"],
+        "xargs": ["-I", "-n", "-P", "-L", "-d", "-s", "-E", "-a"],
+        "watch": ["-n"],
+        "time": ["-f", "-o"],
+    ]
+    /// `ssh` flags that take an argument, so the host is the first operand after them.
+    private static let sshValueFlags: Set<String> = [
+        "-B", "-b", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J", "-L", "-l", "-m", "-O", "-o",
+        "-p", "-Q", "-R", "-S", "-W", "-w",
+    ]
 
-    /// `-c` alone or in a cluster of short flags (`-lc`, `-ec`): the next word is code.
+    /// What the next operand of the current command is.
+    private enum Expecting {
+        case arguments
+        /// The command a wrapper runs.
+        case command(wrapper: String)
+        case sshHost
+        /// The remote command of `ssh`.
+        case literalRest
+    }
+
+    /// What the word after a flag is.
+    private enum Pending {
+        case code
+        case value
+    }
+
+    /// `-c` alone or in a cluster of short flags (`-lc`), `-e` alone or ending one (`-ne`), the
+    /// long code flags, `eval` and `exec`: the next word is code.
     private static func takesCodeArgument(_ word: String) -> Bool {
-        if codeArgumentWords.contains(word) { return true }
+        if codeArgumentWords.contains(word) || codeLongFlags.contains(word) { return true }
         guard word.hasPrefix("-"), !word.hasPrefix("--") else { return false }
         let flags = word.dropFirst()
-        return flags.contains("c") && flags.allSatisfy(Characters.isLetter)
+        guard !flags.isEmpty, flags.allSatisfy(Characters.isLetter) else { return false }
+        return flags.contains("c") || flags.last == "e"
+    }
+
+    /// `--command=…`, `--eval=…`, `--exec=…`: the word carries its code.
+    private static func isCodeAssignment(_ word: String) -> Bool {
+        codeLongFlags.contains { word.hasPrefix("\($0)=") }
+    }
+
+    /// Whether a word holds code: a command or process substitution or backticks.
+    static func holdsCode(_ word: String) -> Bool {
+        word.contains("$(") || word.contains("`") || word.contains("<(") || word.contains(">(")
+    }
+
+    private static func expecting(after program: String) -> Expecting {
+        let name = program.split(separator: "/").last.map(String.init) ?? program
+        if wrappers.contains(name) { return .command(wrapper: name) }
+        return name == "ssh" ? .sshHost : .arguments
     }
 
     static func line(_ characters: [Character]) -> String {
         var scanner = ShellScanner(characters: characters)
         var output: [String] = []
         var atCommandStart = true
-        var previousWord: String?
+        var expecting = Expecting.arguments
+        var pending: Pending?
         while let token = scanner.next() {
             switch token {
-            case .redirect:
-                continue
+            case .redirect(let symbol, let target, let duplicates):
+                if let kept = redirect(symbol, target: target, duplicates: duplicates) {
+                    output.append(kept)
+                }
             case .separator(let text):
                 output.append(text)
                 atCommandStart = true
-                previousWord = nil
+                expecting = .arguments
+                pending = nil
             case .literal(let text):
                 output.append(text)
             case .word(let word):
-                if let previousWord, takesCodeArgument(previousWord) {
+                if let current = pending {
+                    pending = nil
+                    switch current {
+                    case .code:
+                        output.append(word)
+                        expecting = .arguments
+                    case .value:
+                        output.append(value(word))
+                    }
+                    continue
+                }
+                if isCodeAssignment(word) {
                     output.append(word)
-                } else if atCommandStart, isAssignment(word) {
+                    continue
+                }
+                if case .literalRest = expecting {
+                    output.append(word)
+                    continue
+                }
+                if atCommandStart, isAssignment(word) {
                     // `FOO=1 cmd`: the program follows the assignments.
                     output.append(masked(word))
-                    previousWord = word
                     continue
-                } else if atCommandStart {
+                }
+                if atCommandStart {
+                    atCommandStart = false
                     output.append(word)
-                } else {
+                    expecting = Self.expecting(after: word)
+                    if takesCodeArgument(word) { pending = .code }
+                    continue
+                }
+                if word.hasPrefix("-") {
+                    output.append(masked(word))
+                    pending = pendingAfter(flag: word, expecting: expecting)
+                    continue
+                }
+                switch expecting {
+                case .command:
+                    if isAssignment(word) {
+                        output.append(masked(word))
+                        continue
+                    }
+                    output.append(word)
+                    expecting = Self.expecting(after: word)
+                    if takesCodeArgument(word) { pending = .code }
+                case .sshHost:
+                    output.append(value(word))
+                    expecting = .literalRest
+                case .arguments, .literalRest:
                     output.append(masked(word))
                 }
-                atCommandStart = false
-                previousWord = word
             }
         }
         return output.joined(separator: " ")
+    }
+
+    private static func pendingAfter(flag: String, expecting: Expecting) -> Pending? {
+        switch expecting {
+        case .sshHost:
+            return sshValueFlags.contains(flag) ? .value : nil
+        case .command(let wrapper):
+            if wrapperValueFlags[wrapper]?.contains(flag) == true { return .value }
+            return takesCodeArgument(flag) ? .code : nil
+        case .arguments, .literalRest:
+            return takesCodeArgument(flag) ? .code : nil
+        }
+    }
+
+    /// A word that is a value by its position: masked like any value, and a plain word becomes
+    /// a value token too.
+    private static func value(_ word: String) -> String {
+        let shaped = masked(word)
+        guard shaped == word, !Characters.isPlaceholder(word), !holdsCode(word) else {
+            return shaped
+        }
+        return ShapeToken.value
+    }
+
+    /// The redirection as it stays in the shape, or nil when it is dropped: stderr (`2>`,
+    /// `2>>`), fd duplications (`2>&1`, `>&2`) and anything sent to or read from `/dev/null`.
+    private static func redirect(_ symbol: String, target: String?, duplicates: Bool) -> String? {
+        if duplicates || symbol.hasPrefix("2>") { return nil }
+        guard let target else { return symbol }
+        if (Characters.quotedContent(target) ?? target) == "/dev/null" { return nil }
+        let kept =
+            Characters.isPlaceholder(target) || holdsCode(target) ? target : ShapeToken.path
+        return "\(symbol) \(kept)"
     }
 
     private static func isAssignment(_ word: String) -> Bool {
@@ -180,6 +315,8 @@ private enum ShellShape {
 
     private static func classified(_ word: String) -> String {
         if Characters.isPlaceholder(word) { return word }
+        // Code is never a value: `"$(rm -rf /)"` and `"$(ls)"` must not share a shape.
+        if holdsCode(word) { return word }
         if let content = Characters.quotedContent(word) {
             return Characters.isPlaceholder(content) ? word : ShapeToken.string
         }
@@ -251,7 +388,8 @@ private struct ShellScanner {
         case separator(String)
         /// Kept in the shape but does not start a new command (heredoc markers, comments).
         case literal(String)
-        case redirect
+        /// The operator, its target word if any, and whether it duplicates an fd (`2>&1`).
+        case redirect(String, target: String?, duplicates: Bool)
     }
 
     private static let separators = ["||", "&&", ";;", "|&", "|", "&", ";"]
@@ -288,10 +426,9 @@ private struct ShellScanner {
             return .literal(String(repeating: "<", count: length))
         }
         if let length = redirectOperatorLength() {
-            let endsWithAmpersand = characters[index + length - 1] == "&"
+            let symbol = String(characters[index..<index + length])
             index += length
-            skipRedirectTarget(afterAmpersand: endsWithAmpersand)
-            return .redirect
+            return redirect(symbol, afterAmpersand: symbol.hasSuffix("&"))
         }
         if let separator = Self.separators.first(where: hasPrefix) {
             index += separator.count
@@ -323,18 +460,24 @@ private struct ShellScanner {
         return end - index
     }
 
-    private mutating func skipRedirectTarget(afterAmpersand: Bool) {
+    /// Reads what follows a redirection operator: the fd of a duplication such as `>&2`, or the
+    /// target word, if there is one before the next separator.
+    private mutating func redirect(_ symbol: String, afterAmpersand: Bool) -> Token {
         if afterAmpersand {
+            let start = index
             while index < characters.count,
                 Characters.isDigit(characters[index]) || characters[index] == "-"
             {
                 index += 1
             }
-            return
+            if index > start { return .redirect(symbol, target: nil, duplicates: true) }
         }
         while index < characters.count, characters[index].isWhitespace { index += 1 }
-        guard index < characters.count, !Self.separators.contains(where: hasPrefix) else { return }
-        _ = readWord()
+        guard index < characters.count, !Self.separators.contains(where: hasPrefix) else {
+            return .redirect(symbol, target: nil, duplicates: afterAmpersand)
+        }
+        let target = readWord()
+        return .redirect(symbol, target: target.isEmpty ? nil : target, duplicates: false)
     }
 
     private mutating func readWord() -> String {
