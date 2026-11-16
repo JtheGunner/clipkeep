@@ -95,11 +95,13 @@ import Testing
             String(repeating: "sudo ", count: megabyte / 5),
             String(repeating: "ssh -p ", count: megabyte / 7),
         ]
+        // One megabyte takes about three seconds on a shared CI runner; a hang or a quadratic scan
+        // takes minutes, so the budget leaves room for runner noise and still catches both.
         for text in inputs {
             let start = Date()
             _ = checkedShape(text, language)
             #expect(
-                Date().timeIntervalSince(start) < PerformanceBudget.limit(3.0),
+                Date().timeIntervalSince(start) < PerformanceBudget.limit(10.0),
                 "\(text.prefix(8).debugDescription)")
         }
     }
