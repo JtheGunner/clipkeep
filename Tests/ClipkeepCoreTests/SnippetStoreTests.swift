@@ -529,7 +529,10 @@ import Testing
                 == .bumped(merged.id))
         let seedTables = try database.read { connection in
             try connection.query(
-                "SELECT name FROM sqlite_temp_master WHERE name = 'snippet_variant_seed'"
+                """
+                SELECT name FROM sqlite_master WHERE name = 'snippet_variant_seed'
+                UNION SELECT name FROM sqlite_temp_master WHERE name = 'snippet_variant_seed'
+                """
             ) { $0.text(0) }
         }
         #expect(seedTables.isEmpty)

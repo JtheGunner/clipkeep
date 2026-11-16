@@ -329,12 +329,14 @@ public enum Schema {
     /// variant's text and app, the summed count and the latest copy time, and is looked up by
     /// `(language, shape_hash)`. `snippets.hash` is `NOT NULL UNIQUE`, so the table is rebuilt
     /// without it; the old hashes are kept in `snippet_variant_seed` for the Swift step, which
-    /// computes the shapes and merges (see `SnippetShapeMigration`).
+    /// computes the shapes and merges (see `SnippetShapeMigration`) and drops it again. It is a
+    /// main-schema table, not a TEMP one, so the copied texts stay in the database file with
+    /// every other table, never in a separate temp store, and roll back with the transaction.
     private static let version13 = Migration(
         version: 13,
         statements: [
             """
-            CREATE TEMP TABLE snippet_variant_seed AS
+            CREATE TABLE snippet_variant_seed AS
             SELECT id AS snippet_id, text, hash, origin, app_name, created_at, last_copied_at,
                 copy_count
             FROM snippets

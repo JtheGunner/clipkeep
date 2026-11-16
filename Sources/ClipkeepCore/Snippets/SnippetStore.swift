@@ -305,26 +305,33 @@ public struct SnippetStore: Sendable {
                 lastCopiedAt: row.double(3), copyCount: row.int(4)
             )
         }
-        guard let representative = variants.first else { return }
-        let comment =
-            try connection.query(
-                "SELECT comment FROM snippets WHERE id = ?", [.int(snippetID)]
-            ) { $0.optionalText(0) }.first ?? nil
+        guard let representative = variants.first,
+            let (comment, storedSearchText) = try connection.query(
+                "SELECT comment, search_text FROM snippets WHERE id = ?", [.int(snippetID)],
+                map: { ($0.optionalText(0), $0.text(1)) }
+            ).first
+        else { return }
         let searchText = SearchText.fold(
             (variants.map(\.text) + [comment].compactMap { $0 }).joined(separator: "\n"))
+        var values: [SQLValue] = [
+            .text(representative.text), SQLValue(representative.appName),
+            .int(variants.reduce(0) { $0 + $1.copyCount }),
+            .double(representative.lastCopiedAt), .int(representative.id),
+        ]
+        // Setting search_text fires the FTS trigger, which deletes and reinserts the row; a
+        // plain copy bump leaves the text as it is, so it is only set when it changed.
+        var searchTextAssignment = ""
+        if searchText != storedSearchText {
+            searchTextAssignment = ", search_text = ?"
+            values.append(.text(searchText))
+        }
         try connection.execute(
             """
             UPDATE snippets
             SET text = ?, app_name = ?, copy_count = ?, last_copied_at = ?,
-                representative_variant_id = ?, search_text = ?
+                representative_variant_id = ?\(searchTextAssignment)
             WHERE id = ?
-            """,
-            [
-                .text(representative.text), SQLValue(representative.appName),
-                .int(variants.reduce(0) { $0 + $1.copyCount }),
-                .double(representative.lastCopiedAt), .int(representative.id),
-                .text(searchText), .int(snippetID),
-            ])
+            """, values + [.int(snippetID)])
     }
 
     private func insertVariant(
