@@ -432,6 +432,28 @@ import Testing
         #expect(try fixture.store.list(limit: 5).first?.comment?.count == 2000)
     }
 
+    @Test func commentCapCountsCharactersAndLeavesNoTrailingWhitespace() throws {
+        let fixture = try Fixture()
+        defer { fixture.temp.remove() }
+        let id = try insertedID(
+            try fixture.store.add(
+                text: "ls -la /a/", language: .shell, origin: .auto, appName: nil, at: base))
+
+        for unit in ["é", "👨‍👩‍👧"] {
+            #expect(
+                try fixture.store.setComment(
+                    id: id, comment: String(repeating: unit, count: 2001)))
+            let stored = try #require(try fixture.store.list(limit: 5).first?.comment)
+            #expect(stored.count == 2000)
+            #expect(stored == String(repeating: unit, count: 2000))
+        }
+
+        let padded = String(repeating: "x", count: 1999) + "   tail"
+        #expect(try fixture.store.setComment(id: id, comment: padded))
+        #expect(
+            try fixture.store.list(limit: 5).first?.comment == String(repeating: "x", count: 1999))
+    }
+
     @Test func differentLanguagesDoNotMerge() throws {
         let fixture = try Fixture()
         defer { fixture.temp.remove() }

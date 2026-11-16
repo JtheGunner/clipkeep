@@ -41,6 +41,11 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     /// The snippet whose comment the field shows, so an edit is saved to that snippet even if
     /// the selection moves before the edit ends.
     private var commentSnippet: Snippet?
+    /// True while a comment is being saved; stops the reload that follows from flushing again.
+    private var isCommittingComment = false
+    /// A message the next selection refresh shows after it has rewritten the info label.
+    private var noticeAfterRefresh: String?
+    private var isFlushingComment = false
 
     private static let languages: [(SnippetLanguage?, String)] = [
         (nil, "Alle Sprachen"), (.shell, "Shell"), (.sql, "SQL"), (.yaml, "YAML"),
@@ -223,6 +228,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     // MARK: - Loading and filtering
 
     private func reload() {
+        flushPendingComment()
         let selectedID = selectedSnippet?.id
         loadFailed = false
         do {
@@ -267,6 +273,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     }
 
     private func applyFilters(keeping selectedID: Int64? = nil) {
+        flushPendingComment()
         shown = SnippetExplorer.apply(query, to: all)
         table.reloadData()
         // The table keeps a row index across a reload; without this a different snippet could
@@ -322,22 +329,41 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     /// Saves the edited comment to the snippet it was loaded for, then reloads so the list and
     /// its search text pick it up, keeping that snippet selected.
     private func commitComment() {
-        guard let snippet = commentSnippet else { return }
+        guard !isCommittingComment, let snippet = commentSnippet else { return }
         let edited = commentField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard edited != (snippet.comment ?? "") else { return }
+        isCommittingComment = true
+        defer { isCommittingComment = false }
+        let notice: String?
         do {
-            guard try store.setComment(id: snippet.id, comment: edited) else {
-                reload()
-                infoLabel.stringValue = "Das Snippet existiert nicht mehr."
-                return
-            }
+            notice =
+                try store.setComment(id: snippet.id, comment: edited)
+                ? nil : "Das Snippet existiert nicht mehr."
         } catch {
             Self.logger.error(
                 "Saving a snippet comment failed: \(String(describing: error), privacy: .public)")
-            infoLabel.stringValue = "Der Kommentar konnte nicht gespeichert werden."
+            show(notice: "Der Kommentar konnte nicht gespeichert werden.")
             return
         }
         reload()
+        if let notice { show(notice: notice) }
+    }
+
+    /// Shows a message in the info label; a refresh that is already running shows it afterwards.
+    private func show(notice: String) {
+        infoLabel.stringValue = notice
+        if isFlushingComment { noticeAfterRefresh = notice }
+    }
+
+    /// Commits a comment edit that is still in progress to the snippet it was started on. Every
+    /// path that rewrites the list, the selection or the comment field calls this first, so no
+    /// edit depends on end-editing firing before the field is repopulated. Ending editing sends
+    /// `controlTextDidEndEditing`, which runs `commitComment`.
+    private func flushPendingComment() {
+        guard !isCommittingComment, commentField.currentEditor() != nil else { return }
+        isFlushingComment = true
+        defer { isFlushingComment = false }
+        window.makeFirstResponder(nil)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -353,6 +379,15 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     }
 
     private func updateSelectionState() {
+        // The table selection can change under an active comment edit; save it to its snippet
+        // before the field is repopulated for the new selection.
+        flushPendingComment()
+        defer {
+            if let notice = noticeAfterRefresh {
+                infoLabel.stringValue = notice
+                noticeAfterRefresh = nil
+            }
+        }
         let snippet = selectedSnippet
         copyButton.isEnabled = snippet != nil
         deleteButton.isEnabled = snippet != nil

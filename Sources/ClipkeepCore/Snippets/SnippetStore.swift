@@ -245,8 +245,13 @@ public struct SnippetStore: Sendable {
     /// clears the comment, and anything beyond `maxCommentLength` characters is cut off.
     /// Returns whether a snippet with this id existed.
     public func setComment(id: Int64, comment: String?) throws -> Bool {
-        let trimmed = comment?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stored = trimmed.flatMap { $0.isEmpty ? nil : String($0.prefix(Self.maxCommentLength)) }
+        // Trim again after the cut so it never leaves trailing whitespace behind.
+        let stored = comment.flatMap { text -> String? in
+            let cut = String(
+                text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCommentLength)
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            return cut.isEmpty ? nil : cut
+        }
         return try database.write { connection in
             let exists = try connection.query(
                 "SELECT 1 FROM snippets WHERE id = ?", [.int(id)]
