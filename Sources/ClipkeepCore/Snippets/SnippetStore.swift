@@ -168,6 +168,16 @@ public struct SnippetStore: Sendable {
         }
     }
 
+    /// The snippet with this id, or nil when it does not exist.
+    public func snippet(id: Int64) throws -> Snippet? {
+        try database.read { connection in
+            try connection.query(
+                "SELECT \(Self.qualifiedColumns) FROM snippets s WHERE s.id = ?", [.int(id)],
+                map: Self.snippet
+            ).first
+        }
+    }
+
     /// Terms of three or more characters use the trigram index and rank by BM25, then copy
     /// count, then recency. Shorter terms fall back to a substring test. An empty query lists.
     /// Every variant and the comment are searched; each snippet appears once.

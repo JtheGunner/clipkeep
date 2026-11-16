@@ -15,6 +15,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private static let loadLimit = 10_000
 
     private let store: SnippetStore
+    private let creator: SnippetCreator
     private let copyWriter: OwnCopyWriter
     private let window: NSWindow
     private let searchField = NSSearchField()
@@ -28,6 +29,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     private let countLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton(title: "Kopieren", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Löschen …", target: nil, action: nil)
+    private let newButton = NSButton(title: "Neu …", target: nil, action: nil)
 
     private var all: [Snippet] = []
     private var shown: [Snippet] = []
@@ -46,6 +48,8 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
     /// A message the next selection refresh shows after it has rewritten the info label.
     private var noticeAfterRefresh: String?
     private var isFlushingComment = false
+    /// The open "add snippet" sheet; while it exists no second one opens.
+    private var createSheet: SnippetCreateSheetController?
 
     private static let languages: [(SnippetLanguage?, String)] = [
         (nil, "Alle Sprachen"), (.shell, "Shell"), (.sql, "SQL"), (.yaml, "YAML"),
@@ -68,6 +72,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     init(store: SnippetStore, copyWriter: OwnCopyWriter = OwnCopyWriter()) {
         self.store = store
+        creator = SnippetCreator(store: store)
         self.copyWriter = copyWriter
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Metrics.Window.explorer),
@@ -162,7 +167,10 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         deleteButton.action = #selector(deleteSelected)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let footer = NSStackView(views: [countLabel, spacer, deleteButton, copyButton])
+        newButton.target = self
+        newButton.action = #selector(newSnippet)
+        newButton.toolTip = "Ein Snippet von Hand hinzufügen"
+        let footer = NSStackView(views: [countLabel, spacer, newButton, deleteButton, copyButton])
         footer.orientation = .horizontal
         footer.spacing = Metrics.Space.s
 
@@ -227,9 +235,9 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
 
     // MARK: - Loading and filtering
 
-    private func reload() {
+    private func reload(selecting snippetID: Int64? = nil) {
         flushPendingComment()
-        let selectedID = selectedSnippet?.id
+        let selectedID = snippetID ?? selectedSnippet?.id
         loadFailed = false
         do {
             all = try store.list(limit: Self.loadLimit)
@@ -406,8 +414,7 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         if let topic = topicByID[snippet.id] { parts.append("Thema: \(topic)") }
         parts.append("angelegt \(Self.absoluteDates.string(from: snippet.createdAt))")
         parts.append("zuletzt genutzt \(Self.absoluteDates.string(from: snippet.lastCopiedAt))")
-        parts.append(
-            snippet.origin == .history ? "aus dem Verlauf übernommen" : "automatisch erfasst")
+        parts.append(Self.originName(snippet.origin))
         if let app = snippet.appName { parts.append("aus \(app)") }
         infoLabel.stringValue = parts.joined(separator: " · ")
     }
@@ -490,6 +497,40 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         }
     }
 
+    @objc private func newSnippet() {
+        guard createSheet == nil, window.attachedSheet == nil else { return }
+        flushPendingComment()
+        let controller = SnippetCreateSheetController(creator: creator) { [weak self] outcome in
+            self?.finishCreating(outcome)
+        }
+        createSheet = controller
+        controller.present(on: window)
+    }
+
+    /// Reloads with the new snippet selected. The filters are cleared so it cannot be hidden by
+    /// them; the sort order stays.
+    private func finishCreating(_ outcome: SnippetCreateOutcome?) {
+        createSheet = nil
+        let snippetID: Int64
+        var notice: String?
+        switch outcome {
+        case nil: return
+        case .created(let id): snippetID = id
+        case .joined(let id):
+            snippetID = id
+            notice = "Zu einem bestehenden Snippet hinzugefügt."
+        case .empty, .tooLarge, .residualSecret: return
+        }
+        flushPendingComment()
+        searchField.stringValue = ""
+        languageMenu.selectItem(at: 0)
+        query.text = ""
+        query.language = nil
+        query.topic = nil
+        reload(selecting: snippetID)
+        if let notice { show(notice: notice) }
+    }
+
     private func performDelete(_ snippet: Snippet) {
         do {
             _ = try store.delete(id: snippet.id)
@@ -551,6 +592,14 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
             identifier.rawValue == SnippetSortKey.title.rawValue
             ? .labelColor : .secondaryLabelColor
         return cell
+    }
+
+    private static func originName(_ origin: SnippetOrigin) -> String {
+        switch origin {
+        case .history: "aus dem Verlauf übernommen"
+        case .manual: "von Hand hinzugefügt"
+        case .auto: "automatisch erfasst"
+        }
     }
 
     private static func languageName(_ language: SnippetLanguage) -> String {
