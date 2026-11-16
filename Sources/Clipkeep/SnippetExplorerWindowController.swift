@@ -381,6 +381,17 @@ final class SnippetExplorerWindowController: NSObject, NSWindowDelegate, NSTable
         window.makeFirstResponder(nil)
     }
 
+    func windowWillClose(_ notification: Notification) {
+        // Closing the window mid-edit must not drop the comment being typed.
+        flushPendingComment()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        // The app can quit while the window is in the background, without a close; save the
+        // edit now. The flush does nothing while a commit runs or no edit is active.
+        flushPendingComment()
+    }
+
     func windowDidBecomeKey(_ notification: Notification) {
         // Captures add snippets while the window is closed or in the background.
         reload()
